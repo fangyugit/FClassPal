@@ -1,0 +1,43 @@
+{
+  "name": "desktop-widget",
+  "version": "2.2.3",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win dir",
+    "build:portable": "electron-builder --win portable"
+  },
+  "author": "yu",
+  "license": "MIT",
+  "build": {
+    "appId": "top.fangyum.guanjia",
+    "productName": "GuanJia",
+    "artifactName": "管家助手-${version}.exe",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "vendor/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "dir",
+        "portable"
+      ],
+      "compression": "normal",
+      "icon": "build/icon.ico"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^25.0.0",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.1.1",
+    "@material/material-color-utilities": "^0.4.0"
+  }
+}

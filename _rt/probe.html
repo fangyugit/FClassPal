@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../renderer/style.css">
+<style>
+  html, body { margin: 0; width: 440px; height: 540px; overflow: hidden;
+    /* 模拟一张壁纸底（探针不依赖真桌面） */
+    background: linear-gradient(135deg, #4a6fa5 0%, #7fa8d9 45%, #d9c8a8 100%); }
+  * { transition-duration: 0s !important; transition-delay: 0s !important;
+      animation-duration: 0s !important; animation-delay: 0s !important; }
+  .widget { position: absolute; inset: 12px; }
+  .glass-veil { position: absolute; inset: 0; z-index: 1; border-radius: var(--radius, 20px); }
+  .titlebar { position: relative; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 13px 16px; }
+  .title-icon { width: 18px; height: 18px; }
+  .title-input { flex: 1; font-size: 15px; }
+  .content { position: relative; z-index: 2; padding: 4px 12px; }
+  .group-title { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 10px 2px 8px; }
+  .item { position: relative; display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+  .item-icon { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; }
+  .item-name { font-size: 13px; font-weight: 600; }
+  .usb-section { position: relative; z-index: 2; margin: 10px 12px; padding: 10px 12px 14px; }
+  .usb-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 6px; }
+  .usb-icon { width: 26px; height: 26px; }
+  .usb-hint { font-size: 11px; padding-top: 6px; }
+  .panel { position: absolute; right: 14px; top: 60px; width: 240px; max-height: 400px; z-index: 3;
+    padding: 0 0 52px; overflow: hidden; }
+  .ctx-menu { position: fixed; z-index: 200; min-width: 150px; padding: 6px; }
+  .ctx-item { padding: 8px 12px; border-radius: 8px; font-size: 12px; }
+  .panel-header { display: flex; justify-content: space-between; padding: 12px 14px; font-size: 13px; }
+  .panel-body { padding: 4px 14px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="widget" id="widget" style="--glass-alpha: 0.55">
+  <div class="glass-veil"></div>
+  <div class="titlebar">
+    <svg class="title-icon" viewBox="0 0 24 24"><path d="M4 6h16v12H4z" fill="currentColor"/></svg>
+    <div class="title-input">管家助手</div>
+  </div>
+  <div class="content">
+    <div class="group-title">常用</div>
+    <div class="item"><div class="item-icon">A</div><div class="item-name">记事本</div></div>
+    <div class="item"><div class="item-icon">B</div><div class="item-name">计算器</div></div>
+    <div class="item add-card"><div class="item-icon">＋</div><div class="item-name">添加</div></div>
+  </div>
+  <div class="usb-section">
+    <div class="usb-item"><div class="usb-icon">U</div><div class="item-name">U盘 (E:)</div></div>
+    <div class="usb-hint">安全弹出 U 盘</div>
+  </div>
+  <div class="panel">
+    <div class="panel-header"><span>设置</span><span>×</span></div>
+    <div class="panel-body">界面风格 / 透明度 / 尺寸</div>
+  </div>
+  <div class="ctx-menu" style="left: 130px; top: 330px;">
+    <div class="ctx-item">打开</div>
+    <div class="ctx-item ctx-danger">删除</div>
+  </div>
+</div>
+<script>
+  const t = new URLSearchParams(location.search).get('t') || '';
+  if (t && t !== 'glass') document.body.classList.add('theme-' + t);
+</script>
+</body>
+</html>

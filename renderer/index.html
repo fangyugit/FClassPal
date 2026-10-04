@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>管家助手</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 内联 SVG 图标库（Feather 风格线条图标，禁止使用 emoji） -->
+  <svg id="svgDefs" class="svg-defs" aria-hidden="true">
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M4.2 11.2 12 4.2l7.8 7"/><path d="M6.3 9.4V19a1.6 1.6 0 0 0 1.6 1.6h8.2a1.6 1.6 0 0 0 1.6-1.6V9.4"/><path d="M12 17.4s-3.1-2-3.1-4c0-1 .8-1.9 1.8-1.9.6 0 1 .3 1.3.7.3-.4.7-.7 1.3-.7 1 0 1.8.9 1.8 1.9 0 2-3.1 4-3.1 4z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2.5"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2.5"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M9 8V2M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+    <symbol id="i-board" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+
+    <!-- ====== 液态玻璃折射滤镜（standard 模式，逐行对齐 liquid-glass-react）======
+         参考实现：https://github.com/rdev/liquid-glass-react  (MIT, © 2025 MAX ROVENSKY)
+
+         链路（与原版 src/index.tsx 的 GlassFilter 一一对应）：
+           feImage            载入预烘焙位移贴图（renderer/lg-displacement-map.js）
+           feColorMatrix      0.3 灰度化 → feComponentTransfer/funcA discrete 出边缘遮罩
+           feOffset           原图副本，留给"中心保持干净"用
+           feDisplacementMap  同一张图做三次，scale 取负号且逐通道递减 → 色散
+           feColorMatrix      三次分别只留 R / G / B
+           feBlend screen x2  三通道合回一张图
+           feGaussianBlur     0.3 柔化色散边缘
+           feComposite in     用边缘遮罩抠出折射带
+           feComponentTransfer/funcA table "1 0" 反相遮罩 → 抠出中心原图
+           feComposite over   折射带压在中心原图之上
+
+         三个关键点，之前都踩反了：
+         1. 滤镜必须挂在**独立的 .glass-warp 层**上（见 style.css），不是挂在
+            主容器上。backdrop-filter 与 filter 同层时，Chromium 会把 filter
+            作用在"backdrop-filter 的结果"上，位移的才是玻璃背后的画面；
+            而 url() 写进 backdrop-filter 里 Chromium 根本不认，整条声明作废。
+         2. scale 在 standard 模式取 **负号**（=-displacementScale），得到的是
+            背景相对中心收缩 0.855x；正号会变成放大，方向相反。
+         3. 贴图的 G 通道恒为 0、B 才是 Y 方向，所以 yChannelSelector 必须是 B。
+         参数取原版默认：displacementScale=70、aberrationIntensity=2、
+         feGaussianBlur=0.3、滤镜区域 -35%/170%。 -->
+    <filter id="liquidGlass" x="-35%" y="-35%" width="170%" height="170%" color-interpolation-filters="sRGB">
+      <feImage id="lgMap" x="0" y="0" width="100%" height="100%" result="DISPLACEMENT_MAP"
+        href="" preserveAspectRatio="xMidYMid slice"/>
+
+      <!-- 边缘遮罩：0.3*(R+G+B) 灰度化后按 alpha 离散成三档 -->
+      <feColorMatrix in="DISPLACEMENT_MAP" type="matrix"
+        values="0.3 0.3 0.3 0 0  0.3 0.3 0.3 0 0  0.3 0.3 0.3 0 0  0 0 0 1 0" result="EDGE_INTENSITY"/>
+      <feComponentTransfer in="EDGE_INTENSITY" result="EDGE_MASK">
+        <feFuncA type="discrete" tableValues="0 0.1 1"/>
+      </feComponentTransfer>
+
+      <!-- 中心原图：不参与位移，最后按反相遮罩盖回来 -->
+      <feOffset in="SourceGraphic" dx="0" dy="0" result="CENTER_ORIGINAL"/>
+
+      <!-- 三通道位移：scale = 70 * (-1 - 0.05k)，k=0/1/2 → -70 / -77 / -84 -->
+      <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-70"
+        xChannelSelector="R" yChannelSelector="B" result="RED_DISPLACED"/>
+      <feColorMatrix in="RED_DISPLACED" type="matrix"
+        values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="RED_CHANNEL"/>
+
+      <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-77"
+        xChannelSelector="R" yChannelSelector="B" result="GREEN_DISPLACED"/>
+      <feColorMatrix in="GREEN_DISPLACED" type="matrix"
+        values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="GREEN_CHANNEL"/>
+
+      <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-84"
+        xChannelSelector="R" yChannelSelector="B" result="BLUE_DISPLACED"/>
+      <feColorMatrix in="BLUE_DISPLACED" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="BLUE_CHANNEL"/>
+
+      <feBlend in="GREEN_CHANNEL" in2="BLUE_CHANNEL" mode="screen" result="GB_COMBINED"/>
+      <feBlend in="RED_CHANNEL" in2="GB_COMBINED" mode="screen" result="RGB_COMBINED"/>
+      <feGaussianBlur in="RGB_COMBINED" stdDeviation="0.3" result="ABERRATED_BLURRED"/>
+      <feComposite in="ABERRATED_BLURRED" in2="EDGE_MASK" operator="in" result="EDGE_ABERRATION"/>
+
+      <feComponentTransfer in="EDGE_MASK" result="INVERTED_MASK">
+        <feFuncA type="table" tableValues="1 0"/>
+      </feComponentTransfer>
+      <feComposite in="CENTER_ORIGINAL" in2="INVERTED_MASK" operator="in" result="CENTER_CLEAN"/>
+      <feComposite in="EDGE_ABERRATION" in2="CENTER_CLEAN" operator="over"/>
+    </filter>
+  </svg>
+
+  <!-- 液态玻璃容器（主界面，仅展示快捷方式，无任何操作按钮） -->
+  <div id="widget" class="widget">
+    <!-- ① 玻璃底材层（最底，z-index:-1）
+         mica 是 DWM 在窗口外画的位图层，Chromium 完全看不到真实桌面，所以
+         backdrop-filter 必须有"窗口内部"的东西才能采样。这一层就是那个采样源：
+           · 实时模式：<canvas> 按屏幕坐标画桌面采集帧，桌面动它就动
+           · 回退模式：background-image 铺真实壁纸（静态快照）
+           · 都不行：内置多层径向渐变 -->
+    <div id="envLayer" class="env-layer" aria-hidden="true">
+      <canvas id="deskCanvas" class="desk-canvas" aria-hidden="true"></canvas>
+    </div>
+
+    <!-- ② 折射层：唯一挂 backdrop-filter + filter:url() 的层，自身不画任何颜色。
+         空元素是刻意的 —— SourceGraphic 里只有"被模糊过的背景"，位移滤镜弯的
+         就是这一层。白色面纱/内阴影绝不能放进来，否则面纱会被一起位移，
+         在边缘出现一层"重影白边"，折射的对比度也被面纱压掉。 -->
+    <div id="glassWarp" class="glass-warp" aria-hidden="true"></div>
+
+    <!-- ③ 玻璃表面层：白色受光渐变 + 内高光（透明度滑块唯一作用的层）。
+         放在折射层之上，所以位置固定、不参与位移，文字可读性稳定。 -->
+    <div id="glassVeil" class="glass-veil" aria-hidden="true"></div>
+
+    <!-- 鼠标光斑层：给玻璃表面一层流动的受光效果 -->
+    <div id="sheen" class="sheen" aria-hidden="true"></div>
+
+    <!-- 液态玻璃边光环：两层描边（screen + overlay 混合），角度与亮度跟随鼠标 -->
+    <div id="lgBorder1" class="lg-border lg-border--screen" aria-hidden="true"></div>
+    <div id="lgBorder2" class="lg-border lg-border--overlay" aria-hidden="true"></div>
+
+    <!-- 标题栏：仅作拖拽把手，无按钮 -->
+    <header id="titlebar" class="titlebar">
+      <div class="title-wrap">
+        <span class="title-icon" id="titleIcon"><svg class="ic"><use href="#i-tool"/></svg></span>
+        <input id="titleInput" class="title-input" value="管家助手" maxlength="12" readonly />
+        <span id="lockBadge" class="lock-badge hidden" title="位置已锁定">
+          <svg class="ic"><use href="#i-lock"/></svg>
+        </span>
+      </div>
+    </header>
+
+    <!-- 快捷方式列表 -->
+    <main id="content" class="content">
+      <div id="groups"></div>
+    </main>
+
+    <!-- U 盘区域：仅在检测到可移动磁盘时出现 -->
+    <section id="usbSection" class="usb-section hidden">
+      <div class="usb-head">
+        <span class="usb-head-title"><svg class="ic"><use href="#i-plug"/></svg>U 盘</span>
+        <span id="usbCount" class="usb-count"></span>
+      </div>
+      <div id="usbList" class="usb-list"></div>
+      <div class="usb-hint">
+        <svg class="ic"><use href="#i-alert"/></svg>
+        <span>插入U盘时勿推拉黑板</span>
+      </div>
+    </section>
+
+    <!-- 缩放手柄（右下角） -->
+    <div id="resizeHandle" class="resize-handle" title="拖拽调整大小"></div>
+
+    <!-- 透明度调节条（鼠标移入时显示） -->
+    <div id="opacityBar" class="opacity-bar">
+      <span class="opacity-label">透明度</span>
+      <input type="range" id="opacityRange" min="0" max="1" step="0.01" value="0.55" />
+    </div>
+
+    <!-- 操作提示（不拦截点击） -->
+    <div class="hint">右键 / 长按 打开菜单</div>
+  </div>
+
+  <!-- 右键 / 长按 弹出菜单（不在主界面上） -->
+  <div id="ctxMenu" class="ctx-menu hidden">
+    <button class="ctx-item" data-act="add"><svg class="ic"><use href="#i-plus"/></svg><span class="ctx-label">添加快捷方式</span></button>
+    <button class="ctx-item" data-act="edit"><svg class="ic"><use href="#i-pencil"/></svg><span class="ctx-label">编辑模式</span></button>
+    <button class="ctx-item" data-act="settings"><svg class="ic"><use href="#i-sliders"/></svg><span class="ctx-label">设置</span></button>
+    <button class="ctx-item" data-act="lock"><svg class="ic"><use href="#i-lock"/></svg><span class="ctx-label">锁定位置</span></button>
+    <button class="ctx-item" data-act="hide"><svg class="ic"><use href="#i-eye-off"/></svg><span class="ctx-label">隐藏到托盘</span></button>
+    <div class="ctx-sep"></div>
+    <button class="ctx-item ctx-danger" data-act="quit"><svg class="ic"><use href="#i-power"/></svg><span class="ctx-label">退出</span></button>
+  </div>
+
+  <!-- 设置面板 -->
+  <div id="settingsPanel" class="panel hidden">
+    <div class="panel-header">
+      <span>设置</span>
+      <button class="panel-close" id="btnSettingsClose"><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="panel-body">
+      <label class="row">
+        <span>窗口标题</span>
+        <input type="text" id="setTitle" maxlength="12" />
+      </label>
+      <label class="row">
+        <span>透明度</span>
+        <input type="range" id="setOpacity" min="0" max="1" step="0.01" />
+        <span id="opacityVal" class="val">92%</span>
+      </label>
+      <label class="row">
+        <span>圆角弧度</span>
+        <input type="range" id="setRadius" min="8" max="40" step="1" />
+        <span id="radiusVal" class="val">跟随主题</span>
+      </label>
+      <label class="row toggle">
+        <span>窗口置底</span>
+        <input type="checkbox" id="setBottom" />
+      </label>
+      <label class="row toggle">
+        <span>开机自启动</span>
+        <input type="checkbox" id="setAutoLaunch" />
+      </label>
+      <label class="row toggle">
+        <span>锁定位置</span>
+        <input type="checkbox" id="setLock" />
+      </label>
+      <div class="row">
+        <span>界面风格</span>
+        <select id="themeSelect" class="theme-select" aria-label="界面风格"></select>
+      </div>
+      <p class="row-hint">十套风格彼此独立：每套都有自己的形状、表面、按钮与动效语言，
+        不是同一套壳换色。液态玻璃 / MD3 / Fluent 三套跟随壁纸取色；
+        MIUIX 与鸿蒙使用官方规范固定配色，
+        Kitty / 玉桂狗 / 库洛米 / 美乐蒂 / 三丽鸥是角色扮演配色，均不跟壁纸走。</p>
+
+      <div id="md3ColorBox">
+        <div class="row">
+          <span>主色来源</span>
+          <div class="seg" id="colorModeSeg" role="group" aria-label="主色来源">
+            <button type="button" class="seg-btn" data-mode="auto" aria-pressed="true">壁纸取色</button>
+            <button type="button" class="seg-btn" data-mode="manual" aria-pressed="false">手动指定</button>
+          </div>
+        </div>
+        <div class="row">
+          <span>当前主色</span>
+          <span id="paletteInfo" class="val blur-info">检测中…</span>
+        </div>
+        <div class="row" id="manualRow">
+          <span>指定主色</span>
+          <div class="color-pick">
+            <input type="color" id="accentColor" value="#6750a4" aria-label="指定主色" />
+            <span id="accentHex" class="val">#6750A4</span>
+          </div>
+        </div>
+        <div class="swatches" id="swatches" role="group" aria-label="推荐主色">
+          <button type="button" class="swatch" data-color="#6750A4" style="--c:#6750A4" aria-label="基线紫"></button>
+          <button type="button" class="swatch" data-color="#0B57D0" style="--c:#0B57D0" aria-label="宝石蓝"></button>
+          <button type="button" class="swatch" data-color="#00696E" style="--c:#00696E" aria-label="湖水青"></button>
+          <button type="button" class="swatch" data-color="#3F7D4E" style="--c:#3F7D4E" aria-label="松林绿"></button>
+          <button type="button" class="swatch" data-color="#F26100" style="--c:#F26100" aria-label="落日橙"></button>
+          <button type="button" class="swatch" data-color="#C2185B" style="--c:#C2185B" aria-label="玫瑰红"></button>
+          <button type="button" class="swatch" data-color="#F2A0BE" style="--c:#F2A0BE" aria-label="樱花粉"></button>
+          <button type="button" class="swatch" data-color="#7D5260" style="--c:#7D5260" aria-label="藕荷粉"></button>
+          <button type="button" class="swatch" data-color="#4A6572" style="--c:#4A6572" aria-label="石板灰"></button>
+        </div>
+        <p class="row-hint">「壁纸取色」走 Material You 官方算法：先把壁纸在 Lab 空间聚类，
+          再按色相占比 × 接近目标彩度打分挑出主色，最后由该色派生整套 tonal palette。
+          「手动指定」用你选的颜色走同一条派生链路，拖动取色器即时生效。</p>
+      </div>
+      <p class="row-hint hidden" id="fixedPaletteHint"></p>
+      <div class="row">
+        <span>毛玻璃</span>
+        <span id="blurInfo" class="val blur-info">检测中…</span>
+      </div>
+      <label class="row toggle">
+        <span>实时桌面模糊</span>
+        <input type="checkbox" id="setRealtime" />
+      </label>
+      <div class="row">
+        <span>玻璃底材</span>
+        <span id="realtimeInfo" class="val blur-info">未开启</span>
+      </div>
+      <p class="row-hint">默认"只模糊壁纸"：玻璃里显示的就是你的桌面壁纸本身，
+        换壁纸会自动同步。开启"实时桌面模糊"后改为逐帧采集窗口背后的桌面，
+        但代价是系统截图 / 录屏将看不到本窗口（Windows 的采集排除机制所致）。</p>
+      <div class="row">
+        <span>窗口大小</span>
+        <div class="size-controls">
+          <button id="btnSizeDown">−</button>
+          <span id="sizeVal">480 × 420</span>
+          <button id="btnSizeUp">＋</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>分组</span>
+        <button id="btnManageGroups" class="text-btn">管理分组</button>
+      </div>
+      <div class="row">
+        <span></span>
+        <button id="btnResetPos" class="text-btn">重置窗口位置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 添加/编辑快捷方式弹窗 -->
+  <div id="itemModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span id="itemModalTitle">添加快捷方式</span>
+        <button class="panel-close" id="btnItemClose"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>名称</span>
+          <input type="text" id="itemName" placeholder="例如：希沃白板5" />
+        </label>
+        <label class="field">
+          <span>类型</span>
+          <select id="itemType">
+            <option value="app">应用（.exe 等）</option>
+            <option value="file">文件</option>
+            <option value="folder">文件夹（目录）</option>
+            <option value="web">网页链接</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>目标</span>
+          <div class="target-row">
+            <input type="text" id="itemTarget" placeholder="路径或网址" />
+            <button id="btnPick" class="pick-btn" type="button">选择</button>
+            <button id="btnExtractIcon" class="pick-btn ghost-pick" type="button" title="从该 exe / 文件提取图标">取图标</button>
+          </div>
+          <small class="field-tip" id="targetTip">选择 exe 后会自动提取它的图标</small>
+        </label>
+
+        <!-- 图标：预设 / 自定义字符 / 本地图片 -->
+        <div class="field">
+          <span>图标</span>
+          <div class="icon-editor">
+            <div id="iconPreview" class="icon-preview"><svg class="ic"><use href="#i-gear"/></svg></div>
+            <div class="icon-editor-rows">
+              <select id="itemIcon" class="icon-preset">
+                <option value="book">书本</option>
+                <option value="plus">加号</option>
+                <option value="mail">邮件</option>
+                <option value="shield">盾牌</option>
+                <option value="board">屏幕</option>
+                <option value="camera">相机</option>
+                <option value="folder">文件夹</option>
+                <option value="link">链接</option>
+                <option value="app">齿轮</option>
+                <option value="star">星标</option>
+              </select>
+              <div class="icon-row">
+                <input type="text" id="itemIconChar" maxlength="4" placeholder="自定义字符" />
+                <button id="btnPickIcon" class="pick-btn" type="button">选图片</button>
+              </div>
+            </div>
+          </div>
+          <div id="iconPathRow" class="icon-path-row hidden">
+            <span id="iconPathName" class="icon-path-name"></span>
+            <button id="btnClearIcon" class="link-btn" type="button">清除图片</button>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>分组</span>
+          <select id="itemGroup"></select>
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button id="btnItemDelete" class="danger-btn hidden">删除</button>
+        <div class="spacer"></div>
+        <button id="btnItemCancel" class="ghost-btn">取消</button>
+        <button id="btnItemSave" class="primary-btn">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 分组管理弹窗 -->
+  <div id="groupModal" class="modal hidden">
+    <div class="modal-card small">
+      <div class="modal-header">
+        <span>管理分组</span>
+        <button class="panel-close" id="btnGroupClose"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <ul id="groupList" class="group-list"></ul>
+        <div class="add-group-row">
+          <input type="text" id="newGroupName" placeholder="新分组名称" />
+          <button id="btnAddGroup" class="primary-btn">添加分组</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 置换贴图（liquid-glass-react 原版资源，MIT © 2025 MAX ROVENSKY）
+       必须在 app.js 之前加载：app.js 启动时要把 dataURL 填进 #lgMap 的 href。 -->
+  <script src="lg-displacement-map.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

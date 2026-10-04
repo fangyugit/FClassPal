@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.log
+
+# scratch / probe workspace — only curated test & asset-pipeline scripts are kept
+_ep_m/
+_ep*/
+docs/glass-v1.5.1/
+_rt/*
+!_rt/_dragcheck.js
+!_rt/_monetcheck.js
+!_rt/_palettecheck.js
+!_rt/probe.html
+!_rt/crop_chars.py
+!_rt/fetch_chars.py
+!_rt/find_pngmart.py
+!_rt/gen_icon.py
+!_rt/gen_palettes.js
+!_rt/palettes.json
+
+# packaging output
+_pkg_out.txt
+_src_out.txt
+build.log
