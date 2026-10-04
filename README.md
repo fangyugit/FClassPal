@@ -89,7 +89,7 @@ AI：改 CSS token + 注册表 → 跑 485 项断言 → 重新打包 exe → �
 
 ## 下载
 
-免安装便携版（Windows x64，约 94MB）：**[到 Releases 下载](https://github.com/fangyugit/FclassPal/releases/latest)**
+免安装便携版（Windows x64，约 94MB）：**[GuanJia-2.2.3-portable.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.2.3/GuanJia-2.2.3-portable.exe)** · [全部版本](https://github.com/fangyugit/FclassPal/releases)
 
 ## 运行与构建
 
