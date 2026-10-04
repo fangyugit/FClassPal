@@ -10,8 +10,8 @@
   "author": "yu",
   "license": "MIT",
   "build": {
-    "appId": "top.fangyum.guanjia",
-    "productName": "GuanJia",
+    "appId": "top.fangyum.classpal",
+    "productName": "FClassPal",
     "artifactName": "FClassPal-${version}.exe",
     "asar": true,
     "files": [
