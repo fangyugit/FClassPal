@@ -1,10 +1,10 @@
-# 管家助手 GuanJia
+# FClassPal
 
-> Windows 桌面快捷方式小组件：无边框液态玻璃 UI · 十套彼此独立的设计系统主题 · 触控优先 · 全部操作走右键/长按菜单
+> FClassPal是一个主要为班级大屏打造的桌面快捷方式启动器小部件
 
 ![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-485%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.2.3-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
 
-**管家助手**是一个常驻桌面的启动器小部件：把常用的应用、文件、文件夹和网页钉在桌面一角，顺手管理 U 盘的弹出。它没有任务栏图标、没有可见按钮——右键或长按唤醒菜单，其余时间安静地贴在桌面上。
+**FClassPal**是一个常驻桌面的启动器小部件，用于替代希沃管家助手/桌面助手 把常用的应用、文件、文件夹和网页钉在桌面一角，顺手管理 U 盘的弹出。无任务栏图标——右键或长按唤醒菜单，其余时间安静地贴在桌面上。
 
 ## 十套主题，十套设计系统
 
@@ -37,27 +37,6 @@
 |---|---|---|
 | ![before](docs/screenshots/glass-refraction-before.png) | ![after](docs/screenshots/glass-refraction-after.png) | ![edge](docs/screenshots/glass-refraction-edge-3x.png) |
 
-## ✨ 关于本项目：大量使用 vibe coding
-
-**这个应用几乎全部代码都是 vibe coding 出来的。**
-
-整个项目从第一行代码到 v2.2.3，都是在与 AI 助手（WorkBuddy）的自然语言来回中完成的：用中文描述想要的样子和行为 → AI 动手实现 → 真机验证 → 口头反馈进入下一轮。人负责提需求、挑毛病、验收；AI 负责写代码、改样式、修 bug、跑测试、打包 exe。
-
-几个真实发生的 vibe coding 片段：
-
-- **「U 盘还是弹不出来，是不是需要管理员权限？」** → AI 重查 Windows 头文件（`cfgmgr32.h` / `Cfg.h`），发现自己之前把两处错误码表**写反了**（`51 = CR_ACCESS_DENIED` 被标成"设备正忙"、`PNP_VETO 9 = InsufficientPower` 被标成"权限不足"），于是纠正错误码、新增免管理员的卷级 IOCTL 弹出层、再加一个 UAC「管理员重试」按钮。
-- **「触摸拖动会闪屏，鼠标拖动没问题」** → AI 逐帧排查出五个独立成因（第二触点重置基准、`pointercancel` 立刻结束拖动、亚像素抖动、离群采样、拖动中长按菜单弹出），一次全部修掉。
-- **「毛玻璃怎么没了」** → 真相是 `backdrop-filter` 里写了 `url(#id)`，整条声明被浏览器静默作废——模糊和折射一起消失，且控制台毫无报错。
-- **「六套主题怎么长得像同一个皮肤」** → 用户一句"应该是单独的，不要基于 md3"，推倒重来，每套主题改造成自足的设计系统。
-
-连**回归测试也是 vibe coding 的一部分**：485 项断言全部由 AI 自己编写、自己维护，用来守卫自己写过的每一个坑（比如「主题规则绝不能改写定位元素，否则右键菜单会整个消失」这类只有踩过才知道的陷阱，都有对应的守卫断言）。
-
-工作流很简单：
-
-```
-你：这个按钮圆角再小一点，然后主题切换做成下拉栏
-AI：改 CSS token + 注册表 → 跑 485 项断言 → 重新打包 exe → 交付
-```
 
 ## 功能
 
@@ -85,7 +64,6 @@ AI：改 CSS token + 注册表 → 跑 485 项断言 → 重新打包 exe → �
 | 运行时 | `electron _rt/_monetcheck.js` | 19 | 真 Electron + 合成壁纸验 Monet |
 | 拖动落盘 | `electron _rt/_dragcheck.js` | 7 | 真 Electron 验 saveBounds |
 
-全部绿了才交付 exe。
 
 ## 下载
 
@@ -99,7 +77,7 @@ npm install
 # 开发运行
 npm start
 
-# 打包 Windows 便携版（产物：dist/管家助手-<version>.exe）
+# 打包 Windows 便携版（产物：dist/FClassPal-<version>.exe）
 npm run build:portable
 
 # 跑回归测试
@@ -128,7 +106,18 @@ FclassPal/
 └── docs/                # 截图
 ```
 
-## 说明与限制
+## 声明
+
+###作者
+
+OrionYU
+
+###AI声明
+
+本项目大量使用vibe coding
+本项目主要由 **WorkBuddy** 编写 在真实机器（希沃MT41A-JHB）编译 且在班级中有长时间使用
+
+###说明
 
 - 仅支持 Windows 10/11（依赖 DWM 模糊、WMI、Cfgmgr32）
 - 开启「实时桌面模糊」后，系统截图/录屏会看不到本窗口（Windows 采集排除机制所致）
