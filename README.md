@@ -1,10 +1,13 @@
 # FClassPal
 
-> FClassPal是一个主要为班级大屏打造的桌面快捷方式启动器小部件
+> FClassPal是一个主要为班级大屏打造的桌面快捷方式启动器小部件 可用于替代希沃管家助手/桌面助手
 
 ![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-485%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.2.3-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **FClassPal**是一个常驻桌面的启动器小部件，用于替代希沃管家助手/桌面助手 把常用的应用、文件、文件夹和网页钉在桌面一角，顺手管理 U 盘的弹出。无任务栏图标——右键或长按唤醒菜单，其余时间安静地贴在桌面上。
+
+##使用
+双击即用 使用本应用建议卸载希沃桌面助手/隐藏桌面管家（可使用[HugoAura-Enhanced](https://github.com/blingbling-bow/HugoAura-Enhanced)中的功能彻底隐藏掉）
 
 ## 功能
 
@@ -66,8 +69,7 @@
 
 
 ## 下载
-
-免安装便携版（Windows x64，约 94MB）：**[GuanJia-2.2.3-portable.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.2.3/GuanJia-2.2.3-portable.exe)** · [全部版本](https://github.com/fangyugit/FclassPal/releases)
+[全部版本](https://github.com/fangyugit/FclassPal/releases)
 
 ## 运行与构建
 
@@ -108,16 +110,17 @@ FclassPal/
 
 ## 声明
 
-###作者
+### 作者
 
 OrionYU
 
-###AI声明
+### AI声明
 
-本项目大量使用vibe coding
-本项目主要由 **WorkBuddy** 编写 在真实机器（希沃MT41A-JHB）编译 且在班级中有长时间使用
+本项目部分使用 **WorkBuddy** 编写 在真实机器（希沃MT41A-JHB）编译 且在班级中有长时间使用
 
-###说明
+如果您对此类项目有固有的排斥感，请无视此项目，谢谢。
+
+### 提示
 
 - 仅支持 Windows 10/11（依赖 DWM 模糊、WMI、Cfgmgr32）
 - 开启「实时桌面模糊」后，系统截图/录屏会看不到本窗口（Windows 采集排除机制所致）
