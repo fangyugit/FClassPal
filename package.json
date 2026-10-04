@@ -7,7 +7,7 @@
     "build": "electron-builder --win dir",
     "build:portable": "electron-builder --win portable"
   },
-  "author": "yu",
+  "author": "YU",
   "license": "MIT",
   "build": {
     "appId": "top.fangyum.classpal",
