@@ -1,15 +1,15 @@
 const path = require('path');
 const fs = require('fs');
-const extractFile = (_a, rel) => fs.readFileSync(String(rel).replace(/\\/g, '/'));
-const asar = path.join('dist', 'win-unpacked', 'resources', 'app.asar');
-const main = extractFile(asar, 'main.js').toString();
-const pre = extractFile(asar, 'preload.js').toString();
-const css = extractFile(asar, 'renderer/style.css').toString();
-const app = extractFile(asar, 'renderer/app.js').toString();
-const html = extractFile(asar, 'renderer/index.html').toString();
-const mapJs = (() => { try { return extractFile(asar, 'renderer/lg-displacement-map.js').toString(); } catch (e) { return ''; } })();
+const { extractFile } = require('@electron/asar');
+const asar = null; // 源码预跑版：直接读本地文件
+const main = fs.readFileSync('main.js', 'utf-8');
+const pre = fs.readFileSync('preload.js', 'utf-8');
+const css = fs.readFileSync('renderer/style.css', 'utf-8');
+const app = fs.readFileSync('renderer/app.js', 'utf-8');
+const html = fs.readFileSync('renderer/index.html', 'utf-8');
+const mapJs = fs.readFileSync('renderer/lg-displacement-map.js', 'utf-8');
 // v1.8：预打包好的 Monet 库（单个 CJS 文件），必须真的进了 asar
-const mapJs2 = (() => { try { return extractFile(asar, 'vendor/monet.js').toString(); } catch (e) { return ''; } })();
+const mapJs2 = fs.readFileSync('vendor/monet.js', 'utf-8');
 const cssNC = css.replace(/\/\*[\s\S]*?\*\//g, '');
 // 同样剥掉 main.js 的块注释："某 API 已移除"这类断言不能被注释里的旧写法误伤
 const mainNC = main.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -430,19 +430,20 @@ const checks = [
     /function previewPalette/.test(app) && /PREVIEW_ROLE_TONE/.test(app) &&
     !/getPalette:\s*\(\) => Promise\.resolve\(null\)/.test(app)],
   ['app.js: ripple 只在 MD3 生效', (app.match(/currentTheme !== 'md3'/g) || []).length >= 2],
-  ['配置: productName = GuanJia（进程名简化）', srcPkg.build && srcPkg.build.productName === 'GuanJia'],
-  ['配置: artifactName 保留「管家助手-${version}.exe」习惯命名',
-    srcPkg.build && srcPkg.build.artifactName === '管家助手-${version}.exe'],
+  ['配置: productName = FClassPal', srcPkg.build && srcPkg.build.productName === 'FClassPal'],
+  ['配置: appId = top.fangyum.classpal', srcPkg.build && srcPkg.build.appId === 'top.fangyum.classpal'],
+  ['配置: artifactName = FClassPal-${version}.exe',
+    srcPkg.build && srcPkg.build.artifactName === 'FClassPal-${version}.exe'],
   ['配置: win.icon 指向 build/icon.ico', srcPkg.build && srcPkg.build.win && srcPkg.build.win.icon === 'build/icon.ico'],
   ['资产: build/icon.ico 与 icon.png 存在',
     fs.existsSync('build/icon.ico') && fs.existsSync('build/icon.png')],
   ['main: BrowserWindow 挂 icon（开发模式/alt-tab 也有图标）',
     /icon:\s*fs\.existsSync\(path\.join\(__dirname, 'build', 'icon\.ico'\)\)/.test(main)],
-  ['产物: 便携 exe 已生成（v2.2.3）', fs.existsSync('dist/管家助手-2.2.3.exe')],
-  ['配置: 版本号 2.2.3', srcPkg.version === '2.2.3'],
+  ['产物: 便携 exe 已生成（v2.2.4）', fs.existsSync('dist/FClassPal-2.2.4.exe')],
+  ['配置: 版本号 2.2.4', srcPkg.version === '2.2.4'],
   ['配置: 已移除 package.json description（exe 属性不再带描述）',
     srcPkg.description === undefined],
-  ['author = yu', srcPkg.author === 'yu'],
+  ['author = yu', srcPkg.author === 'YU'],
   ['main: moveBottom 置底', main.includes('moveBottom')],
   ['main: keepBottom 状态', main.includes('keepBottom')],
   ['main: focus 时压回底层', main.includes("on('focus'")],
@@ -453,7 +454,16 @@ const checks = [
   ['app.js: 置底开关联动', app.includes("$('setBottom')")],
   ['html: 窗口置底开关', html.includes('id="setBottom"') && html.includes('窗口置底')],
   ['html: 无旧置顶开关', !html.includes('setTop') && !html.includes('始终置顶')],
-  ['托盘提示 = 管家助手', main.includes("setToolTip('管家助手')")],
+  ['托盘提示 = FClassPal', main.includes("setToolTip('FClassPal')")],
+  ['v2.2.4: 首次启动种子只有一个「希沃应用」空分组',
+    /name:\s*'希沃应用',\s*\n\s*items:\s*\[\]/.test(mainNC)],
+  ['v2.2.4: 种子里不再预置任何示例快捷方式',
+    !/希沃学苑/.test(mainNC) && !/希沃白板5/.test(mainNC) && !/易\+官网/.test(mainNC)],
+  ['v2.2.4: 预览 mock 与种子对齐（空希沃应用分组）',
+    /name:\s*'希沃应用',\s*items:\s*\[\]/.test(app)],
+  ['v2.2.4: 标题栏默认 FClassPal（html + 全部 fallback）',
+    html.includes('value="FClassPal"') && html.includes('<title>FClassPal</title>') &&
+    !app.includes("'管家助手'")],
   ['U盘弹出修复仍在', main.includes('CM_Request_Device_EjectW')]
 ];
 let bad = 0;

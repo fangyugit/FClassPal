@@ -297,7 +297,7 @@ function themeTokens(theme) {
     /needAdmin: needAdmin \|\| driveExists\(\)/.test(mainJs));
   check('main.js: 提供提权弹出通道 eject-drive-elevated（写临时脚本 → RunAs → 读回结果）',
     /eject-drive-elevated/.test(mainJs) && /-Verb RunAs/.test(mainJs) &&
-    /guanjia-eject-/.test(mainJs));
+    /fclasspal-eject-/.test(mainJs));
   check('main.js: 用户取消 UAC 时给出明确提示',
     /已取消管理员授权/.test(mainJs));
   check('preload: 暴露 ejectDriveElevated',
@@ -876,6 +876,27 @@ function themeTokens(theme) {
   $('btnItemSave').dispatchEvent(new window.Event('click', { bubbles: true }));
   check('保存后弹窗关闭', $('itemModal').classList.contains('hidden'));
   check('新项已渲染进列表', document.querySelectorAll('#groups .item').length > 0);
+
+  /* ---- v2.2.4：改名 FClassPal + 首次启动种子 ---- */
+  console.log('\n[v2.2.4 改名与首次启动种子]');
+  check('窗口标题默认 FClassPal', $('titleInput').value === 'FClassPal');
+  check('html <title> = FClassPal', /<title>FClassPal<\/title>/.test(html));
+  check('托盘提示 = FClassPal', mainJs.includes("setToolTip('FClassPal')"));
+  check('标题 fallback 全部换成 FClassPal（不再残留旧名）',
+    js.indexOf("'管家助手'") < 0 && (js.match(/\|\| 'FClassPal'/g) || []).length >= 6);
+  check('main 种子：只有一个分组且名为「希沃应用」',
+    (mainNC.match(/name:\s*'希沃应用'/g) || []).length === 1 &&
+    /name:\s*'希沃应用',\s*\n\s*items:\s*\[\]/.test(mainNC));
+  check('main 种子：不再预置任何示例快捷方式',
+    mainNC.indexOf('希沃学苑') < 0 && mainNC.indexOf('希沃白板5') < 0 &&
+    mainNC.indexOf('易+官网') < 0);
+  check('预览 mock 种子与 main 对齐（空「希沃应用」分组）',
+    /name:\s*'希沃应用',\s*items:\s*\[\]/.test(js));
+  check('打包配置已改名（productName / artifactName / appId）',
+    /"productName":\s*"FClassPal"/.test(
+      fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')) &&
+    /"artifactName":\s*"FClassPal-\$\{version\}\.exe"/.test(
+      fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')));
 
   console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
   process.exit(failed ? 1 : 0);

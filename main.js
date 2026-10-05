@@ -49,24 +49,12 @@ const DEFAULT_CONFIG = {
   accentColor: '#6750A4',   // 手动模式下的主色（默认取 MD3 baseline 紫）
   accentPicked: false,      // 用户是否亲手挑过主色（false 时切风格会用该风格的推荐色）
   cornerRadius: null,       // 主界面圆角弧度 px（null = 跟随当前主题的默认值）
+  // 首次启动种子：只给一个空的「希沃应用」分组，快捷方式完全由用户自己添加
   groups: [
     {
       id: 'group-1',
-      name: '教学资源',
-      items: [
-        { id: 'item-1', name: '希沃学苑', type: 'web', target: 'https://study.seewo.com/', icon: 'book' },
-        { id: 'item-2', name: '易+官网', type: 'web', target: 'https://e.seewo.com/', icon: 'plus' },
-        { id: 'item-3', name: '希沃信鸽', type: 'web', target: 'https://pigeon.seewo.com/', icon: 'mail' }
-      ]
-    },
-    {
-      id: 'group-2',
       name: '希沃应用',
-      items: [
-        { id: 'item-4', name: '希沃管家', type: 'app', target: 'C:\\Program Files (x86)\\Seewo\\SeewoService\\SeewoService.exe', icon: 'shield' },
-        { id: 'item-5', name: '希沃白板5', type: 'app', target: 'C:\\Program Files (x86)\\Seewo\\EasiNote5\\EasiNote5.exe', icon: 'board' },
-        { id: 'item-6', name: '希沃视频展台', type: 'app', target: 'C:\\Program Files (x86)\\Seewo\\SeewoVisualPresenter\\SeewoVisualPresenter.exe', icon: 'camera' }
-      ]
+      items: []
     }
   ]
 };
@@ -491,7 +479,7 @@ function createWindow() {
 function createTray() {
   const icon = nativeImage.createFromDataURL('data:image/png;base64,' + TRAY_ICON_B64);
   tray = new Tray(icon);
-  tray.setToolTip('管家助手');
+  tray.setToolTip('FClassPal');
 
   const buildMenu = () => Menu.buildFromTemplate([
     {
@@ -1426,8 +1414,8 @@ ipcMain.handle('eject-drive-elevated', async (event, letter) => {
 
   const stamp = Date.now();
   const tmpDir = app.getPath('temp');
-  const psFile = path.join(tmpDir, 'guanjia-eject-' + l + '-' + stamp + '.ps1');
-  const outFile = path.join(tmpDir, 'guanjia-eject-' + l + '-' + stamp + '.out');
+  const psFile = path.join(tmpDir, 'fclasspal-eject-' + l + '-' + stamp + '.ps1');
+  const outFile = path.join(tmpDir, 'fclasspal-eject-' + l + '-' + stamp + '.out');
   const script = [
     "$ErrorActionPreference = 'Continue'",
     "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",

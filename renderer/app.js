@@ -103,23 +103,15 @@ const PREVIEW_MODE = !window.widgetAPI;   // 双击 index.html 预览 / smoke-te
 const API = window.widgetAPI || (function () {
   const KEY = 'desktop-widget-config';
   const def = {
-    title: '管家助手', width: 480, height: 420, x: 100, y: 100, opacity: 0.92,
+    title: 'FClassPal', width: 480, height: 420, x: 100, y: 100, opacity: 0.92,
     alwaysOnTop: false, keepBottom: true, autoLaunch: false, locked: false,
     /* 与 main.js 的 DEFAULT_CONFIG 对齐；缺了这几项预览模式开场就是 undefined，
      * 设置面板会读出一堆空值（风格按钮、取色器） */
     theme: 'glass', colorMode: 'auto', accentColor: PREVIEW_SOURCE, accentPicked: false,
     cornerRadius: null,
+    /* 与 main.js 的首次启动种子一致：只有一个空的「希沃应用」分组 */
     groups: [
-      { id: 'g1', name: '教学资源', items: [
-        { id: 'i1', name: '希沃学苑', type: 'web', target: 'https://study.seewo.com/', icon: 'book' },
-        { id: 'i2', name: '易+官网', type: 'web', target: 'https://e.seewo.com/', icon: 'plus' },
-        { id: 'i3', name: '希沃信鸽', type: 'web', target: 'https://pigeon.seewo.com/', icon: 'mail' }
-      ]},
-      { id: 'g2', name: '希沃应用', items: [
-        { id: 'i4', name: '希沃管家', type: 'app', target: 'C:\\Program Files (x86)\\Seewo\\SeewoService\\SeewoService.exe', icon: 'shield' },
-        { id: 'i5', name: '希沃白板5', type: 'app', target: 'C:\\Program Files (x86)\\Seewo\\EasiNote5\\EasiNote5.exe', icon: 'board' },
-        { id: 'i6', name: '视频展台', type: 'app', target: 'C:\\Program Files (x86)\\Seewo\\SeewoVisualPresenter\\SeewoVisualPresenter.exe', icon: 'camera' }
-      ]}
+      { id: 'g1', name: '希沃应用', items: [] }
     ]
   };
   let cfg = null;
@@ -411,7 +403,7 @@ function resolveIcon(it) {
 
 /* ---------- 渲染 ---------- */
 function render() {
-  titleInput.value = config.title || '管家助手';
+  titleInput.value = config.title || 'FClassPal';
   groupsEl.innerHTML = '';
   config.groups.forEach((g, gi) => {
     const groupEl = document.createElement('div');
@@ -1106,14 +1098,14 @@ function toggleEditMode() {
   } else {
     titleInput.classList.remove('editable');
     titleInput.readOnly = true;
-    config.title = titleInput.value.trim() || '管家助手';
+    config.title = titleInput.value.trim() || 'FClassPal';
     persist();
   }
   render();
 }
 titleInput.addEventListener('blur', () => {
   if (editMode) {
-    config.title = titleInput.value.trim() || '管家助手';
+    config.title = titleInput.value.trim() || 'FClassPal';
     persist();
   }
 });
@@ -1144,7 +1136,7 @@ function toggleLocked() {
 
 /* ---------- 设置面板 ---------- */
 function openSettings() {
-  $('setTitle').value = config.title || '管家助手';
+  $('setTitle').value = config.title || 'FClassPal';
   $('setOpacity').value = config.opacity;
   $('opacityVal').textContent = Math.round(config.opacity * 100) + '%';
   /* 圆角滑块：跟随主题时把滑块摆到当前主题的实际值上（读计算样式） */
@@ -1207,7 +1199,7 @@ function syncSettingsControls() {
 $('btnSettingsClose').addEventListener('click', () => $('settingsPanel').classList.add('hidden'));
 
 $('setTitle').addEventListener('input', (e) => {
-  config.title = e.target.value || '管家助手';
+  config.title = e.target.value || 'FClassPal';
   titleInput.value = config.title;
   persist();
 });
@@ -1896,7 +1888,7 @@ if (typeof API.onTrayAction === 'function') {
     x: config.x ?? 100, y: config.y ?? 100,
     width: config.width ?? 480, height: config.height ?? 420
   };
-  titleInput.value = config.title || '管家助手';
+  titleInput.value = config.title || 'FClassPal';
   opacityRange.value = config.opacity ?? 0.55;
   widget.style.setProperty('--glass-alpha', config.opacity ?? 0.55);
   /* 下拉栏选项由 THEME_LABEL 生成（新增主题只改一处注册表） */
