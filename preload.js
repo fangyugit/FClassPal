@@ -70,5 +70,9 @@ contextBridge.exposeInMainWorld('widgetAPI', {
     const handler = (_e, action) => callback(action);
     ipcRenderer.on('tray-action', handler);
     return () => ipcRenderer.removeListener('tray-action', handler);
-  }
+  },
+
+  // 关于界面：应用版本号 + 打开 GitHub 仓库（主进程有域名白名单）
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url)
 });

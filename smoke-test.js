@@ -8,6 +8,8 @@ const css = fs.readFileSync(path.join(__dirname, 'renderer', 'style.css'), 'utf-
 const js = fs.readFileSync(path.join(__dirname, 'renderer', 'app.js'), 'utf-8');
 const mainJs = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf-8');
 const preloadJs = fs.readFileSync(path.join(__dirname, 'preload.js'), 'utf-8');
+// 位移贴图脚本：v2.3.0 起必须是 PNG data URL（feImage 不再渲染 JPEG）
+const mapJs = fs.readFileSync(path.join(__dirname, 'renderer', 'lg-displacement-map.js'), 'utf-8');
 /* 剥掉块注释再断言"某 API 已移除"：注释里引用旧写法是常事
  * （比如"之前用 setBackgroundMaterial('mica')"），不剥就会误报。 */
 const mainNC = mainJs.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -897,6 +899,25 @@ function themeTokens(theme) {
       fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')) &&
     /"artifactName":\s*"FClassPal-\$\{version\}\.exe"/.test(
       fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')));
+
+  /* ---- v2.3.0：折射修复（JPEG 贴图 → PNG）与关于界面 ---- */
+  console.log('\n[v2.3.0 折射修复与关于界面]');
+  check('位移贴图是 PNG data URL（feImage 不再渲染 JPEG）',
+    /'data:image\/png;base64,/.test(mapJs) && !/data:image\/jpeg/.test(mapJs));
+  check('html 有关于区块（版本号 / 作者 / GitHub）',
+    html.includes('id="aboutVersion"') && html.includes('id="aboutGithub"') &&
+    html.includes('作者 YU'));
+  check('app.js 拉取版本号并填充 aboutVersion',
+    /API\.getAppVersion\(\)\.then/.test(js) && /aboutVersion/.test(js));
+  check('GitHub 链接指向 fangyugit/FClassPal 且走 openExternal',
+    js.includes("'https://github.com/fangyugit/FClassPal'") &&
+    /openExternal\(GITHUB_URL\)/.test(js));
+  check('main: get-app-version + open-external（带 GitHub 域名白名单）',
+    mainJs.includes("ipcMain.handle('get-app-version'") &&
+    mainJs.includes("ipcMain.handle('open-external'") &&
+    /\^https:\\\/\\\/github\\\.com\\\//.test(mainJs));
+  check('preload 暴露 getAppVersion / openExternal',
+    preloadJs.includes('getAppVersion') && preloadJs.includes('openExternal'));
 
   console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
   process.exit(failed ? 1 : 0);

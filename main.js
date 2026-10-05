@@ -875,6 +875,16 @@ ipcMain.handle('select-folder', async () => {
   return result.filePaths[0];
 });
 
+/* 关于界面：版本号 + GitHub 链接。
+ * open-external 做域名白名单：渲染层被攻破时也不能拿它打开任意 URL。 */
+ipcMain.handle('get-app-version', () => app.getVersion());
+ipcMain.handle('open-external', (event, url) => {
+  if (typeof url === 'string' && /^https:\/\/github\.com\//.test(url)) {
+    return shell.openExternal(url);
+  }
+  return false;
+});
+
 ipcMain.handle('select-app', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],

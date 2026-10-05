@@ -136,6 +136,9 @@ const API = window.widgetAPI || (function () {
     // 预览模式：返回示例图片，便于验证自定义图片图标的渲染
     selectImage: () => Promise.resolve({ path: 'demo', url: DEMO_ICON }),
     getEnv: () => Promise.resolve({ transparent: true, platform: 'browser', release: '0' }),
+    // 关于界面：预览模式没有主进程，版本号给个占位；链接用新窗口模拟
+    getAppVersion: () => Promise.resolve('2.3.0'),
+    openExternal: (url) => { window.open(url, '_blank'); return Promise.resolve(true); },
     // 预览模式取不到真实壁纸：返回 null，让 #envLayer 用内置渐变基底，
     // MD3 则退回 CSS 里的 baseline 配色
     getWallpaper: () => Promise.resolve(null),
@@ -1401,6 +1404,16 @@ $('btnResetPos').addEventListener('click', () => {
   persist();
   toast('窗口位置已重置');
 });
+
+/* ---------- 关于（设置面板底部）：作者 / 版本号 / GitHub ---------- */
+const GITHUB_URL = 'https://github.com/fangyugit/FClassPal';
+if (typeof API.getAppVersion === 'function') {
+  API.getAppVersion().then((v) => {
+    const el = document.getElementById('aboutVersion');
+    if (el && v) el.textContent = 'v' + v;
+  }).catch(() => {});
+}
+$('aboutGithub').addEventListener('click', () => { API.openExternal(GITHUB_URL); });
 
 /* ---------- 添加/编辑快捷方式 ---------- */
 const itemModal = $('itemModal');
