@@ -79,7 +79,8 @@
 
 
 ## 下载
-[全部版本](https://github.com/fangyugit/FclassPal/releases)
+
+免安装便携版（Windows x64，约 94MB）：**[FClassPal-2.4.1.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.4.1/FClassPal-2.4.1.exe)** · [全部版本](https://github.com/fangyugit/FclassPal/releases)
 
 改动记录见 [CHANGELOG.md](CHANGELOG.md)
 
