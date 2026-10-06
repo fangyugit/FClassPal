@@ -125,8 +125,8 @@ function themeTokens(theme) {
     !/backdrop-filter:[^;]*url\(#/.test(cssNC));
   check('css: .glass-warp 自身不画颜色（面纱会被一起位移 → 白边重影 + 压掉折射对比）',
     !/background/.test(ruleBlock('.glass-warp')) && !/box-shadow/.test(ruleBlock('.glass-warp')));
-  check('css: blur 降到 6px / saturate 140%（参考实现 4 + 0.0625*32）',
-    /blur\(6px\) saturate\(140%\)/.test(ruleBlock('.glass-warp')));
+  check('css: blur 走 --lg-blur 变量、默认 6px / saturate 140%（参考实现 4 + 0.0625*32）',
+    /blur\(var\(--lg-blur, 6px\)\) saturate\(140%\)/.test(ruleBlock('.glass-warp')));
   check('css: 三层 z-index 排序 env(-1) < warp(0) < veil(1)',
     /\.widget > \.env-layer\s*\{\s*z-index:\s*-1/.test(css) &&
     /\.widget > \.glass-warp\s*\{\s*z-index:\s*0/.test(css) &&
@@ -348,9 +348,9 @@ function themeTokens(theme) {
   check('main.js: 由 source 派生整套 tonal palette（SchemeTonalSpot + MaterialDynamicColors）',
     /new monet\.SchemeTonalSpot/.test(mainJs) && /MaterialDynamicColors/.test(mainJs) &&
     /MD3_ROLE_MAP/.test(mainJs));
-  check('main.js: 灰白/纯黑壁纸退回基线紫且标 dynamic=false',
+  check('main.js: 灰白/纯黑壁纸退回基线紫且标 dynamic=false（暗色模式也照给不误）',
     /MD3_BASELINE\s*=\s*'#6750a4'/.test(mainJs) && /best === fallback/.test(mainJs) &&
-    /monetSchemePalette\(monetSourceFromHex\(MD3_BASELINE\), false\)/.test(mainJs));
+    /monetSchemePalette\(monetSourceFromHex\(MD3_BASELINE\), false, isDark\)/.test(mainJs));
   check('main.js: 调色板按取色参数缓存（换壁纸/换主色才重算）',
     /PALETTE_CACHE/.test(mainJs) && /paletteCacheSet/.test(mainJs));
   check('main.js: 手动指定主色走同一条派生链路',
@@ -359,7 +359,7 @@ function themeTokens(theme) {
     /palette: await buildPalette/.test(mainJs));
   check('main.js: get-palette IPC（换主色不必重算整套壁纸坐标）',
     /ipcMain\.handle\('get-palette'/.test(mainJs));
-  check('main.js: 默认配置含 theme / colorMode / accentColor',
+  check('main.js: 默认配置含 theme / colorMode / accentColor（v2.4.0 默认主题回到液态玻璃）',
     /theme:\s*'glass'/.test(mainJs) && /colorMode:\s*'auto'/.test(mainJs) &&
     /accentColor:\s*'#6750A4'/.test(mainJs));
   check('html: 设置面板有主题下拉栏（v2.2.2：10 套主题不再用分段按钮）',
@@ -371,8 +371,8 @@ function themeTokens(theme) {
   check('app.js: 调色板同时写 hex 与 -rgb 三元组（供 rgb(R G B / A) 用）',
     /function hexToRgbTriplet/.test(js) &&
     /setProperty\('--md3-' \+ role \+ '-rgb'/.test(js));
-  check('app.js: 切到 MD3 时立刻套用已取到的壁纸配色',
-    /wallInfo\.palette\)\s*applyPalette/.test(js));
+  check('app.js: 切到 MD3 时立刻套用已取到的壁纸配色（明暗方案对得上才直接用）',
+    /else if \(have\) \{[\s\S]{0,60}?applyPalette\(wallInfo\.palette\)/.test(js));
   check('css: md3 主表面是平的 tonal 色 + 1px outline（无渐变无内阴影）',
     /--t-veil:\s*rgb\(var\(--md3-surface-rgb\) \/ calc/.test(ruleBlockTheme('md3', '.glass-veil')) &&
     /border:\s*1px solid var\(--t-veil-border\)/.test(ruleBlockTheme('md3', '.glass-veil')) &&
@@ -452,8 +452,8 @@ function themeTokens(theme) {
     /box\.classList\.toggle\('hidden', fixed\)/.test(js) &&
     !/classList\.toggle\('hidden',\s*!isMd3\)/.test(js));
   check('app.js: 七套固定配色主题（kitty/dog/miuix/harmony/kuromi/melody/sanrio）隐藏取色面板并给出说明',
-    /* miuix/harmony 用各自官方配色（MIUIX #3482FF / 鸿蒙 #0A59F7），
-     * kitty/dog/kuromi/melody/sanrio 是角色扮演配色；对它们取色都是无效操作 */
+    /* 透明（黑背景）是深色固定方案；miuix/harmony 用各自官方配色（MIUIX #3482FF /
+     * 鸿蒙 #0A59F7），kitty/dog/kuromi/melody/sanrio 是角色扮演配色；对它们取色都是无效操作 */
     /const FIXED_PALETTE_THEMES = \['kitty', 'dog', 'miuix', 'harmony', 'kuromi', 'melody', 'sanrio'\]/.test(js) &&
     /fixedPaletteHint/.test(js) && /固定主题配色|官方规范固定配色/.test(js));
   check('html: 固定配色提示行存在', /id="fixedPaletteHint"/.test(html));
@@ -470,18 +470,21 @@ function themeTokens(theme) {
     /function accentLivePreview/.test(js) && /accentInputTimer/.test(js) &&
     /clearTimeout\(accentInputTimer\)/.test(js));
 
-  /* ---- 十套独立风格（v2.2.2）：+ Kitty / 玉桂狗 / 库洛米 / 美乐蒂 / 三丽鸥混合 ---- */
+  /* ---- 十套独立风格（v2.2.2 起）：Kitty / 玉桂狗 / 库洛米 / 美乐蒂 / 三丽鸥混合 ---- */
   console.log('[Multi theme - ten independent design systems]');
-  check('app.js: 主题清单共 10 套（+kitty/dog/kuromi/melody/sanrio）+ 固定配色集合',
+  check('app.js: 主题清单共 10 套（v2.4.0 起「透明（黑背景）」下线，改由黑暗模式承担）+ 固定配色集合',
     /const THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'\]/.test(js) &&
+    !/transparent/.test(js.slice(js.indexOf('const THEMES'), js.indexOf('const THEME_LABEL'))) &&
     /FLAT_THEMES = THEMES\.filter/.test(js) && /FIXED_PALETTE_THEMES/.test(js));
   check('app.js: 主题下拉栏选项由 THEME_LABEL 生成（新增主题只改注册表一处）',
     /themeSelect\.innerHTML = THEMES\.map/.test(js) && /THEME_LABEL\[t\] \|\| t/.test(js));
   check('app.js: 每套风格各有默认推荐主色（用户没手挑过才套用）',
     /const THEME_ACCENT = \{[\s\S]{0,420}kitty:\s*'#C2185B'[\s\S]{0,120}kuromi:\s*'#8E5BC8'[\s\S]{0,60}melody:\s*'#EC6FA8'[\s\S]{0,60}sanrio:\s*'#E8548A'/.test(js) &&
     /accentPicked/.test(js));
-  check('app.js: 切风格不重算颜色（动态配色主题共用同一份 --md3-* 配色中枢）',
-    /wallInfo\.palette\)\s*applyPalette\(wallInfo\.palette\)/.test(js));
+  check('app.js: 切风格不重算颜色（动态配色主题共用同一份 --md3-* 配色中枢；明暗不匹配时才重算）',
+    /const have = wallInfo && wallInfo\.palette;/.test(js) &&
+    /if \(isDynamicTheme\(currentTheme\) && \(!have \|\| !!have\.dark !== wantDark\)\)/.test(js) &&
+    /applyPalette\(wallInfo\.palette\)/.test(js));
   check('app.js: 切换主题的 toast 带主题名', /THEME_LABEL\[currentTheme\]/.test(js) &&
     /THEME_LABEL = \{[^}]*harmony: '鸿蒙'[^}]*kuromi: '库洛米'[^}]*melody: '美乐蒂'[^}]*sanrio: '三丽鸥混合'/.test(js));
   check('app.js: 主题经下拉栏切换（change 事件 → switchTheme，不再用分段按钮点击）',
@@ -492,13 +495,101 @@ function themeTokens(theme) {
     !/data-theme="/.test(html) && /<select id="themeSelect"/.test(html));
   check('css: 已彻底移除 theme-flat 共底（每套主题自足，不再是"平面系共用结构"）',
     !/theme-flat/.test(css) && !/theme-flat/.test(js) && !/md3-enter/.test(css) && !/md3-enter/.test(js));
-  check('css: 十套主题各自定义同一份表面清单 token（形状/模糊/表面/强调色）',
+  check('css: 九套皮肤各自定义同一份表面清单 token（形状/模糊/表面/强调色）',
     ['md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'].every((t) => {
       const b = themeTokens(t);
       return /--t-r-win:/.test(b) && /--t-r-card:/.test(b) && /--t-btn-r:/.test(b) &&
         /--t-blur:/.test(b) && /--t-surface:/.test(b) && /--t-accent:/.test(b) &&
         /--t-ease:/.test(b) && /--t-dur:/.test(b) && /--t-stagger:/.test(b);
     }));
+  check('css: 黑暗模式层 = body.dark（黑纱 veil + 只压表面不动强调色 + 固定主题表换深色）',
+    /body\.dark \.glass-veil\s*\{[\s\S]{0,700}?rgba\(6, 8, 14, calc\(0\.62 \* var\(--glass-alpha\)\)\)/.test(css) &&
+    /body\.dark:not\(\.dyn\) \{[\s\S]{0,900}?--md3-surface: #0F1116/.test(css) &&
+    /body\.dark \.panel,[\s\S]{0,120}?background: var\(--t-surface-2\)/.test(css));
+  check('app.js: 明暗模式（applyAppearance 挂 body.dark；只有动态配色主题重算 Monet 暗色方案）',
+    /function applyAppearance\(a\)/.test(js) &&
+    /document\.body\.classList\.toggle\('dark', a === 'dark'\)/.test(js) &&
+    /function setAppearance\(a\)/.test(js) &&
+    /if \(isDynamicTheme\(currentTheme\)\) \{[\s\S]{0,60}?applyPaletteChange\(\{ appearance: next \}\)/.test(js) &&
+    /document\.body\.classList\.toggle\('dyn', isDynamicTheme\(t\)\)/.test(js) &&
+    /function isDynamicTheme\(t\)/.test(js));
+  check('main.js: 黑暗模式走 Monet 暗色方案（SchemeTonalSpot isDark）+ 配色带 dark 标记',
+    /function monetSchemePalette\(hct, dynamic, isDark\)/.test(mainJs) &&
+    /new monet\.SchemeTonalSpot\(hct, !!isDark, 0\)/.test(mainJs) &&
+    /p\.dark = !!isDark;/.test(mainJs) &&
+    /appearance === 'dark'/.test(mainJs));
+  check('main.js: 默认配置含 appearance / background 两组新配置（含裁剪/蒙版/模糊参数）',
+    /appearance: 'light'/.test(mainJs) &&
+    /background: \{[\s\S]{0,220}?enabled: false/.test(mainJs) &&
+    /blur: 0, mask: 0/.test(mainJs) && /scale: 100, offsetX: 50, offsetY: 50/.test(mainJs));
+  check('html: 设置面板有明暗模式分段 + 自定义背景全套控件（模糊/蒙版/缩放/位置/填充）',
+    /id="appearanceSeg"/.test(html) && /data-appearance="dark"/.test(html) &&
+    /id="setBgOn"/.test(html) && /id="btnBgPick"/.test(html) && /id="btnBgClear"/.test(html) &&
+    /id="setBgBlur"/.test(html) && /id="setBgMask"/.test(html) && /id="setBgScale"/.test(html) &&
+    /id="setBgX"/.test(html) && /id="setBgY"/.test(html) && /id="bgFitSelect"/.test(html));
+  check('app.js: 自定义背景接线（applyCustomBackground 三层背景 + 蒙版渐变 + 模糊补偿缩放）',
+    /function applyCustomBackground\(\)/.test(js) &&
+    /function bgConfig\(\)/.test(js) && /function bgIsOn\(\)/.test(js) &&
+    /function loadCustomBackground\(\)/.test(js) &&
+    /layers\.push\('linear-gradient\(rgba\(255, 255, 255, '/.test(js) &&
+    /el\.style\.filter = blur > 0 \? 'blur\(' /.test(js) &&
+    /el\.style\.transform = zoom > 1\.001/.test(js));
+  check('app.js: 自定义背景顶替壁纸（applyWallpaper 早退 + 实时采集让位 + 取色源切换）',
+    /if \(bgIsOn\(\)\) \{[\s\S]{0,80}?applyCustomBackground\(\);[\s\S]{0,40}?return true;/.test(js) &&
+    /if \(bgIsOn\(\)\) return;/.test(js) &&
+    /body\.bg-custom \.env-layer/.test(css));
+  check('main.js: 自定义背景 IPC（pick/load）+ 取色优先用自定义图',
+    /ipcMain\.handle\('pick-background'/.test(mainJs) &&
+    /ipcMain\.handle\('load-background'/.test(mainJs) &&
+    /function customBackgroundFile\(cfg\)/.test(mainJs) &&
+    /const bgFile = customBackgroundFile\(cfg\)/.test(mainJs) &&
+    /pickBackground: \(\) => ipcRenderer\.invoke\('pick-background'\)/.test(preloadJs));
+
+  /* ★★★ 回归守卫：v2.4.0 花屏事故 ★★★
+   * 上一轮给滑块/珠子规则批量加"透明主题"作用域时，写成
+   *     body.theme-glass,
+   *     body.theme-transparent .sl-bead { ... }
+   * 逗号把第一段变成了**独立选择器**：body 自己套上了 .sl-bead 的
+   * `display:block; position:absolute; width:34px; height:22px; backdrop-filter;
+   *  filter:url(#liquidThumb)` —— 整个窗口变成一个 34×22 的折射元素，切到玻璃主题
+   * 直接花屏卡死。这条守卫盯的就是"逗号紧跟类名"这个签名。 */
+  check('★ 回归守卫（v2.4.0 花屏事故）：不存在裸 body.theme-* / body.dark 选择器',
+    !/(^|\n)body\.theme-[a-z0-9]+,(\s*\n|\s*\{)/.test(css) &&
+    !/(^|\n)body\.dark,/.test(css) &&
+    !/(^|\n)body\.bg-custom,/.test(css));
+  check('css: 滑块/珠子规则的选择器都带完整后代（不是裸 body，也不是缺后代的半截）',
+    /body\.theme-glass \.sl-bead \{/.test(css) &&
+    /body\.theme-glass input\[type="range"\] \{/.test(css) &&
+    /body\.theme-glass \.sl-wrap input\[type="range"\]::-webkit-slider-thumb \{/.test(css) &&
+    /body\.theme-glass\.lg-ready \.sl-bead \{/.test(css) &&
+    /body\.theme-glass \.sl-wrap input\[type="range"\]:active ~ \.sl-bead \{/.test(css));
+  check('main.js: 已下线主题的收尾迁移（配置里存着 transparent 时收回 glass）',
+    /if \(config\.theme === 'transparent'\) \{[\s\S]{0,80}?config\.theme = 'glass';/.test(mainJs));
+
+  /* ★★★ 回归守卫：v2.4.1「选完背景图整站点不动」事故 ★★★
+   * 自定义背景的图层规则写成了裸 `.bg-custom { position:absolute;
+   * pointer-events:none; … }`，而渲染层是
+   * `document.body.classList.toggle('bg-custom', on)` —— **body 自己也带这个类**，
+   * 于是整条规则同时命中 <body>：position/z-index 落到 body 上，
+   * pointer-events:none 再顺着继承糊满整棵子树。界面看着完好却一个都点不动。
+   *
+   * 判据是通用的：凡是"挂在 body 上的状态标记类"，CSS 里都不许出现
+   * 只写 `.标记类`（逗号或花括号紧跟其后）的规则 —— 那种写法必然命中 body。
+   * 图层元素改名 .bg-layer、样式改用 #bgCustom（id 永不可能命中 body）。 */
+  const BODY_MARKERS = ['bg-custom', 'dark', 'dyn', 'lg-ready', 'over-light',
+    'preview', 'realtime'];
+  const cssNoComment = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const bareMarkers = BODY_MARKERS.filter((m) => new RegExp(
+    '(^|,)\\s*\\.' + m.replace(/-/g, '\\-') + '\\s*(,|\\{)', 'm').test(cssNoComment));
+  check('★ 回归守卫（v2.4.1 点不动事故）：body 状态标记类不得被写成裸「.类名」规则' +
+    (bareMarkers.length ? '（违规：' + bareMarkers.join(', ') + '）' : ''),
+    bareMarkers.length === 0);
+  check('css: 自定义背景图层用 id 选择器 #bgCustom（不与 body 标记类撞名）',
+    /#bgCustom \{/.test(css) && !/(^|\n)\.bg-custom\s*\{/.test(cssNoComment));
+  check('html: 背景图层类名是 bg-layer（body 用的是 bg-custom）',
+    /class="bg-layer"/.test(html) && !/class="bg-custom"/.test(html));
+  check('css: widget 显式收回点击权（pointer-events 会被继承，留一道兜底）',
+    /\.widget \{[\s\S]{0,900}?pointer-events:\s*auto/.test(cssNoComment));
   check('css: 九套主题形状标度各自符合设计（miuix 卡片 16dp = 官方 CardDefaults）',
     /--t-r-card:\s*16px/.test(themeTokens('md3')) &&
     /--t-r-card:\s*8px/.test(themeTokens('fluent')) &&
@@ -918,6 +1009,124 @@ function themeTokens(theme) {
     /\^https:\\\/\\\/github\\\.com\\\//.test(mainJs));
   check('preload 暴露 getAppVersion / openExternal',
     preloadJs.includes('getAppVersion') && preloadJs.includes('openExternal'));
+
+  /* ---- v2.3.1：苹果风滑块（玻璃主题）+ overLight 亮底自适应 ---- */
+  console.log('\n[v2.3.1 苹果滑块 / overLight]');
+
+  // 苹果滑块：作用于 glass + transparent（v2.3.3 起透明主题沿用玻璃滑块语言）
+  const slTrack = ruleBlock('body.theme-glass input[type="range"]::-webkit-slider-runnable-track');
+  check('css: 玻璃主题滑块轨道 = 强调色已填充段 + 系统填充灰（苹果两段轨道）',
+    /var\(--md3-primary/.test(slTrack) && /var\(--sl-fill/.test(slTrack) &&
+    /rgba\(120, 120, 128, 0\.28\)/.test(slTrack));
+  check('css: 玻璃主题原生拇指只留 hit area（视觉由 .sl-bead 玻璃珠接管，v2.3.1 二次迭代）',
+    /body\.theme-glass \.sl-wrap input\[type="range"\]::-webkit-slider-thumb\s*\{\s*\n\s*opacity: 0;/.test(css));
+  check('css: 原生拇指不再带白盘放大（按下膨胀移交给 .sl-bead 的 1.45）',
+    !/body\.theme-glass input\[type="range"\]:hover::-webkit-slider-thumb[\s\S]{0,120}?scale\(1\.08\)/.test(css));
+  check('css: 苹果滑块的作用域锁在 body.theme-glass（不污染其余九套主题）',
+    css.includes('body.theme-glass input[type="range"]::-webkit-slider-runnable-track') &&
+    !/body\.theme-(md3|fluent|miuix|harmony|kitty|dog|kuromi|melody|sanrio) input\[type="range"\]::-webkit-slider-runnable-track\s*\{[^}]*120, 120, 128/.test(css));
+
+  // 苹果滑块的填充段：--sl-fill 由 JS 写
+  check('app.js: syncRangeFill 按 min/max/value 算百分比写入 --sl-fill',
+    /function syncRangeFill\(el\)/.test(js) && /setProperty\('--sl-fill'/.test(js) &&
+    /\(b - a\)/.test(js));
+  check('app.js: input 事件委托覆盖全部滑块（新增控件不用改代码）',
+    /document\.addEventListener\('input', \(e\) => syncRangeFill\(e\.target\), true\)/.test(js));
+  check('app.js: 代码直接写 .value 的那条路径补了 syncRangeFill（写 value 不派发 input）',
+    /opacityRange\.value = v;\s*\n\s*syncRangeFill\(opacityRange\)/.test(js));
+  check('app.js: glass 主题挂 theme-glass 标记类（皮肤覆盖仍只走 FLAT_THEMES）',
+    /classList\.toggle\('theme-glass', t === 'glass'\)/.test(js) &&
+    /FLAT_THEMES\.forEach\(\(n\) => document\.body\.classList\.toggle\('theme-' \+ n/.test(js));
+
+  // overLight：亮底自适应
+  check('app.js: overLight 阈值 0.62 + 状态类 + 折射 scale 减半',
+    /const OVER_LIGHT_LUM = 0\.62/.test(js) &&
+    /classList\.toggle\('over-light', on\)/.test(js) &&
+    /setDisplacementScale\(on \? 0\.5 : 1\)/.test(js));
+  check('app.js: setDisplacementScale 遍历滤镜里的三个 feDisplacementMap',
+    /querySelectorAll\('#liquidGlass feDisplacementMap'\)/.test(js) &&
+    /const DISP_BASE_SCALE = \[-70, -77, -84\]/.test(js) &&
+    /setAttribute\('scale'/.test(js));
+  check('html: 三个 feDisplacementMap 有 id（供 overLight 改 scale）',
+    html.includes('id="lgDispR"') && html.includes('id="lgDispG"') &&
+    html.includes('id="lgDispB"') &&
+    (html.match(/<feDisplacementMap/g) || []).length === 3);
+  check('app.js: 实时底材顺手采样亮度（8x8 缩略 + 600ms 节流）',
+    /function sampleRealtimeLuminance\(\)/.test(js) &&
+    /const RT_LUM_INTERVAL = 600/.test(js) &&
+    /drawImage\(src, 0, 0, 8, 8\)/.test(js) &&
+    /rt\.ctx\.drawImage\(rt\.video[\s\S]{0,160}?sampleRealtimeLuminance\(\)/.test(js));
+  check('app.js: 静态壁纸亮度接到 applyWallpaper',
+    /applyOverLight\(info\.luminance\)/.test(js));
+  check('main.js: wallpaperLuminance 与 Monet 同口径采样（72px / BGRA）',
+    /function wallpaperLuminance\(file\)/.test(mainJs) &&
+    /MONET_MAX_DIM/.test(mainJs) && /buf\[i \+ 2\] \+ 0\.7152 \* buf\[i \+ 1\]/.test(mainJs) &&
+    /luminance: wallpaperLuminance\(file\)/.test(mainJs));
+  check('css: overLight 把模糊提到 14px 并压一层薄墨（仅玻璃主题）',
+    /body\.theme-glass\.over-light\s*\{\s*\n\s*--lg-blur: 14px;/.test(css) &&
+    /body\.theme-glass\.over-light \.glass-veil\s*\{[\s\S]{0,600}?rgba\(10, 14, 30, 0\.22\)/.test(css));
+
+  /* ---- v2.3.1：液态玻璃滑块珠（折射 + 按下膨胀） ---- */
+  console.log('\n[v2.3.1 液态玻璃珠]');
+  check('app.js: 珠子注入（.sl-wrap 包裹 + .sl-bead 真实盒 + aria-hidden）',
+    /function wrapRange\(el\)/.test(js) &&
+    /wrap\.className = 'sl-wrap'/.test(js) &&
+    /bead\.className = 'sl-bead'/.test(js) &&
+    /bead\.setAttribute\('aria-hidden', 'true'\)/.test(js) &&
+    /initGlassBeads\(\)/.test(js));
+  check('app.js: 珠贴图 = 药丸距离场（v2.3.3：到核心线段的距离，r = d/R，R = 半高；band 起点 0.42）',
+    /const R = H \/ 2;/.test(js) &&
+    /const ax = R, bx = W - R;/.test(js) &&
+    /const r = d \/ R;/.test(js) &&
+    /ss\(0\.42, 1, Math\.min\(1, r\)\)/.test(js) &&
+    !/BEAD_MAP_EDGE/.test(js));
+  check('app.js: 珠贴图 alpha = 药丸形状遮罩（EDGE_MASK 来自贴图 alpha，形状由它决定）',
+    /px\[q \+ 3\] = Math\.round\(ss\(1\.03, 0\.97, r\) \* 255\)/.test(js));
+  check('app.js: 珠贴图失败不借主贴图（主贴图 alpha 是自己的形状，罩珠子仍是方）',
+    /const href = makeBeadMap\(\);\s*\n\s*if \(href\) \{/.test(js) &&
+    !/makeBeadMap\(\) \|\|/.test(js) &&
+    !/thumbMap\.setAttribute/.test(js));
+  check('app.js: 滤镜链尾没有追加 feComposite 圆裁（EDGE_MASK 已裁，追加会把白雾裁没）',
+    !/EDGE_CIRCLED/.test(js));
+  check('app.js: 珠子滤镜 scale 缩到珠子量级（-70×14/70 → -14）',
+    /n\.setAttribute\('scale', \(s \* \(14 \/ 70\)\)\.toFixed\(2\)\)/.test(js));
+  check('css: 珠子作用域锁玻璃主题（单选择器，带完整后代）+ 左右药丸 34x22（border-radius:999px，用户点名左右要圆）+ 事件穿透',
+    /body\.theme-glass \.sl-bead\s*\{[\s\S]{0,700}?width: var\(--sl-bead-w, 34px\)/.test(css) &&
+    /body\.theme-glass \.sl-bead\s*\{[\s\S]{0,700}?height: var\(--sl-bead-h, 22px\)/.test(css) &&
+    /body\.theme-glass \.sl-bead\s*\{[\s\S]{0,700}?border-radius: 999px/.test(css) &&
+    !/body\.theme-glass \.sl-bead\s*\{[\s\S]{0,700}?border-radius: 50%/.test(css) &&
+    /var\(--sl-ratio, 0\.5\) \* \(100% - var\(--sl-bead-w, 34px\)\)/.test(css) &&
+    /body\.theme-glass \.sl-bead\s*\{[\s\S]{0,700}?pointer-events: none/.test(css) &&
+    /\.sl-bead \{ display: none; \}/.test(css));
+  check('css: 珠子中间透明（不铺底色，白雾壳 = inset 环，随药丸圆端走，不再用椭圆径向渐变）',
+    !/body\.theme-glass \.sl-bead\s*\{[\s\S]{0,1600}?background:/.test(css) &&
+    /body\.theme-glass \.sl-bead\s*\{[\s\S]{0,1600}?inset 0 0 5px 1px rgba\(255, 255, 255, 0\.38\)/.test(css) &&
+    !/body\.theme-glass \.sl-bead\s*\{[\s\S]{0,1600}?closest-side ellipse/.test(css));
+  check('css: 折射滤镜字面量 url(#liquidThumb) 且只在 lg-ready 后挂（var() 中转不生效）',
+    /body\.theme-glass\.lg-ready \.sl-bead\s*\{\s*\n\s*filter: url\(#liquidThumb\);/.test(css) &&
+    !/filter:\s*var\(--sl-filter/.test(css));
+  check('css: 悬停 1.12 / 按下 1.42 的膨胀（等比，药丸不变形）',
+    /input\[type="range"\]:hover ~ \.sl-bead\s*\{[\s\S]{0,80}?scale\(1\.12\)/.test(css) &&
+    /input\[type="range"\]:active ~ \.sl-bead\s*\{[\s\S]{0,120}?scale\(1\.42\)/.test(css));
+  check('css: --sl-fill 不在 input 上声明（元素自身声明会压过 .sl-wrap 的继承值 → 进度条不跟随）',
+    !/body\.theme-glass input\[type="range"\]\s*\{[^}]*--sl-fill\s*:/.test(css));
+  check('app.js: syncRangeFill 写 .sl-wrap 时清掉元素自身的陈旧变量（修"拖动进度条不跟随"）',
+    /if \(host !== el\) \{\s*\n\s*el\.style\.removeProperty\('--sl-fill'\);\s*\n\s*el\.style\.removeProperty\('--sl-ratio'\);/.test(js));
+  check('app.js: 珠注入完成后整体补一次 syncAllRangeFills（写在 initGlassBeads 里）',
+    /document\.querySelectorAll\('input\[type="range"\]'\)\.forEach\(wrapRange\);\s*\n[\s\S]{0,260}?syncAllRangeFills\(\);\s*\n\}/.test(js));
+  check('app.js: 珠滤镜 feImage 改 preserveAspectRatio=none（圆形 alpha 才能落成椭圆）',
+    /dstMap\.setAttribute\('preserveAspectRatio', 'none'\)/.test(js));
+  check('html: 主滤镜区域 170%（珠贴图 1/1.7 归一化的前提）',
+    /<filter id="liquidGlass" x="-35%" y="-35%" width="170%" height="170%"/.test(html));
+
+  // 位移贴图：保持预烘焙 + slice —— 这里拦的是"重新发明按比例生成"
+  check('回归：位移贴图仍是预烘焙单文件 + feImage 用 slice（勿改成运行时生成）',
+    /href="" preserveAspectRatio="xMidYMid slice"/.test(html) &&
+    !/lg-map-gen/.test(html) &&
+    !fs.existsSync(path.join(__dirname, 'renderer', 'lg-map-gen.js')) &&
+    !/refreshDisplacementMap|LG_MAP_GEN/.test(js));
+  check('回归：app.js 里留了 A/B 结论（宽扁窗口并不丢上下折射），防止再改一遍',
+    /宽扁丢上下折射/.test(js) && /probe_aspect_/.test(js));
 
   console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
   process.exit(failed ? 1 : 0);

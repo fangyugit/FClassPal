@@ -51,6 +51,22 @@ const PREVIEW_ROLE_TONE = {
   /* error 不跟源色走（null = 用固定红相 25） */
   error:        [null, 0.66, 0.40], onError: [0, 0.60, 1.00]
 };
+/* 黑暗模式的角色表（v2.4.0）：真机走 Monet 的 SchemeTonalSpot(isDark=true)，
+ * 预览模式没有主进程，用这张表近似 —— 主色/容器色换成暗底可读的高亮度色调，
+ * 表面压到近黑，on-* 反过来变亮。数值对着 Material 暗色方案的 tonal 取值。 */
+const PREVIEW_ROLE_TONE_DARK = {
+  primary:      [0, 0.45, 0.78], onPrimary: [0, 0.55, 0.20],
+  primaryContainer: [0, 0.45, 0.30], onPrimaryContainer: [0, 0.55, 0.90],
+  secondary:    [-8, 0.22, 0.78], onSecondary: [-8, 0.25, 0.20],
+  secondaryContainer: [-8, 0.24, 0.30], onSecondaryContainer: [-8, 0.28, 0.88],
+  tertiary:     [60, 0.30, 0.78], onTertiary: [0, 0.28, 0.20],
+  tertiaryContainer: [60, 0.38, 0.30], onTertiaryContainer: [60, 0.40, 0.88],
+  surface:      [0, 0.28, 0.06], surfaceDim: [0, 0.24, 0.04],
+  surfaceContainer: [0, 0.22, 0.10], surfaceContainerHigh: [0, 0.20, 0.15],
+  onSurface:    [0, 0.12, 0.92], onSurfaceVariant: [0, 0.10, 0.72],
+  outline:      [0, 0.06, 0.55], outlineVariant: [0, 0.08, 0.28],
+  error:        [null, 0.62, 0.80], onError: [0, 0.55, 0.20]
+};
 const PREVIEW_SOURCE = '#6750A4';
 
 function hexToHsl(hex) {
@@ -84,13 +100,14 @@ function hslToHex(h, s, l) {
   return '#' + to(f(hh + 1 / 3)) + to(f(hh)) + to(f(hh - 1 / 3));
 }
 
-function previewPalette(hex) {
+function previewPalette(hex, dark) {
   const hsl = hexToHsl(hex);
   if (!hsl) return null;
   const h = hsl[0];
-  const out = { dynamic: true, source: String(hex).toLowerCase(), preview: true };
-  Object.keys(PREVIEW_ROLE_TONE).forEach((role) => {
-    const [shift, s, l] = PREVIEW_ROLE_TONE[role];
+  const tone = dark ? PREVIEW_ROLE_TONE_DARK : PREVIEW_ROLE_TONE;
+  const out = { dynamic: true, source: String(hex).toLowerCase(), preview: true, dark: !!dark };
+  Object.keys(tone).forEach((role) => {
+    const [shift, s, l] = tone[role];
     out[role] = hslToHex(shift === null ? 25 : h + shift, s, l);
   });
   return out;
@@ -108,6 +125,9 @@ const API = window.widgetAPI || (function () {
     /* 与 main.js 的 DEFAULT_CONFIG 对齐；缺了这几项预览模式开场就是 undefined，
      * 设置面板会读出一堆空值（风格按钮、取色器） */
     theme: 'glass', colorMode: 'auto', accentColor: PREVIEW_SOURCE, accentPicked: false,
+    /* 明暗模式 + 自定义背景（v2.4.0），与 main.js 的 DEFAULT_CONFIG 对齐 */
+    appearance: 'light',
+    background: { enabled: false, path: '', blur: 0, mask: 0, scale: 100, offsetX: 50, offsetY: 50, fit: 'cover' },
     cornerRadius: null,
     /* 与 main.js 的首次启动种子一致：只有一个空的「希沃应用」分组 */
     groups: [
@@ -137,7 +157,7 @@ const API = window.widgetAPI || (function () {
     selectImage: () => Promise.resolve({ path: 'demo', url: DEMO_ICON }),
     getEnv: () => Promise.resolve({ transparent: true, platform: 'browser', release: '0' }),
     // 关于界面：预览模式没有主进程，版本号给个占位；链接用新窗口模拟
-    getAppVersion: () => Promise.resolve('2.3.0'),
+    getAppVersion: () => Promise.resolve('2.4.1'),
     openExternal: (url) => { window.open(url, '_blank'); return Promise.resolve(true); },
     // 预览模式取不到真实壁纸：返回 null，让 #envLayer 用内置渐变基底，
     // MD3 则退回 CSS 里的 baseline 配色
@@ -149,8 +169,13 @@ const API = window.widgetAPI || (function () {
     getPalette: (patch) => {
       const manual = patch && patch.colorMode === 'manual';
       const src = manual && patch.accentColor ? patch.accentColor : PREVIEW_SOURCE;
-      return Promise.resolve(previewPalette(src));
+      const dark = !!(patch && patch.appearance === 'dark') ||
+        (!(patch && patch.appearance) && config.appearance === 'dark');
+      return Promise.resolve(previewPalette(src, dark));
     },
+    // 自定义背景：预览模式读不到本地文件（没有主进程），返回 null 让渲染层停在壁纸底材
+    pickBackground: () => Promise.resolve(null),
+    loadBackground: () => Promise.resolve(null),
     // 预览模式（file:// 双击打开）没有 Electron 主进程，无法采集桌面。
     // startRealtime 返回 null → 渲染层静默退回静态基底，不会报错也不会白屏。
     startRealtime: () => Promise.resolve(null),
@@ -240,8 +265,23 @@ function applyTheme(theme) {
   const t = THEMES.indexOf(theme) >= 0 ? theme : 'glass';
   currentTheme = t;
   FLAT_THEMES.forEach((n) => document.body.classList.toggle('theme-' + n, n === t));
+  /* glass 也要一个标记类（v2.3.1）—— 它有自己的专属覆盖（苹果风滑块、
+   * overLight 亮底自适应），写 `body.theme-glass ...` 比 `body:not(.theme-md3)
+   * :not(.theme-fluent)...` 的九段长链清楚得多，新增主题也不用回来改。
+   * 注意它和 theme-md3 那批不是一回事：那一批是"皮肤覆盖"，glass 是基线皮肤，
+   * 所以下面这行只管标记，皮肤覆盖块仍然只由 FLAT_THEMES 提供。 */
+  document.body.classList.toggle('theme-glass', t === 'glass');
+  /* 动态配色主题标记（v2.4.0）：取色跟着底材（壁纸/自定义背景）走的主题。
+   * 黑暗模式下它们的 --md3-* 角色由主进程的 Monet 暗色方案整份给出，CSS 层
+   * 必须"别插手"—— body.dark:not(.dyn) 才去压表面角色。 */
+  document.body.classList.toggle('dyn', isDynamicTheme(t));
   const sel = $('themeSelect');
   if (sel && sel.value !== t) sel.value = t;
+}
+
+/** 动态配色（跟底材取色）的主题：玻璃基线 + MD3 + Fluent */
+function isDynamicTheme(t) {
+  return FIXED_PALETTE_THEMES.indexOf(t) < 0;
 }
 
 /* ---------- MD3 动态配色：把主进程从壁纸提取的 tonal palette 写进 CSS ----------
@@ -779,6 +819,16 @@ if (sheen) {
  * url(#liquidGlass)，两个属性挂同一个空的 .glass-warp 层。
  *
  * 所以这里的探测也必须跟着改成 filter，不能再探 backdrop-filter。 */
+/* ---------- 位移贴图按窗口比例重建：做过 A/B，结论是**不需要** ----------
+ * 曾经的假设：预烘焙贴图固定 256x256，feImage 用 slice（等比铺满 + 裁切）在宽扁
+ * 窗口上会把上下边缘的位移场裁掉，"只有左右在折射"。
+ * 2026-10 A/B 实测（_rt/_refrac/probe_aspect_*.html，宽扁 592x192）：这张贴图的位移场
+ * 本身就延伸到中心 —— 中心 60x60 区有 12.9% 像素在动，上下边缘带 57.0~57.6%，
+ * 与把铺满方式换成 none（拉伸，58.5~58.9%）几乎一致。也就是说裁掉的那条中央带里
+ * 本来就有垂直位移，"宽扁丢上下折射"根本不存在。
+ * 运行时按尺寸生成位移贴图（复刻上游 shader 模式的 SDF 场）也试过：它中心严格为 0，
+ * 那是另一套审美，会明显改变现有观感，属于"为修不存在的 bug 换掉滤镜风格"，已弃。
+ * 结论：位移贴图保持预烘焙那张 + slice，别动。 */
 function enableLiquidGlass() {
   try {
     if (!document.getElementById('liquidGlass')) return;
@@ -791,6 +841,9 @@ function enableLiquidGlass() {
     map.setAttribute('href', url);
     // 同时写 xlink:href：老一点的 SVG 解析路径只认这个
     map.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', url);
+    // 滑块珠的克隆滤镜（#liquidThumb）用自己的圆形珠贴图（见 makeBeadMap）。
+    // ※ 不要在这里兜底填主贴图：主贴图的 alpha 是它自己的圆角矩形，罩在 26px
+    //   珠子上还是方形（v2.3.1 二分定案）。珠贴图没生成就让 href 留空。 */
     if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return;
     if (!CSS.supports('filter', 'url(#liquidGlass)')) return;
     document.body.classList.add('lg-ready');
@@ -816,6 +869,24 @@ function applyWallpaper(info) {
   wallInfo = info;
   applyPalette(info.palette);   // MD3：配色跟着这张壁纸走
   describePalette(info.palette);
+  // v2.4.0：主进程顺手把"自定义背景图"也带回来了（url/luminance），同步过来，
+  // 这样启动、换壁纸、改配置三条路径都只有这一个数据源。
+  if (info.bg && info.bg.url) {
+    if (!bgInfo || bgInfo.url !== info.bg.url) {
+      bgInfo = info.bg;
+      applyCustomBackground();
+      refreshBgInfo();
+    }
+  } else if (config.background && !config.background.enabled) {
+    bgInfo = null;
+  }
+  // 底材是自定义图时：壁纸只用来兜底配色，**不画**（画了也会被它整个盖住）
+  if (bgIsOn()) {
+    applyCustomBackground();
+    return true;
+  }
+  // 亮底自适应：主进程采样壁纸时顺手算的亮度。实时底材模式下会被帧亮度覆盖
+  applyOverLight(info.luminance);
   env.style.backgroundImage = 'url("' + info.url + '")';
   env.style.backgroundSize = info.w + 'px ' + info.h + 'px';
   env.style.backgroundRepeat = info.tile ? 'repeat' : 'no-repeat';
@@ -991,6 +1062,9 @@ function stopRealtimeBackdropQuiet() {
  * 乘 scaleFactor 换算到物理像素；canvas 后备分辨率同样取物理像素 → 1:1 不糊。 */
 function drawRealtimeFrame() {
   if (!rt.on || !rt.ctx || !rt.video || !rt.info) return;
+  // 自定义背景图当底材时实时采集整个让位：环境层已被 CSS 隐藏，继续逐帧解码
+  // 只是白烧 GPU（15fps 的 drawImage + 亮度采样）
+  if (bgIsOn()) return;
   if (rt.video.readyState < 2) return;
   const vw = rt.video.videoWidth, vh = rt.video.videoHeight;
   if (!vw || !vh) return;
@@ -1010,6 +1084,7 @@ function drawRealtimeFrame() {
   const sw = Math.max(1, Math.min(vw - sx, bounds.width * s * kx));
   const sh = Math.max(1, Math.min(vh - sy, bounds.height * s * ky));
   rt.ctx.drawImage(rt.video, sx, sy, sw, sh, 0, 0, bw, bh);
+  sampleRealtimeLuminance();   // 顺手分档底材明暗（600ms 节流，见 overLight 一节）
 }
 
 function rtLoop(ts) {
@@ -1044,6 +1119,431 @@ function updateRealtimeInfo(text, cls) {
   el.className = 'val blur-info ' + (cls || '');
 }
 
+/* ---------- overLight：底材偏亮时换一套玻璃参数（上游同款特性） ----------
+ * 上游 liquid-glass-react 有个 overLight 分支：底材亮时折射减半、模糊加到 14px、
+ * 压一层薄墨、投影加重。原因很实在 —— 浅色底上玻璃会糊成一片白，折射算得再准
+ * 也被冲掉；而亮底上的柔和投影本来就看不见。
+ *
+ * 亮度有两个来源，按可用性取：
+ *   · 静态：主进程 Monet 采样壁纸时顺手算的平均亮度（wallInfo.luminance）
+ *   · 实时：每帧画进 #deskCanvas 的桌面截图，缩到 8x8 采样（比壁纸快照准：
+ *           底下换了窗口、开了白底网页都会跟着变）
+ * 实时模式拿得到就以它为准，拿不到就退回静态值。
+ *
+ * 阈值 0.62（sRGB 加权平均，不是 WCAG 对比度用的线性亮度 —— 这里只做分档）：
+ * 常见深色/中间调壁纸都在 0.5 以下，只有明显亮底（浅色壁纸、白底大窗口）才触发。 */
+const OVER_LIGHT_LUM = 0.62;
+const DISP_BASE_SCALE = [-70, -77, -84];   // 与 index.html 三个 feDisplacementMap 一致
+let overLight = false;
+
+/* 折射强度只能改 SVG 属性，CSS 管不了 —— 亮底乘 0.5（上游 overLight 分支同款） */
+function setDisplacementScale(ratio) {
+  const nodes = document.querySelectorAll('#liquidGlass feDisplacementMap');
+  DISP_BASE_SCALE.forEach((base, i) => {
+    if (nodes[i]) nodes[i].setAttribute('scale', (base * ratio).toFixed(2));
+  });
+}
+
+function applyOverLight(lum) {
+  if (typeof lum !== 'number' || !isFinite(lum)) return;   // 拿不到亮度就维持现状
+  const on = lum > OVER_LIGHT_LUM;
+  if (on === overLight) return;
+  overLight = on;
+  document.body.classList.toggle('over-light', on);
+  setDisplacementScale(on ? 0.5 : 1);
+}
+
+/* 实时底材亮度：600ms 一次就够（分档不需要高频），8x8 缩略的回读成本可忽略 */
+const RT_LUM_INTERVAL = 600;
+let rtLumAt = 0;
+let lumThumb = null;
+function sampleRealtimeLuminance() {
+  const now = (window.performance && performance.now) ? performance.now() : Date.now();
+  if (now - rtLumAt < RT_LUM_INTERVAL) return;
+  rtLumAt = now;
+  const src = document.getElementById('deskCanvas');
+  if (!src || !src.width || !src.height) return;
+  if (!lumThumb) {
+    lumThumb = document.createElement('canvas');
+    lumThumb.width = 8;
+    lumThumb.height = 8;
+  }
+  const c = lumThumb.getContext('2d', { willReadFrequently: true });
+  if (!c) return;
+  try {
+    c.drawImage(src, 0, 0, 8, 8);
+    const d = c.getImageData(0, 0, 8, 8).data;
+    if (!d.length) return;
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      sum += (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+    }
+    applyOverLight(sum / (d.length / 4));
+  } catch (e) { /* 画布被回收/跨源：保持当前分档，不打扰用户 */ }
+}
+
+/* ---------- 苹果风滑块：已填充轨道 ----------
+ * Chromium 的 range 只有"轨道"和"拇指"两个伪元素，没有"已填充段" ——
+ * 苹果那条"强调色一直铺到拇指"的轨道只能用背景渐变模拟：轨道背景画两段，
+ * 分界点就是 --sl-fill（JS 按当前值算成百分比）。
+ *
+ * 用事件委托 + 一次初始化覆盖全部滑块（透明度条 / 设置面板的透明度 / 尺寸 /
+ * 圆角…），所以新增控件不用回来改这里；但**代码直接写 .value 不会派发 input**，
+ * 那条路径必须自己补一句 syncRangeFill()。 */
+function syncRangeFill(el) {
+  if (!el || el.type !== 'range') return;
+  const lo = parseFloat(el.min);
+  const hi = parseFloat(el.max);
+  const v = parseFloat(el.value);
+  const a = isFinite(lo) ? lo : 0;
+  const b = isFinite(hi) ? hi : 100;
+  const ratio = b > a ? (Math.min(b, Math.max(a, v)) - a) / (b - a) : 0;
+  // 变量必须写在 .sl-wrap（input 的父级）上：.sl-bead 是 input 的兄弟，
+  // 自定义属性沿 DOM 树继承，写在 input 上珠子拿不到。
+  const host = el.closest('.sl-wrap') || el;
+  host.style.setProperty('--sl-fill', (ratio * 100).toFixed(2) + '%');
+  host.style.setProperty('--sl-ratio', ratio.toFixed(4));
+  // ※ 元素自身的声明永远压过"从父级继承"的值（内联 > 样式表 > 继承）。
+  // 初始化早于珠子注入时，syncRangeFill 会先把变量写在 input 自己的内联样式上，
+  // 之后包了 .sl-wrap 再写父级就再也生效不了 —— 表现为"拖动时进度条不跟着走"。
+  // 所以写父级的同时必须把元素自身的这两条清掉，让继承链生效。
+  if (host !== el) {
+    el.style.removeProperty('--sl-fill');
+    el.style.removeProperty('--sl-ratio');
+  }
+}
+function syncAllRangeFills() {
+  document.querySelectorAll('input[type="range"]').forEach(syncRangeFill);
+}
+document.addEventListener('input', (e) => syncRangeFill(e.target), true);
+
+/* ---------- 明暗模式（v2.4.0） ----------
+ * 对**所有**主题生效，两条腿：
+ *   1) 动态配色主题（glass/md3/fluent，colorMode=auto）：让主进程用 Monet 的暗色
+ *      方案重算整套角色色（SchemeTonalSpot 的 isDark=true —— 主色自动换成暗底可读
+ *      的高亮度色调，这是 Material 的标准做法，不是"把浅色反相"）。
+ *   2) 固定配色主题（含角色主题）：CSS 末尾的 body.dark 层压暗表面/文字/描边，
+ *      强调色一律不动 —— 每套主题的个性全押在强调色上，压暗它就不是那套主题了。
+ * 所以 setAppearance 只在 ① 的情况下重算配色，避免无意义的主进程往返。 */
+function applyAppearance(a) {
+  document.body.classList.toggle('dark', a === 'dark');
+}
+
+/** 当前生效的背景图信息 { url, path, luminance }（主进程给的 file:// URL） */
+let bgInfo = null;
+
+function setAppearance(a) {
+  const next = a === 'dark' ? 'dark' : 'light';
+  if (config.appearance === next) return;
+  config.appearance = next;
+  applyAppearance(next);
+  syncSettingsControls();
+  persist();
+  if (isDynamicTheme(currentTheme)) {
+    applyPaletteChange({ appearance: next });
+  }
+  toast(next === 'dark' ? '已切换到黑暗模式' : '已切换到明亮模式');
+}
+
+/* ---------- 自定义背景图（v2.4.0） ----------
+ * 用户选的图顶在壁纸之上、玻璃之下，成为 backdrop-filter 的采样源 —— 玻璃里
+ * 显示（并被折射/模糊）的就是它。只存路径不复制文件（见 main.js 注释）。
+ *
+ * 四项调节：
+ *   blur   图片模糊 0-40px（`filter: blur`）
+ *   mask   白色蒙版 0-100%：同一元素上的第二层 background-image（纯白线性渐变），
+ *          压亮图片当磨砂底 —— 不是盖在玻璃上，所以玻璃的折射照旧
+ *   scale  缩放 100-300% ┐这两个合起来就是"裁剪"：放大后挪位置选定要显示的区域
+ *   offsetX/Y 图片位置 %  ┘
+ *   fit    cover/contain/tile
+ * 模糊会把边缘糊成透明，所以缩放额外乘一点补偿（blur/160），肉眼看不出来。 */
+function bgConfig() {
+  const def = { enabled: false, path: '', blur: 0, mask: 0, scale: 100, offsetX: 50, offsetY: 50, fit: 'cover' };
+  return Object.assign(def, config.background || {});
+}
+
+function bgIsOn() {
+  return !!(config.background && config.background.enabled && bgInfo && bgInfo.url);
+}
+
+function applyCustomBackground() {
+  const el = $('bgCustom');
+  const on = bgIsOn();
+  document.body.classList.toggle('bg-custom', on);
+  if (!el) return on;
+  if (!on) {
+    el.style.backgroundImage = '';
+    el.style.filter = '';
+    el.style.transform = '';
+    return false;
+  }
+  const bg = bgConfig();
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
+  const mask = clamp(bg.mask, 0, 100) / 100;
+  const layers = [];
+  if (mask > 0) {
+    layers.push('linear-gradient(rgba(255, 255, 255, ' + mask.toFixed(3) + '), ' +
+      'rgba(255, 255, 255, ' + mask.toFixed(3) + '))');
+  }
+  layers.push('url("' + bgInfo.url + '")');
+  el.style.backgroundImage = layers.join(', ');
+  el.style.backgroundSize = bg.fit === 'contain' ? 'contain' : (bg.fit === 'tile' ? 'auto' : 'cover');
+  el.style.backgroundRepeat = bg.fit === 'tile' ? 'repeat' : 'no-repeat';
+  el.style.backgroundPosition = clamp(bg.offsetX, 0, 100) + '% ' + clamp(bg.offsetY, 0, 100) + '%';
+  const blur = clamp(bg.blur, 0, 40);
+  el.style.filter = blur > 0 ? 'blur(' + blur + 'px)' : '';
+  const zoom = clamp(bg.scale, 100, 300) / 100 * (1 + blur / 160);
+  el.style.transform = zoom > 1.001 ? 'scale(' + zoom.toFixed(3) + ')' : '';
+  // overLight 亮底自适应按"当前真正显示的底材"算亮度
+  applyOverLight(typeof bgInfo.luminance === 'number' ? bgInfo.luminance : (wallInfo && wallInfo.luminance));
+  return true;
+}
+
+/** 启动时按配置回读图片（主进程读文件 → file:// URL，与大头贴图标同一机制） */
+function loadCustomBackground() {
+  const bg = bgConfig();
+  if (!bg.enabled || !bg.path || typeof API.loadBackground !== 'function') {
+    bgInfo = null;
+    applyCustomBackground();
+    return Promise.resolve(false);
+  }
+  return Promise.resolve(API.loadBackground()).then((res) => {
+    if (res && res.url) {
+      bgInfo = res;
+    } else {
+      bgInfo = null;   // 图被移走/删了：静默回退壁纸，别弹错打断用户
+    }
+    applyCustomBackground();
+    refreshBgInfo();
+    return !!bgInfo;
+  }).catch(() => { bgInfo = null; applyCustomBackground(); return false; });
+}
+
+function refreshBgInfo() {
+  const info = $('bgFileInfo');
+  if (!info) return;
+  const bg = bgConfig();
+  if (!bg.path) { info.textContent = '未选择'; return; }
+  if (bgInfo && bgInfo.path) {
+    const name = String(bgInfo.path).split(/[\\/]/).pop();
+    info.textContent = name.length > 18 ? name.slice(0, 16) + '…' : name;
+  } else {
+    info.textContent = '文件不存在';
+  }
+}
+
+/** 图片路径或开关变了才需要重算配色（拖动模糊/蒙版滑块不重算，省一次主进程往返） */
+function refreshPaletteForBackground() {
+  applyPaletteChange({ background: bgConfig() });
+}
+
+/** 把背景控件刷成当前配置（打开设置面板时调） */
+function syncBgControls() {
+  const bg = bgConfig();
+  const on = $('setBgOn');
+  if (on) on.checked = bg.enabled === true;
+  const put = (id, val, labelId, text) => {
+    const el = $(id);
+    if (el) { el.value = val; syncRangeFill(el); }
+    const lb = $(labelId);
+    if (lb) lb.textContent = text;
+  };
+  put('setBgBlur', bg.blur, 'bgBlurVal', (Number(bg.blur) || 0) + 'px');
+  put('setBgMask', bg.mask, 'bgMaskVal', (Number(bg.mask) || 0) + '%');
+  put('setBgScale', bg.scale, 'bgScaleVal', (Number(bg.scale) || 100) + '%');
+  put('setBgX', bg.offsetX, 'bgXVal', (Number(bg.offsetX) || 0) + '%');
+  put('setBgY', bg.offsetY, 'bgYVal', (Number(bg.offsetY) || 0) + '%');
+  const fit = $('bgFitSelect');
+  if (fit) fit.value = bg.fit || 'cover';
+  refreshBgInfo();
+}
+
+/** 改背景配置的统一入口：写配置 + 重画底材 + 存盘（recompute=路径/开关变了要重算配色） */
+function bgSet(patch, recompute) {
+  config.background = Object.assign(bgConfig(), patch);
+  applyCustomBackground();
+  refreshBgInfo();
+  persist();
+  if (recompute) refreshPaletteForBackground();
+}
+
+/** 「选择图片…」：主进程弹系统对话框（Win 原生对话框只支持单选文件，见 main.js） */
+function pickBgImage() {
+  if (typeof API.pickBackground !== 'function') {
+    toast('预览模式下无法读取本地图片');
+    return Promise.resolve(null);
+  }
+  return Promise.resolve(API.pickBackground()).then((res) => {
+    if (!res) return null;                       // 用户取消
+    if (res.error) { toast(res.error); return null; }
+    bgInfo = res;
+    bgSet({ enabled: true, path: res.path }, true);
+    toast('已应用自定义背景');
+    return res;
+  }).catch(() => { toast('读取图片失败'); return null; });
+}
+
+/* ---------- 液态玻璃滑块珠 ----------
+ * 用户要的滑块不是系统白盘，是"液态玻璃的一坨"：左右椭圆、中间透明、按下膨胀、
+ * 背后内容被真折射。但原生 ::-webkit-slider-thumb 是伪元素 —— 不是真实盒子，
+ * backdrop-filter 和 filter:url() 这类要采样背后像素的效果在伪元素上拿不到
+ * （没有可采的 backdrop）。_rt/_refrac/probe_bead.html 用条纹底做过对照实验：
+ * 真实 div 上两样都有效。
+ *
+ * 所以玻璃主题下的做法是：
+ *   1. 原生 thumb 隐掉（opacity:0 —— hit area 不变，键盘/拖动事件照旧走 input）
+ *   2. 给每个 range 包一层 .sl-wrap，里面放一颗真实的 .sl-bead 盖在 thumb 位置
+ *      （pointer-events:none，不挡操作；尺寸/形状/边缘白雾壳全在 style.css）
+ *   3. 珠子 = 边缘白雾壳 + filter:url(#liquidThumb) 真折射 + 按下膨胀
+ * #liquidThumb 由主滤镜 #liquidGlass 克隆而来：链条一字不改，只把三个 feDisplacementMap
+ * 的 scale 从整窗量级（-70/-77/-84）等比缩到这一坨的量级（-14/-15.4/-16.8）——
+ * 主滤镜的 -70 在 34x22 的元素上位移 ±35px，会直接糊成一团。
+ * ※ filter 必须写字面量 url(#liquidThumb)，不能走 var(--x) 中转 —— 探针
+ *   （probe_tune.html）实测 var() 中转的 filter 不生效，珠子静默退化成纯磨砂。
+ * 非玻璃主题 .sl-bead 是 display:none、原生 thumb 原样，零影响。 */
+
+/* 珠子专用的位移贴图：圆形"凸透镜"场，运行时用 canvas 生成（64x64，PNG dataURL）。
+ *
+ * 为什么不直接复用主贴图：主贴图的场一直延伸到中心（见 enableLiquidGlass 上方
+ * 的 A/B 结论），整窗玻璃上那是"整体收缩"的手感；但几十像素的一坨上，中心位移会把
+ * backdrop 里的暗部全聚到中心 —— 探针（probe_ui.html 填主贴图版）里珠子中心糊出一
+ * 团脏球。玻璃珠要的是"中心透亮、只有边缘一圈弯折"。
+ *
+ * ※※※ alpha 通道就是形状遮罩（v2.3.1 二分定案，比"方形伪影"的旧结论更根本）※※※
+ * 滤镜链里 EDGE_MASK 由贴图 alpha 离散而来（feColorMatrix 的 alpha 行 = A_in，
+ * 再 feFuncA discrete 三档化），最终输出 = 位移结果 in EDGE_MASK。也就是说：
+ * 滤镜输出只在贴图 alpha 非零处可见，**贴图 alpha 是什么形状，玻璃就是什么形状**。
+ * 旧珠贴图 alpha 全不透明 → EDGE_MASK 全 1 → 滤镜输出铺满整个（方形的）滤镜区域，
+ * Chromium 不会把它再裁回元素圆角 → 珠子渲染成方。当时误判成"元素带 background
+ * 就会方"，换结构（壳/兄弟层/mask）都治标 —— 直到按贴图做 A/B（probe_ui_v3：
+ * prod/bg/sib/shell 四种结构 × 新旧贴图）才定案：旧贴图全方、新贴图全圆，与结构
+ * 无关。主玻璃从不发方，正是因为上游预焙贴图的 alpha 本来就是它自己的圆角矩形。
+ *
+ * 场的形状（v2.3.3 起是**药丸/stadium**，不再是数学椭圆）：用户反馈椭圆两端发尖
+ * —— 数学椭圆在左右端点曲率最大，看上去就是两个尖角。药丸 = 中段矩形 + 两端半圆，
+ * 左右端帽是标准圆弧，"左右要圆"。d = 像素到**核心线段**（(R,R)→(W-R,R)，R = 半高）
+ * 的距离，r = d / R（r=1 恰好是元素药丸边界）。
+ *   R = 0.5 + 0.5*band*dirx    B = 0.5 + 0.5*band*diry    （方向 = 从最近核心点指出）
+ *   G = band                   A = 药丸遮罩（r>1.03 全透明，r<0.97 全不透明）
+ * ※ 画布纵横比必须等于珠子实际比例（BEAD_W:BEAD_H）：feImage 用
+ *   preserveAspectRatio="none"（见 ensureThumbFilter）把贴图拉伸铺满滤镜区域
+ *   （= 元素盒 ×1.7，纵横比相同）—— 同比例拉伸时方向向量在屏幕上不变形，
+ *   且珠缘恒在 r=1 处，与 CSS 里写的具体尺寸解耦。
+ * ※ G 通道在这里是**遮罩亮度**，不是废通道：滤镜的 EDGE_MASK 是 0.3*(R+G+B) 灰度化，
+ *   带符号的 R/B 在"负方向"边缘会变暗（左边缘 R→0），只靠 R+B 的话那一侧会被
+ *   遮罩裁掉不折射；G=band 把四个方向的边缘都垫亮，折射才能整圈出现。
+ *   这与主贴图"G≈0"的约定不同 —— 主贴图是上游的现成图，珠贴图是我们自己的场，
+ *   两者的 G 语义不同，别互相套。
+ * ※ 输出必须 PNG（feImage 不渲染 JPEG，v2.3.0 踩过）。失败返回 null，调用方保持
+ *   feImage href 为空（珠子退化为白雾壳，形状仍对，见 ensureThumbFilter）。 */
+const BEAD_W = 34;   // 珠子尺寸，与 style.css .sl-bead 的 --sl-bead-w/-h 默认值保持一致
+const BEAD_H = 22;
+
+function makeBeadMap() {
+  try {
+    // 画布 4 倍于珠子尺寸（136x88），纵横比与元素一致（见上方 ※ 注释）
+    const W = BEAD_W * 4;
+    const H = BEAD_H * 4;
+    const cv = document.createElement('canvas');
+    cv.width = W;
+    cv.height = H;
+    const ctx = cv.getContext('2d');
+    if (!ctx || typeof ctx.createImageData !== 'function') return null;
+    const img = ctx.createImageData(W, H);
+    const px = img.data;
+    const ss = (a, b, x) => {
+      const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+      return t * t * (3 - 2 * t);
+    };
+    const R = H / 2;             // 药丸端帽半径 = 半高
+    const ax = R, bx = W - R;    // 核心线段两端点（y 恒为 R）
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        // 到核心线段的最近点（x 被夹在 [ax,bx]，y 就是 R）—— 药丸距离场
+        const nx = Math.min(bx, Math.max(ax, x + 0.5));
+        const dxp = (x + 0.5) - nx;
+        const dyp = (y + 0.5) - R;
+        const d = Math.hypot(dxp, dyp);
+        const r = d / R;                                  // 0 = 核心，1 = 珠缘
+        const band = ss(0.42, 1, Math.min(1, r));
+        const inv = d > 1e-4 ? 1 / d : 0;
+        const dirx = dxp * inv, diry = dyp * inv;
+        const q = (y * W + x) * 4;
+        px[q] = Math.round((0.5 + 0.5 * band * dirx) * 255);      // R: x 位移（带符号）
+        px[q + 1] = Math.round(band * 255);                        // G: 遮罩亮度
+        px[q + 2] = Math.round((0.5 + 0.5 * band * diry) * 255);   // B: y 位移（带符号）
+        // A: 药丸形状遮罩 —— 滤镜输出只在药丸内可见（见上方 ※※※ 注释）。
+        // 0.97~1.03 之间线性过渡是丸边的抗锯齿。
+        px[q + 3] = Math.round(ss(1.03, 0.97, r) * 255);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return cv.toDataURL('image/png');
+  } catch (e) {
+    return null;
+  }
+}
+
+function ensureThumbFilter() {
+  const base = document.getElementById('liquidGlass');
+  if (!base || document.getElementById('liquidThumb')) return;
+  let clone = null;
+  try { clone = base.cloneNode(true); } catch (e) { return; }
+  clone.setAttribute('id', 'liquidThumb');
+  // 贴图用珠子自己的圆形场（alpha = 形状遮罩，见 makeBeadMap ※※※ 注释）。
+  // ※ preserveAspectRatio 必须改成 none（主滤镜是 xMidYMid slice）：珠子是 34x22 的
+  //   **椭圆**，滤镜区域（170%）同样非方形；slice 等比铺满再裁切，左右铺得满、上下被裁
+  //   —— 64x64 的圆形 alpha 落到非方形区域上会变成"平顶"的怪形状。none = 贴图拉伸铺满
+  //   整块区域，于是"归一化空间里的圆"正好落成屏幕上的椭圆（x/y 各自按区域宽高归一化，
+  //   珠缘恒在 1/1.7 处），与珠子具体尺寸解耦 —— 改 CSS 尺寸不用动贴图。
+  // ※ 绝不能回退到主贴图：主贴图的 alpha 是它自己的圆角矩形，罩在珠子上还是方形
+  //   （v2.3.1 二分定案）。canvas 不可用就保持 href 为空 —— 珠子退化为白雾壳
+  //   （形状由 CSS border-radius + 渐变保证，能看，probe_ui_nomap 实测），也不借主贴图。
+  const dstMap = clone.querySelector('feImage');
+  if (dstMap) {
+    dstMap.setAttribute('preserveAspectRatio', 'none');
+    const href = makeBeadMap();
+    if (href) {
+      dstMap.setAttribute('href', href);
+      dstMap.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', href);
+    }
+  }
+  clone.querySelectorAll('feDisplacementMap').forEach((n, i) => {
+    const s = [-70, -77, -84][i] || -70;
+    // 14/70：位移 ±7px。参数扫掠（probe_tune.html，6 档）对照过 bg/scale/band 组合：
+    // 14 在"面板浅底"和"壁纸有结构"两种场景都立得住，18 起中心聚光过重。
+    // 椭圆上 x 的像素位移比 y 大（同一 band 下 34px 宽 vs 22px 高），横向拉得更开 ——
+    // 正是"左右椭圆一坨"该有的宽镜头感。三通道保持主滤镜 -1/-1.1/-1.2 的色散比例。
+    n.setAttribute('scale', (s * (14 / 70)).toFixed(2));
+  });
+  // ※ 不要在链尾追加 feComposite in DISPLACEMENT_MAP 的"形状硬裁"：EDGE_MASK 本身
+  //   就来自贴图 alpha，位移结果在链中早已被裁成椭圆（makeBeadMap ※※※ 注释）。
+  //   追加的 in 会把 CENTER_CLEAN 也裁一遍，把珠子边缘的白雾裁没（矩阵探针实测）。
+  base.parentNode.appendChild(clone);
+}
+
+function wrapRange(el) {
+  if (!el || el.closest('.sl-wrap')) return;
+  const wrap = document.createElement('span');
+  wrap.className = 'sl-wrap';
+  el.parentNode.insertBefore(wrap, el);
+  wrap.appendChild(el);
+  const bead = document.createElement('span');
+  bead.className = 'sl-bead';
+  bead.setAttribute('aria-hidden', 'true');
+  wrap.appendChild(bead);
+  syncRangeFill(el);
+}
+
+function initGlassBeads() {
+  ensureThumbFilter();
+  document.querySelectorAll('input[type="range"]').forEach(wrapRange);
+  // 注入完成后再整体同步一次：syncRangeFill 会把变量写在 .sl-wrap 上，并清掉元素自身
+  // 可能残留的 --sl-fill/--sl-ratio 内联声明（否则进度条会卡在初始值不跟着走）。
+  syncAllRangeFills();
+}
+initGlassBeads();
+
 /* ---------- 透明度 ---------- */
 let hideTimer;
 function showOpacityBar() {
@@ -1064,7 +1564,9 @@ function applyOpacity(v) {
   widget.style.setProperty('--glass-alpha', v);
   API.saveConfig(config);
   opacityRange.value = v;
+  syncRangeFill(opacityRange);   // 写 .value 不派发 input，填充段得自己刷
   $('setOpacity').value = v;
+  syncRangeFill($('setOpacity')); // 面板滑块同款问题：珠子/填充段也要跟着走
   $('opacityVal').textContent = Math.round(v * 100) + '%';
 }
 opacityRange.addEventListener('input', (e) => applyOpacity(parseFloat(e.target.value)));
@@ -1141,16 +1643,19 @@ function toggleLocked() {
 function openSettings() {
   $('setTitle').value = config.title || 'FClassPal';
   $('setOpacity').value = config.opacity;
+  syncRangeFill($('setOpacity'));   // 直接写 .value 不派发 input，珠子/填充段要手动刷
   $('opacityVal').textContent = Math.round(config.opacity * 100) + '%';
   /* 圆角滑块：跟随主题时把滑块摆到当前主题的实际值上（读计算样式） */
   const curRadius = config.cornerRadius ||
     parseInt(getComputedStyle(widget).getPropertyValue('--radius'), 10) || 28;
   $('setRadius').value = curRadius;
+  syncRangeFill($('setRadius'));
   $('radiusVal').textContent = config.cornerRadius ? config.cornerRadius + 'px' : '跟随主题';
   $('setBottom').checked = config.keepBottom !== false;
   $('setAutoLaunch').checked = !!config.autoLaunch;
   $('setLock').checked = !!config.locked;
   $('setRealtime').checked = config.realtime === true;   // 默认"只模糊壁纸"
+  syncBgControls();
   $('sizeVal').textContent = `${Math.round(bounds.width)} × ${Math.round(bounds.height)}`;
   syncSettingsControls();
   describePalette(wallInfo && wallInfo.palette);
@@ -1180,6 +1685,14 @@ function syncSettingsControls() {
   if (seg) {
     seg.querySelectorAll('.seg-btn').forEach((b) => {
       b.setAttribute('aria-pressed', b.dataset.mode === mode ? 'true' : 'false');
+    });
+  }
+  // 明暗模式分段按钮（v2.4.0）：两组 seg 各自独立，靠 data-* 区分
+  const aSeg = $('appearanceSeg');
+  if (aSeg) {
+    const ap = config.appearance === 'dark' ? 'dark' : 'light';
+    aSeg.querySelectorAll('.seg-btn').forEach((b) => {
+      b.setAttribute('aria-pressed', b.dataset.appearance === ap ? 'true' : 'false');
     });
   }
   const manual = mode === 'manual';
@@ -1260,8 +1773,16 @@ function switchTheme(t) {
   }
   syncSettingsControls();
   persist();
-  // 配色是共用的，壁纸已经取过就直接用那一份，不必再算
-  if (wallInfo && wallInfo.palette) applyPalette(wallInfo.palette);
+  // 配色是共用的，底材已经取过就直接用那一份，不必再算 —— 但有个前提：
+  // 动态配色主题 + 手上这份配色的明暗方案得对得上。从固定配色主题（黑暗模式下
+  // 不重算配色）切过来时，手上那份可能还是亮色方案，必须让主进程按暗色重算。
+  const wantDark = config.appearance === 'dark';
+  const have = wallInfo && wallInfo.palette;
+  if (isDynamicTheme(currentTheme) && (!have || !!have.dark !== wantDark)) {
+    applyPaletteChange({ appearance: config.appearance });
+  } else if (have) {
+    applyPalette(wallInfo.palette);
+  }
   motionCrossFade();
   toast(currentTheme === 'glass'
     ? '已切换到液态玻璃风格'
@@ -1384,6 +1905,61 @@ $('setRealtime').addEventListener('change', async (e) => {
     toast('已关闭实时模糊，改用静态壁纸底材');
   }
 });
+
+/* ---------- 明暗模式 + 自定义背景的事件绑定（v2.4.0） ---------- */
+const appearanceSeg = $('appearanceSeg');
+if (appearanceSeg) {
+  appearanceSeg.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if (!btn || !btn.dataset.appearance) return;
+    setAppearance(btn.dataset.appearance);
+  });
+}
+
+if ($('setBgOn')) {
+  $('setBgOn').addEventListener('change', async (e) => {
+    const want = e.target.checked;
+    if (want && !bgConfig().path) {
+      // 先选图再打开：没图可用的开关是个死状态
+      const picked = await pickBgImage();
+      if (!picked) { e.target.checked = false; return; }
+      return;
+    }
+    bgSet({ enabled: want }, true);
+    toast(want ? '已启用自定义背景' : '已切回壁纸底材');
+  });
+}
+if ($('btnBgPick')) $('btnBgPick').addEventListener('click', () => { pickBgImage(); });
+if ($('btnBgClear')) {
+  $('btnBgClear').addEventListener('click', () => {
+    bgInfo = null;
+    bgSet({ enabled: false, path: '' }, true);
+    refreshWallpaper(true);   // 底材回到壁纸：强制重取一次（之前被自定义图挡着没画）
+    toast('已清除自定义背景');
+  });
+}
+/* 五个参数滑块：拖动是高频操作，只重画底材 + 存盘（防抖），不重算配色 */
+[['setBgBlur', 'blur', 'bgBlurVal', 'px'],
+ ['setBgMask', 'mask', 'bgMaskVal', '%'],
+ ['setBgScale', 'scale', 'bgScaleVal', '%'],
+ ['setBgX', 'offsetX', 'bgXVal', '%'],
+ ['setBgY', 'offsetY', 'bgYVal', '%']].forEach(([id, key, labelId, unit]) => {
+  const el = $(id);
+  if (!el) return;
+  el.addEventListener('input', (e) => {
+    const v = Number(e.target.value) || 0;
+    config.background = Object.assign(bgConfig(), { [key]: v });
+    const lb = $(labelId);
+    if (lb) lb.textContent = v + unit;
+    applyCustomBackground();
+    persist();
+  });
+});
+if ($('bgFitSelect')) {
+  $('bgFitSelect').addEventListener('change', (e) => {
+    bgSet({ fit: e.target.value || 'cover' }, false);
+  });
+}
 
 $('btnSizeUp').addEventListener('click', () => changeSize(40));
 $('btnSizeDown').addEventListener('click', () => changeSize(-40));
@@ -1922,8 +2498,12 @@ if (typeof API.onTrayAction === 'function') {
     config.accentColor = THEME_ACCENT[config.theme] || '#6750A4';
   }
   accentPicked = config.accentPicked === true;
+  // 明暗模式要在第一帧就位（和主题同理，否则会看到"先亮后暗"的闪一下）
+  if (config.appearance !== 'dark') config.appearance = 'light';
+  applyAppearance(config.appearance);
   syncSettingsControls();
-  // 折射基底：把桌面壁纸对齐画进 #envLayer（取不到就用内置渐变）
+  // 折射基底：自定义背景图优先，其次桌面壁纸（取不到就用内置渐变）
+  loadCustomBackground();
   refreshWallpaper();
   // 实时底材默认**关**（用户要的是"只模糊壁纸"）。只有明确开启时才去采集
   // 真实桌面，采集失败/未开启都留在静态壁纸基底。

@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+if (!app.commandLine.hasSwitch('no-sandbox')) app.commandLine.appendSwitch('no-sandbox');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 

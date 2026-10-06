@@ -112,6 +112,11 @@ body.preview {
   isolation: isolate;
   --glass-alpha: 0.55;
   opacity: 1;        /* 前景内容永不透明 */
+  /* 注意 点击权的兜底：pointer-events:none 是会**继承**的，任何祖先（最常见是 body）
+   * 一旦被某个装饰性规则误伤，整棵子树会一起哑掉——界面看着还在，却一个都点不动，
+   * 而且纯靠肉眼审 CSS 根本看不出来（v2.4.0 真事故：裸 .bg-custom 命中 body，
+   * 用户表现为"选完背景图软件无法操作"）。这里显式收回，让 widget 永远可交互。 */
+  pointer-events: auto;
 }
 
 /* ② 折射层：只做 blur + saturate + 位移，不画任何自己的颜色。 */
@@ -124,9 +129,11 @@ body.preview {
   /* 模糊必须"轻"。blur 的物理意义是"抹掉多细的结构"：13px 会把壁纸抹成一片
    * 纯渐变，位移 ±40px 在一片渐变上取到的颜色几乎相同 —— 折射自然看不见。
    * 原项目默认 blurAmount=0.0625 → (overLight?12:4) + 0.0625*32 = 6px。
-   * 这也正好对上用户反馈的"模糊太强了"：这两件事本来就是同一个病。 */
-  backdrop-filter: blur(6px) saturate(140%);
-  -webkit-backdrop-filter: blur(6px) saturate(140%);
+   * 这也正好对上用户反馈的"模糊太强了"：这两件事本来就是同一个病。
+   * 亮底时上游会把模糊加到 14px（overLight 分支的 12 + 2，见 body.theme-glass.over-light），
+   * 所以这里必须是变量而不是写死的 6px。 */
+  backdrop-filter: blur(var(--lg-blur, 6px)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--lg-blur, 6px)) saturate(140%);
 }
 /* 折射只在能力探测通过后挂上（见 app.js enableLiquidGlass）。
  * 注意这里是 filter，不是 backdrop-filter —— 别改回去。 */
@@ -686,6 +693,143 @@ input[type="range"]:focus-visible::-webkit-slider-thumb {
     inset 0 1px 1px #fff,
     0 2px 5px -1px rgba(14, 28, 68, 0.45),
     0 0 0 4px rgba(58, 99, 242, 0.25);
+}
+
+/* ====== 玻璃主题专用：苹果风滑块（v2.3.1） ======
+ * 上面那套基础滑块是"玻璃珠 + 内凹玻璃槽"，是液态玻璃自己的语言；
+ * 玻璃主题下要换成 macOS / iOS 那一套：
+ *   轨道  细胶囊（4px）。未填充段 = 系统填充灰，已填充段 = 强调色一路铺到拇指。
+ *   拇指  纯白圆盘，苹果那两条投影（0.5px 贴边 hairline + 一层弥散），不带任何彩色。
+ *   按下  拇指轻微放大、阴影收紧 —— 系统滑块被按住时的那点"涨"。
+ *
+ * 两个实现要点：
+ *   1. Chromium 的 range 没有"已填充段"伪元素，只能把轨道背景画成两段，
+ *      分界点 --sl-fill 由 JS 算（见 app.js syncRangeFill，事件委托覆盖全部滑块）。
+ *   2. 强调色取 --md3-primary（壁纸 Monet 派生的角色色），滑块就跟着桌面配色走 ——
+ *      这正是系统滑块的行为，也避免在玻璃主题里硬编码一个蓝。
+ *
+ * 作用域严格限定 body.theme-glass：其余九套主题各有自己的滑块语言，不能被这条污染。 */
+body.theme-glass input[type="range"] {
+  height: 26px;                 /* 触屏可点区域够大，视觉轨道仍只有 4px */
+  /* ※ 这里**不能**声明 --sl-fill：元素自身的声明会压过从 .sl-wrap 继承的值，
+   *   JS 写在父级上的分界点就永远不生效（症状：拖动时进度条不跟着走）。
+   *   兜底值只放在渐变里的 var(--sl-fill, 50%) 第二参数。 */
+}
+body.theme-glass input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(to right,
+    var(--md3-primary, #3a63f2) 0 var(--sl-fill, 50%),
+    rgba(120, 120, 128, 0.28) var(--sl-fill, 50%) 100%);
+  box-shadow: none;
+}
+/* ====== 液态玻璃滑块珠（v2.3.1：用户点名"那一坨要放大、要有折射"） ======
+ * 原生 ::-webkit-slider-thumb 是伪元素 —— 不是真实盒子，backdrop-filter /
+ * filter:url() 这类要采样背后像素的效果在伪元素上全拿不到（探针
+ * _rt/_refrac/probe_bead.html 证实：真实 div 上两样都有效）。
+ *
+ * 所以玻璃主题下原生 thumb 只留 hit area（opacity:0），视觉由 JS 注入的真实
+ * .sl-bead 接管（见 app.js initGlassBeads）：边缘白雾壳 + filter:url(#liquidThumb)
+ * 真折射（主滤镜克隆，scale 等比缩到一坨的量级）+ 按下膨胀。
+ * 变量 --sl-ratio（0..1 无单位）由 app.js syncRangeFill 写在 .sl-wrap 上，
+ * 珠子的 left 用它算 —— 写在 input 上珠子拿不到（自定义属性按 DOM 树继承，
+ * 珠子是 input 的兄弟不是后代）。 */
+body.theme-glass .sl-wrap input[type="range"]::-webkit-slider-thumb {
+  opacity: 0;                   /* hit area 不变，视觉交给玻璃珠 */
+}
+/* wrapper 接住原 input 的布局职责：.row 里那条 flex:1 / max-width 移交到这里 */
+.sl-wrap { position: relative; display: inline-flex; }
+.sl-wrap input[type="range"] { display: block; }
+.row .sl-wrap { flex: 1; max-width: 130px; }
+.row .sl-wrap input[type="range"] { flex: initial; width: 100%; }
+
+.sl-bead { display: none; }
+body.theme-glass .sl-bead {
+  display: block;
+  position: absolute;
+  top: 50%;
+  /* 左右药丸的一坨（34x22）：宽度写死在这条 calc 里，改尺寸要同步改
+     --sl-bead-w、--sl-bead-h 与 app.js 的 BEAD_W/BEAD_H（贴图按同比例生成）。
+     ratio 0/1 时珠子两端正好贴住轨道两端 */
+  left: calc(var(--sl-bead-r, 17px) + var(--sl-ratio, 0.5) * (100% - var(--sl-bead-w, 34px)));
+  width: var(--sl-bead-w, 34px);
+  height: var(--sl-bead-h, 22px);
+  margin: calc(var(--sl-bead-h, 22px) / -2) 0 0 calc(var(--sl-bead-w, 34px) / -2);
+  /* 药丸形（v2.3.3）：999px = 两端半圆 + 中段直边。用户点名"左右要圆"——
+   * 数学椭圆（border-radius:50%）两端曲率最大、看着发尖；滤镜贴图的形状
+   * 遮罩（makeBeadMap 的药丸距离场）与这里必须同形。 */
+  border-radius: 999px;
+  pointer-events: none;         /* 事件全部穿透给 input，珠子只管好看 */
+  /* 中间透明：不铺任何底色，白雾壳全靠 inset 环 —— box-shadow 的内环跟着
+   * border-radius 走，药丸端帽处也是均匀一圈白雾（之前的壳是"以中心为圆心的
+   * 椭圆径向渐变"，雾环在左右端点收窄成尖角，正是"两端发尖"的另一半元凶）。
+   * 中心区完全透明 —— 背后的轨道/壁纸原样透出来。 */
+  backdrop-filter: blur(1.5px) saturate(150%);
+  -webkit-backdrop-filter: blur(1.5px) saturate(150%);
+  box-shadow:
+    inset 0 0 5px 1px rgba(255, 255, 255, 0.38),  /* 壳：均匀白雾环（药丸形） */
+    inset 0 1px 1px rgba(255, 255, 255, 0.85),    /* 顶缘高光 */
+    inset 0 -1px 2px rgba(255, 255, 255, 0.3),    /* 底缘反光（液体感） */
+    0 1px 2px rgba(0, 0, 0, 0.14),
+    0 2.5px 7px rgba(0, 0, 0, 0.18);
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease;
+}
+/* 折射滤镜只在主滤镜确认可用后才挂：filter:url() 引用不存在的滤镜会让整个
+ * 元素不渲染 —— 那种环境下珠子退化为磨砂玻璃珠，至少不会凭空消失 */
+body.theme-glass.lg-ready .sl-bead {
+  filter: url(#liquidThumb);
+}
+/* 悬停先鼓一点；按下（拖动中）那一坨明显膨胀 —— 液体被捏起来的手感。
+ * 等比缩放：药丸放大还是同一个药丸，不会变形。 */
+body.theme-glass .sl-wrap input[type="range"]:hover ~ .sl-bead {
+  transform: scale(1.12);
+}
+body.theme-glass .sl-wrap input[type="range"]:active ~ .sl-bead {
+  transform: scale(1.42);
+  box-shadow:
+    inset 0 1.5px 1.5px rgba(255, 255, 255, 0.95),
+    inset 0 -1.5px 2.5px rgba(255, 255, 255, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.18),
+    0 4px 11px rgba(0, 0, 0, 0.24);
+}
+
+/* ====== 玻璃主题专用：overLight 亮底自适应（v2.3.1，上游同款特性） ======
+ * 上游 liquid-glass-react 有 overLight 分支：底材偏亮时折射减半
+ * （displacementScale * 0.5）、模糊加到 14px、再压一层薄墨、投影加重。
+ * 原因是浅色底上玻璃会糊成一片白 —— 那些辛苦算出来的边缘色散全被冲掉；
+ * 而亮底上的柔和投影本来也几乎看不见。
+ *
+ * 分三处落地：
+ *   · 模糊      --lg-blur 6px → 14px（.glass-warp 读这个变量）
+ *   · 折射强度  由 app.js 把三个 feDisplacementMap 的 scale 乘 0.5（SVG 属性，CSS 管不了）
+ *   · 薄墨+投影 下面这条
+ * 判定在 app.js applyOverLight()：底材平均亮度 > 0.62 才挂 .over-light。
+ * 作用域同样锁 body.theme-glass —— 其他主题的玻璃是另一套语言，不参与。 */
+body.theme-glass.over-light {
+  --lg-blur: 14px;
+}
+body.theme-glass.over-light .glass-veil {
+  /* 薄墨压在最上层（上游是 20% 黑 + overlay 混合），把亮底"落"下来一点，
+   * 白字白图标才不会淹进背景；后面两条受光渐变与基础样式保持一致。 */
+  background:
+    linear-gradient(rgba(10, 14, 30, 0.22), rgba(10, 14, 30, 0.22)),
+    radial-gradient(130% 70% at 50% -18%,
+      rgba(255, 255, 255, calc(0.26 * var(--glass-alpha))) 0%,
+      rgba(255, 255, 255, 0) 58%),
+    linear-gradient(158deg,
+      rgba(255, 255, 255, calc(0.38 * var(--glass-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.14 * var(--glass-alpha))) 46%,
+      rgba(255, 255, 255, calc(0.20 * var(--glass-alpha))) 100%);
+  /* 内侧四条受光边照旧；外投影改实改深（对应上游 0 16px 70px rgba(0,0,0,0.75)） */
+  box-shadow:
+    inset 0 1px 1px var(--glass-hi),
+    inset 1px 0 0 rgba(255, 255, 255, 0.28),
+    inset -1px 0 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0.5px rgba(255, 255, 255, 0.4),
+    inset 0 -22px 34px -26px rgba(31, 62, 138, 0.35),
+    0 18px 60px -14px rgba(6, 12, 32, 0.62),
+    0 6px 14px -6px rgba(6, 12, 32, 0.3);
 }
 
 /* ====== 弹窗与面板（液态玻璃浮层） ====== */
@@ -4071,4 +4215,135 @@ body.theme-dog .toast { animation: t-toast-dog var(--t-dur-mid) var(--t-ease) ba
 .about-link {
   margin-top: 7px;
   font-size: 0.72rem;
+}
+
+/* ============================================================
+ * 自定义背景图（v2.4.0）
+ * ------------------------------------------------------------
+ * 用户选的图当玻璃底材：与 .env-layer 同层（z-index:-1），DOM 在后 → 画在它上面、
+ * 仍在 .glass-warp(0) 之下，所以 backdrop-filter 采样的就是这张图。
+ * 模糊（filter）/缩放（transform）由 JS 写行内样式：这些是连续可调的运行时参数，
+ * 塞进 CSS token 只会让"谁能覆盖谁"变复杂。
+ *
+ * 注意 选择器必须用 id，不能写成 `.bg-layer` 之外的任何"裸类名"，更要命的是
+ *    **绝不能写成 `.bg-custom`** —— 渲染层是 `document.body.classList.toggle('bg-custom')`，
+ *    body 自己也带这个类，裸 `.bg-custom` 会同时命中 <body>，于是这里的
+ *    position:absolute / pointer-events:none 落到 body 上、再顺着继承糊满整棵子树，
+ *    整个界面一个点都点不动（v2.4.0 真事故：选完背景图就"软件无法操作"）。
+ *    图层元素用 `.bg-layer`，状态标记用 `body.bg-custom`，两个名字不许再撞。
+ * ============================================================ */
+#bgCustom {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background-position: 50% 50%;
+  background-repeat: no-repeat;
+  background-size: cover;
+  /* 位移/缩放的原点放中心：位置滑块调的是"图里哪一块显示在中间"，
+   * 配 transform-origin:center 才符合直觉 */
+  transform-origin: 50% 50%;
+}
+/* 自定义图当底材时壁纸/实时采集整个让位（画了也只会被盖住，还白烧 GPU） */
+body.bg-custom .env-layer {
+  display: none;
+}
+
+/* ============================================================
+ * 黑暗模式（v2.4.0）——盖在所有主题之上的深色层
+ * ------------------------------------------------------------
+ * 机制：各主题的 token 块写在前面，这里用同优先级的 body.dark 选择器 + 更靠后的
+ * 源码位置压过去（同权重看先后）。三条铁律：
+ *   1. **绝不动强调色**（--md3-primary/--t-accent/--accent）—— 每套主题的个性
+ *      全押在强调色上，压暗它就不是那套主题了；
+ *   2. 动态配色主题（body.dyn：glass/md3/fluent）的 --md3-* 由主进程用 Monet
+ *      暗色方案整份给出（SchemeTonalSpot isDark=true），这里**不插手**，
+ *      只在 :not(.dyn) 时补固定配色主题的表面角色；
+ *   3. 只碰颜色类属性 —— 定位/尺寸一律不动（v2.2.1 主题事故的教训）。
+ * ============================================================ */
+body.dark {
+  --text: #F2F4F8;
+  --text-soft: #A6AEC0;
+  --t-surface: rgb(20 23 31 / 0.72);
+  --t-surface-2: rgb(28 32 42 / 0.82);
+  --t-surface-3: rgb(38 43 56 / 0.86);
+  --t-line: rgb(255 255 255 / 0.14);
+  --t-veil-border: rgb(255 255 255 / 0.16);
+  --t-veil-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 20px 46px -20px rgb(0 0 0 / 0.7);
+  --t-shadow-hover: 0 10px 26px -10px rgb(0 0 0 / 0.6);
+  --t-shadow-menu: 0 12px 34px -12px rgb(0 0 0 / 0.6);
+  --glass-edge: rgb(255 255 255 / 0.16);
+  --glass-hi: rgb(255 255 255 / 0.22);
+  --accent-border: rgb(255 255 255 / 0.14);
+  --danger: #F28B82;
+}
+/* 固定配色主题（含七套角色主题 + MIUIX + 鸿蒙）：它们的 --md3-* 是写死的浅色方案，
+ * 黑暗模式下必须整套换成深色表面 —— 但 primary/container 系列全部保留，
+ * 那是主题的身份。动态主题走 :not(.dyn) 排除在外。 */
+body.dark:not(.dyn) {
+  --md3-surface: #0F1116;             --md3-surface-rgb: 15 17 22;
+  --md3-surface-dim: #08090D;         --md3-surface-dim-rgb: 8 9 13;
+  --md3-surface-container: #171A21;   --md3-surface-container-rgb: 23 26 33;
+  --md3-surface-container-high: #20242E; --md3-surface-container-high-rgb: 32 36 46;
+  --md3-on-surface: #F2F4F8;          --md3-on-surface-rgb: 242 244 248;
+  --md3-on-surface-variant: #A6AEC0;  --md3-on-surface-variant-rgb: 166 174 192;
+  --md3-outline: #3A4150;             --md3-outline-rgb: 58 65 80;
+  --md3-outline-variant: #2A2F3A;     --md3-outline-variant-rgb: 42 47 58;
+  --md3-secondary-container: #262B36; --md3-secondary-container-rgb: 38 43 54;
+  --md3-on-secondary-container: #D7DCE6; --md3-on-secondary-container-rgb: 215 220 230;
+}
+/* 玻璃面纱：白纱换黑纱（玻璃的厚度感/内高光结构照旧，只是不再往白里走） */
+body.dark .glass-veil {
+  border-color: var(--glass-edge);
+  background:
+    radial-gradient(130% 70% at 50% -18%,
+      rgba(150, 170, 220, calc(0.10 * var(--glass-alpha))) 0%,
+      rgba(150, 170, 220, 0) 58%),
+    linear-gradient(158deg,
+      rgba(6, 8, 14, calc(0.62 * var(--glass-alpha))) 0%,
+      rgba(6, 8, 14, calc(0.44 * var(--glass-alpha))) 46%,
+      rgba(6, 8, 14, calc(0.54 * var(--glass-alpha))) 100%);
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.16),
+    inset 1px 0 0 rgb(255 255 255 / 0.08),
+    inset -1px 0 0 rgb(255 255 255 / 0.08),
+    inset 0 -1px 0.5px rgb(255 255 255 / 0.10),
+    0 24px 48px -18px rgb(0 0 0 / 0.62),
+    0 6px 14px -6px rgb(0 0 0 / 0.38);
+}
+/* 基线里硬编码成白底的部件（面板/菜单/弹窗/USB 卡片/输入框）—— 各主题只覆盖了
+ * 一部分，这里统一再压一层，否则黑暗模式下打开设置就是一片惨白。 */
+body.dark .panel,
+body.dark .modal-card,
+body.dark .ctx-menu {
+  background: var(--t-surface-2);
+  border: 1px solid rgb(255 255 255 / 0.13);
+  box-shadow: var(--t-shadow-menu);
+}
+body.dark .usb-item,
+body.dark .group-list li,
+body.dark .item,
+body.dark .toast {
+  background: var(--t-surface);
+  border-color: rgb(255 255 255 / 0.12);
+}
+body.dark .panel input[type="text"],
+body.dark .modal-card input[type="text"],
+body.dark .add-group-row input,
+body.dark .size-controls button,
+body.dark select,
+body.dark .seg {
+  background: var(--t-surface-3);
+  border-color: rgb(255 255 255 / 0.12);
+  color: var(--text);
+}
+body.dark .titlebar {
+  border-bottom: 1px solid var(--t-line);
+  box-shadow: none;
+}
+body.dark .row-hint,
+body.dark .about-line,
+body.dark .about-ver {
+  color: var(--text-soft);
 }

@@ -69,18 +69,19 @@
       <!-- 中心原图：不参与位移，最后按反相遮罩盖回来 -->
       <feOffset in="SourceGraphic" dx="0" dy="0" result="CENTER_ORIGINAL"/>
 
-      <!-- 三通道位移：scale = 70 * (-1 - 0.05k)，k=0/1/2 → -70 / -77 / -84 -->
-      <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-70"
+      <!-- 三通道位移：scale = 70 * (-1 - 0.05k)，k=0/1/2 → -70 / -77 / -84
+           overLight（亮底）时 app.js 会把三者统一乘 0.5 —— 所以要有 id 可定位 -->
+      <feDisplacementMap id="lgDispR" in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-70"
         xChannelSelector="R" yChannelSelector="B" result="RED_DISPLACED"/>
       <feColorMatrix in="RED_DISPLACED" type="matrix"
         values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="RED_CHANNEL"/>
 
-      <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-77"
+      <feDisplacementMap id="lgDispG" in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-77"
         xChannelSelector="R" yChannelSelector="B" result="GREEN_DISPLACED"/>
       <feColorMatrix in="GREEN_DISPLACED" type="matrix"
         values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="GREEN_CHANNEL"/>
 
-      <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-84"
+      <feDisplacementMap id="lgDispB" in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-84"
         xChannelSelector="R" yChannelSelector="B" result="BLUE_DISPLACED"/>
       <feColorMatrix in="BLUE_DISPLACED" type="matrix"
         values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="BLUE_CHANNEL"/>
@@ -109,6 +110,11 @@
     <div id="envLayer" class="env-layer" aria-hidden="true">
       <canvas id="deskCanvas" class="desk-canvas" aria-hidden="true"></canvas>
     </div>
+
+    <!-- ①b 自定义背景图（v2.4.0）：用户选图后顶在壁纸之上、玻璃之下，同样是
+         backdrop-filter 的采样源。白色蒙版是它的第二层 background-image
+         （线性渐变压在图片上面），模糊/缩放/位移全部由 JS 写在这条元素上。 -->
+    <div id="bgCustom" class="bg-layer" aria-hidden="true"></div>
 
     <!-- ② 折射层：唯一挂 backdrop-filter + filter:url() 的层，自身不画任何颜色。
          空元素是刻意的 —— SourceGraphic 里只有"被模糊过的背景"，位移滤镜弯的
@@ -217,6 +223,15 @@
         <span>界面风格</span>
         <select id="themeSelect" class="theme-select" aria-label="界面风格"></select>
       </div>
+      <div class="row">
+        <span>明暗模式</span>
+        <div class="seg" id="appearanceSeg" role="group" aria-label="明暗模式">
+          <button type="button" class="seg-btn" data-appearance="light" aria-pressed="true">明亮</button>
+          <button type="button" class="seg-btn" data-appearance="dark" aria-pressed="false">黑暗</button>
+        </div>
+      </div>
+      <p class="row-hint">黑暗模式对十套风格都生效：液态玻璃 / MD3 / Fluent 走 Monet 暗色
+        方案（主色自动换成暗底可读的色调），固定配色主题只压暗表面、保留各自的强调色。</p>
       <p class="row-hint">十套风格彼此独立：每套都有自己的形状、表面、按钮与动效语言，
         不是同一套壳换色。液态玻璃 / MD3 / Fluent 三套跟随壁纸取色；
         MIUIX 与鸿蒙使用官方规范固定配色，
@@ -272,6 +287,60 @@
       <p class="row-hint">默认"只模糊壁纸"：玻璃里显示的就是你的桌面壁纸本身，
         换壁纸会自动同步。开启"实时桌面模糊"后改为逐帧采集窗口背后的桌面，
         但代价是系统截图 / 录屏将看不到本窗口（Windows 的采集排除机制所致）。</p>
+
+      <!-- 自定义背景图（v2.4.0）：选图 + 模糊 / 白色蒙版 / 裁剪 -->
+      <label class="row toggle">
+        <span>自定义背景</span>
+        <input type="checkbox" id="setBgOn" />
+      </label>
+      <div class="row">
+        <span>背景图片</span>
+        <div class="size-controls">
+          <button id="btnBgPick" class="text-btn">选择图片…</button>
+          <button id="btnBgClear" class="text-btn">清除</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>当前图片</span>
+        <span id="bgFileInfo" class="val blur-info">未选择</span>
+      </div>
+      <label class="row">
+        <span>图片模糊</span>
+        <input type="range" id="setBgBlur" min="0" max="40" step="1" />
+        <span id="bgBlurVal" class="val">0px</span>
+      </label>
+      <label class="row">
+        <span>白色蒙版</span>
+        <input type="range" id="setBgMask" min="0" max="100" step="1" />
+        <span id="bgMaskVal" class="val">0%</span>
+      </label>
+      <label class="row">
+        <span>图片缩放</span>
+        <input type="range" id="setBgScale" min="100" max="300" step="1" />
+        <span id="bgScaleVal" class="val">100%</span>
+      </label>
+      <label class="row">
+        <span>水平位置</span>
+        <input type="range" id="setBgX" min="0" max="100" step="1" />
+        <span id="bgXVal" class="val">50%</span>
+      </label>
+      <label class="row">
+        <span>垂直位置</span>
+        <input type="range" id="setBgY" min="0" max="100" step="1" />
+        <span id="bgYVal" class="val">50%</span>
+      </label>
+      <div class="row">
+        <span>填充方式</span>
+        <select id="bgFitSelect" class="theme-select" aria-label="填充方式">
+          <option value="cover">裁剪铺满</option>
+          <option value="contain">完整显示</option>
+          <option value="tile">平铺</option>
+        </select>
+      </div>
+      <p class="row-hint">自定义背景会顶替壁纸当玻璃的底材（换壁纸不再影响玻璃），
+        取色也改从这张图派生。模糊 0-40px、白色蒙版 0-100%（压亮图片做磨砂底），
+        缩放 + 位置就是裁剪：放大后用两个位置滑块把想看的部分挪到中间。
+        图片被移动或删除后会自动回退壁纸。</p>
       <div class="row">
         <span>窗口大小</span>
         <div class="size-controls">

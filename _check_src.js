@@ -1,15 +1,15 @@
 const path = require('path');
 const fs = require('fs');
 const { extractFile } = require('@electron/asar');
-const asar = null; // 源码预跑版：直接读本地文件
-const main = fs.readFileSync('main.js', 'utf-8');
-const pre = fs.readFileSync('preload.js', 'utf-8');
-const css = fs.readFileSync('renderer/style.css', 'utf-8');
-const app = fs.readFileSync('renderer/app.js', 'utf-8');
-const html = fs.readFileSync('renderer/index.html', 'utf-8');
-const mapJs = fs.readFileSync('renderer/lg-displacement-map.js', 'utf-8');
+const asar = path.join('dist', 'win-unpacked', 'resources', 'app.asar');
+const main = fs.readFileSync('main.js','utf-8').toString();
+const pre = fs.readFileSync('preload.js','utf-8').toString();
+const css = fs.readFileSync('renderer/style.css','utf-8').toString();
+const app = fs.readFileSync('renderer/app.js','utf-8').toString();
+const html = fs.readFileSync('renderer/index.html','utf-8').toString();
+const mapJs = (() => { try { return fs.readFileSync('renderer/lg-displacement-map.js','utf-8').toString(); } catch (e) { return ''; } })();
 // v1.8：预打包好的 Monet 库（单个 CJS 文件），必须真的进了 asar
-const mapJs2 = fs.readFileSync('vendor/monet.js', 'utf-8');
+const mapJs2 = (() => { try { return fs.readFileSync('vendor/monet.js','utf-8').toString(); } catch (e) { return ''; } })();
 const cssNC = css.replace(/\/\*[\s\S]*?\*\//g, '');
 // 同样剥掉 main.js 的块注释："某 API 已移除"这类断言不能被注释里的旧写法误伤
 const mainNC = main.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -71,12 +71,12 @@ const checks = [
   ['html: 实时模糊开关 + 状态行', html.includes('id="setRealtime"') && html.includes('id="realtimeInfo"')],
   ['html: 贴图脚本先于 app.js 加载',
     /lg-displacement-map\.js[\s\S]{0,120}app\.js/.test(html)],
-  ['asar: 位移贴图已随包（dataURL）', /LG_DISPLACEMENT_MAP\s*=\s*'data:image\/png;base64,/.test(mapJs)],
+  ['asar: 位移贴图已随包（v2.3.0 起 PNG dataURL，JPEG 已不被 feImage 渲染）', /LG_DISPLACEMENT_MAP\s*=\s*'data:image\/png;base64,/.test(mapJs)],
   ['css: 滤镜挂在 .glass-warp（非 ::before）',
     /url\(#liquidGlass\)/.test(css) && /body\.lg-ready \.glass-warp/.test(css)],
   ['css: backdrop-filter 里绝不再出现 url()', !/backdrop-filter:[^;]*url\(#/.test(cssNC)],
-  ['css: 玻璃底模糊 = blur(6px) saturate(140%)（原版默认）',
-    /backdrop-filter:\s*blur\(6px\) saturate\(140%\)/.test(css)],
+  ['css: 玻璃底模糊走 --lg-blur 变量、默认 6px / saturate 140%（v2.3.1 overLight 会提到 14px）',
+    /backdrop-filter:\s*blur\(var\(--lg-blur, 6px\)\) saturate\(140%\)/.test(css)],
   ['css: .glass-warp 自身无背景/无描边（滤镜输入必须干净）',
     /pointer-events:\s*none/.test(warpBody) && !/(box-shadow|border:|background:)/.test(warpBody)],
   ['css: 边光环空心 mask', css.includes('mask-composite: exclude') && css.includes('-webkit-mask-composite: xor')],
@@ -221,7 +221,7 @@ const checks = [
   // 所以这条查的是源码那份；实际有没有打进去由上一条 extractFile 说话。
   ['打包白名单放行 vendor/**（漏了就无法 require）',
     (srcPkg.build && srcPkg.build.files || []).includes('vendor/**/*')],
-  ['asar: 位移贴图随包', /LG_DISPLACEMENT_MAP\s*=\s*'data:image\/png;base64,/.test(mapJs)],
+  ['asar: 位移贴图随包（无 JPEG 残留）', /LG_DISPLACEMENT_MAP\s*=\s*'data:image\/png;base64,/.test(mapJs) && !/data:image\/jpeg/.test(mapJs)],
   ['html: 风格分段选择器（glass / md3）',
     html.includes('id="themeSelect"') && !html.includes('id="themeSeg"')],
   ['html: MD3 取色方式（莫奈取色 / 手动指定）',
@@ -439,8 +439,8 @@ const checks = [
     fs.existsSync('build/icon.ico') && fs.existsSync('build/icon.png')],
   ['main: BrowserWindow 挂 icon（开发模式/alt-tab 也有图标）',
     /icon:\s*fs\.existsSync\(path\.join\(__dirname, 'build', 'icon\.ico'\)\)/.test(main)],
-  ['产物: 便携 exe 已生成（v2.3.0）', fs.existsSync('dist/FClassPal-2.3.0.exe')],
-  ['配置: 版本号 2.3.0', srcPkg.version === '2.3.0'],
+  ['产物: 便携 exe 已生成（v2.4.1）', fs.existsSync('dist/FClassPal-2.4.1.exe')],
+  ['配置: 版本号 2.4.1', srcPkg.version === '2.4.1'],
   ['配置: 已移除 package.json description（exe 属性不再带描述）',
     srcPkg.description === undefined],
   ['author = YU（用户在远端改的大写）', srcPkg.author === 'YU'],
@@ -469,6 +469,78 @@ const checks = [
     /\^https:\\\/\\\/github\\\.com\\\//.test(main)],
   ['v2.3.0: preload 暴露 getAppVersion / openExternal',
     pre.includes('getAppVersion') && pre.includes('openExternal')],
+  ['v2.3.1: 苹果滑块作用域锁在玻璃主题（轨道两段式；拇指隐藏由珠子接管）',
+    /body\.theme-glass input\[type="range"\]::-webkit-slider-runnable-track/.test(css) &&
+    /var\(--md3-primary[^)]*\) 0 var\(--sl-fill/.test(css) &&
+    /body\.theme-glass \.sl-wrap input\[type="range"\]::-webkit-slider-thumb\s*\{\s*\n\s*opacity: 0;/.test(css)],
+  ['v2.3.1: 其他主题滑块未被苹果风污染（md3 轨道里没有 systemFill 灰）',
+    !/body\.theme-md3 input\[type="range"\]::-webkit-slider-runnable-track\s*\{[^}]*120, 120, 128/.test(css)],
+  ['v2.3.1: app.js 填充段同步（事件委托 + 写 value 后补刷）',
+    /document\.addEventListener\('input', \(e\) => syncRangeFill\(e\.target\), true\)/.test(app) &&
+    /opacityRange\.value = v;\s*\n\s*syncRangeFill\(opacityRange\)/.test(app)],
+  ['v2.3.1: glass 主题挂 theme-glass 标记类',
+    /classList\.toggle\('theme-glass', t === 'glass'\)/.test(app)],
+  ['v2.3.1: overLight 链路（阈值 / 状态类 / 折射减半 / 实时采样 / 静态接线）',
+    /const OVER_LIGHT_LUM = 0\.62/.test(app) &&
+    /setDisplacementScale\(on \? 0\.5 : 1\)/.test(app) &&
+    /querySelectorAll\('#liquidGlass feDisplacementMap'\)/.test(app) &&
+    /sampleRealtimeLuminance\(\)/.test(app) &&
+    /applyOverLight\(info\.luminance\)/.test(app)],
+  ['v2.3.1: main 壁纸亮度采样并随 wallInfo 下发',
+    /function wallpaperLuminance\(file\)/.test(main) &&
+    /luminance: wallpaperLuminance\(file\)/.test(main)],
+  ['v2.3.1: html 三个 feDisplacementMap 有 id（overLight 改 scale 用）',
+    html.includes('id="lgDispR"') && html.includes('id="lgDispG"') &&
+    html.includes('id="lgDispB"')],
+  ['v2.3.1: overLight 视觉（--lg-blur 14px + 薄墨），仅玻璃主题',
+    /body\.theme-glass\.over-light\s*\{\s*\n\s*--lg-blur: 14px;/.test(css) &&
+    /rgba\(10, 14, 30, 0\.22\)/.test(css)],
+  ['v2.3.1: 液态玻璃珠（贴图 alpha=形状遮罩 + 药丸距离场 + 主贴图禁用兜底）',
+    /const r = d \/ R;/.test(app) &&
+    /px\[q \+ 3\] = Math\.round\(ss\(1\.03, 0\.97, r\) \* 255\)/.test(app) &&
+    !/makeBeadMap\(\) \|\|/.test(app) &&
+    !/EDGE_CIRCLED/.test(app)],
+  ['v2.3.2: 液态玻璃珠药丸形（34x22 + border-radius:999px + 中间透明 + feImage none 拉伸）',
+    /body\.theme-glass \.sl-bead\s*\{[\s\S]{0,700}?width: var\(--sl-bead-w, 34px\)/.test(css) &&
+    /body\.theme-glass \.sl-bead\s*\{[\s\S]{0,700}?border-radius: 999px/.test(css) &&
+    /inset 0 0 5px 1px rgba\(255, 255, 255, 0\.38\)/.test(css) &&
+    /input\[type="range"\]:active ~ \.sl-bead\s*\{[\s\S]{0,120}?scale\(1\.42\)/.test(css) &&
+    /dstMap\.setAttribute\('preserveAspectRatio', 'none'\)/.test(app)],
+  ['v2.4.0: 黑暗模式（body.dark 黑纱 veil + Monet 暗色方案 isDark + 只压表面不动强调色）',
+    /body\.dark \.glass-veil\s*\{[\s\S]{0,700}?rgba\(6, 8, 14, calc\(0\.62 \* var\(--glass-alpha\)\)\)/.test(css) &&
+    /body\.dark:not\(\.dyn\) \{[\s\S]{0,900}?--md3-surface: #0F1116/.test(css) &&
+    /new monet\.SchemeTonalSpot\(hct, !!isDark, 0\)/.test(main) &&
+    /p\.dark = !!isDark;/.test(main) &&
+    /classList\.toggle\('dark', a === 'dark'\)/.test(app)],
+  ['★ v2.4.0 花屏事故守卫：CSS 里不存在裸 body.theme-* / body.dark 选择器（逗号紧跟类名）',
+    !/(^|\n)body\.theme-[a-z0-9]+,(\s*\n|\s*\{)/.test(css) &&
+    !/(^|\n)body\.dark,/.test(css) &&
+    /body\.theme-glass \.sl-bead \{/.test(css) &&
+    /body\.theme-glass\.lg-ready \.sl-bead \{/.test(css)],
+  ['v2.4.0: 自定义背景图（选图 IPC + 蒙版渐变 + 模糊补偿缩放 + 顶替壁纸）',
+    /ipcMain\.handle\('pick-background'/.test(main) &&
+    /function customBackgroundFile\(cfg\)/.test(main) &&
+    /layers\.push\('linear-gradient\(rgba\(255, 255, 255, '/.test(app) &&
+    /if \(bgIsOn\(\)\) return;/.test(app) &&
+    /body\.bg-custom \.env-layer/.test(css) &&
+    /id="bgFitSelect"/.test(html)],
+  ['★ v2.4.1 点不动事故守卫：body 状态标记类没有被写成裸「.类名」规则（会命中 body）',
+    // 裸 `.bg-custom` 曾让 body 吃到 position:absolute + pointer-events:none，
+    // 再顺着继承糊满整棵子树 → 界面看着完好却一个都点不动
+    ['bg-custom', 'dark', 'dyn', 'lg-ready', 'over-light', 'preview', 'realtime']
+      .every((m) => !new RegExp('(^|,)\\s*\\.' + m.replace(/-/g, '\\-') + '\\s*(,|\\{)', 'm')
+        .test(css.replace(/\/\*[\s\S]*?\*\//g, ''))) &&
+    /#bgCustom \{/.test(css) &&
+    /class="bg-layer"/.test(html) &&
+    !/class="bg-custom"/.test(html) &&
+    /\.widget \{[\s\S]{0,900}?pointer-events:\s*auto/.test(css)],
+  ['v2.4.0: 已下线主题回收（配置里存着 transparent 时收回 glass）',
+    /if \(config\.theme === 'transparent'\) \{[\s\S]{0,80}?config\.theme = 'glass';/.test(main)],
+  ['v2.3.2: 进度条跟随（--sl-fill 不在 input 上声明 + syncRangeFill 清元素自身陈旧变量）',
+    !/body\.theme-glass input\[type="range"\]\s*\{[^}]*--sl-fill\s*:/.test(css) &&
+    /el\.style\.removeProperty\('--sl-fill'\)/.test(app) &&
+    /syncRangeFill\(\$\('setOpacity'\)\)/.test(app) &&
+    /syncRangeFill\(\$\('setRadius'\)\)/.test(app)],
   ['v2.2.4: 首次启动种子只有一个「希沃应用」空分组',
     /name:\s*'希沃应用',\s*\n\s*items:\s*\[\]/.test(mainNC)],
   ['v2.2.4: 种子里不再预置任何示例快捷方式',

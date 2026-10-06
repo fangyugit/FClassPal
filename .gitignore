@@ -10,7 +10,10 @@ _ep_m/
 _ep*/
 docs/glass-v1.5.1/
 _rt/*
+!_rt/_bgcheck.js
 !_rt/_dragcheck.js
+!_rt/_garblecheck.js
+!_rt/_ghsync.py
 !_rt/_monetcheck.js
 !_rt/_palettecheck.js
 !_rt/probe.html

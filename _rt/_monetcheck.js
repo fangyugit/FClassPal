@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const { app, nativeImage } = require('electron');
+if (!app.commandLine.hasSwitch('no-sandbox')) app.commandLine.appendSwitch('no-sandbox');
 
 const ROOT = path.join(__dirname, '..');
 const monet = require(path.join(ROOT, 'vendor', 'monet.js'));
@@ -106,28 +107,66 @@ function assert(name, ok, extra) {
   else { fail++; console.log('  FAIL  ' + name + (extra ? '  ' + extra : '')); }
 }
 
+/** 某个角色的 tone 值（0=黑 100=白），暗色方案对不对全靠它 */
+const tone = (hex) => monet.Hct.fromInt(monet.argbFromHex(hex)).tone;
+const hueOf = (hex) => monet.Hct.fromInt(monet.argbFromHex(hex)).hue;
+
 app.whenReady().then(() => {
   console.log('[Monet 真实链路]');
+  const lightByLabel = {};                 // 留给下面的暗色对照用
   for (const [label, file] of cases) {
     const hct = mod.monetSourceFromFile(file);
-    const p = hct ? mod.monetSchemePalette(hct, true) : null;
+    const p = hct ? mod.monetSchemePalette(hct, true, false) : null;
     if (!p) {
       const isAchromatic = /灰|白|灰白/.test(label);
       console.log(`  ${label}:  Monte 认为没有可用的彩色 source → 退回基线`);
       assert(label + ' 灰/白壁纸不产出 dynamic palette', isAchromatic);
       continue;
     }
-    const hue = monet.Hct.fromInt(monet.argbFromHex(p.source)).hue.toFixed(1);
+    lightByLabel[label] = p;
+    const hue = hueOf(p.source).toFixed(1);
     console.log(`  ${label}: source=${p.source} hue=${hue} primary=${p.primary} container=${p.primaryContainer} onPrimaryContainer=${p.onPrimaryContainer}`);
     assert(label + ' 产出了 22 个以上角色且都是合法 hex',
       Object.keys(p).length >= 23 && Object.values(p).every((v) => typeof v !== 'string' || /^(#|true|false)/.test(v)));
     assert(label + ' primary 一定比 primaryContainer 深（tonal 层级正确）',
-      monet.Hct.fromInt(monet.argbFromHex(p.primary)).tone < monet.Hct.fromInt(monet.argbFromHex(p.primaryContainer)).tone);
-    assert(label + ' onPrimary 是白色（primary tone 40 配白字）',
-      monet.Hct.fromInt(monet.argbFromHex(p.onPrimary)).tone > 90);
-    assert(label + ' surface 是高亮浅色<｜hy_place▁holder▁no▁813｜>', monet.Hct.fromInt(monet.argbFromHex(p.surface)).tone > 95);
+      tone(p.primary) < tone(p.primaryContainer));
+    assert(label + ' onPrimary 是白色（primary tone 40 配白字）', tone(p.onPrimary) > 90);
+    assert(label + ' surface 是高亮浅色（tone>95）', tone(p.surface) > 95);
     assert(label + ' dynamic=true', p.dynamic === true);
+    assert(label + ' 明亮模式标记 dark=false（渲染层靠它判断手上方案能否复用）', p.dark === false);
   }
+
+  /* ---------- 黑暗模式（v2.4.0 新增：SchemeTonalSpot 的官方暗色方案） ----------
+   * 关键不是"变黑"，而是：① surface 掉到 tone≈6 ② onSurface 仍是高亮字
+   * ③ 主色的色相必须和明亮模式一致（只是换了明度档位）——否则一切到暗色
+   * 整个 app 的"主题身份色"就漂走了。 */
+  console.log('[黑暗模式]');
+  const darkByLabel = {};
+  for (const [label, file] of cases) {
+    const light = lightByLabel[label];
+    if (!light) continue;                        // 灰/白本来就退基线，没有暗色可比
+    const hct = mod.monetSourceFromFile(file);
+    const d = mod.monetSchemePalette(hct, true, true);
+    darkByLabel[label] = d;
+    console.log(`  ${label}: dark surface=${d.surface}(tone ${tone(d.surface).toFixed(0)}) onSurface=${d.onSurface}(tone ${tone(d.onSurface).toFixed(0)}) primary=${d.primary}`);
+    assert(label + ' 暗色 surface 是深底（tone<30）', tone(d.surface) < 30);
+    assert(label + ' 暗色 onSurface 仍是亮字（tone>85）', tone(d.onSurface) > 85);
+    assert(label + ' 暗色 primary 变浅（tone>70），明亮模式是 tone40', tone(d.primary) > 70);
+    assert(label + ' 暗色 primaryContainer 是深色（tone<40）', tone(d.primaryContainer) < 40);
+    assert(label + ' 暗色 onPrimary 是深字（tone<40）', tone(d.onPrimary) < 40);
+    // 色相守恒：暗色只是换了明度档，不该把色相也换掉（容差 6°，tone 极端时 HCT 色相会有小抖动）
+    const dh = Math.abs(hueOf(d.primary) - hueOf(light.primary));
+    assert(label + ' 暗色主色相与明亮模式一致（色调身份不漂）', Math.min(dh, 360 - dh) < 6,
+      'Δhue=' + dh.toFixed(1));
+    assert(label + ' 暗色方案标记 dark=true', d.dark === true);
+    // 明暗必须是"同一套 scheme 的两个档"，不能是两份无关的颜色
+    assert(label + ' 明暗两档 surface 明度差距显著（>70 个 tone 档）',
+      tone(light.surface) - tone(d.surface) > 70);
+  }
+  // 主进程的 palette 缓存键必须带上暗色维度，否则切明暗会拿到上一种的缓存
+  const mainSrc = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
+  assert('main.js: palette 缓存键含 dark 维度（明暗不会互相串缓存）', /\('\|' \+ \(isDark \? 'dark' : 'light'\)\)|\|' \+ \(isDark \? 'dark' : 'light'\)/.test(mainSrc));
+  assert('main.js: buildPalette 从 cfg.appearance 读明暗', /cfg\.appearance\s*===\s*'dark'/.test(mainSrc));
 
   console.log('[手动指定主色]');
   const manualHct = mod.monetSourceFromHex('#F26100');

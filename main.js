@@ -43,6 +43,22 @@ const DEFAULT_CONFIG = {
   // 系统截图/录屏看不到本窗口（setContentProtection 的副作用）。
   realtime: false,
   theme: 'glass',      // 界面风格：'glass'=液态玻璃，'md3'=Material Design 3（壁纸取色）
+  // 明暗模式（v2.4.0）：'light' | 'dark'。dark 时：动态配色走 Monet 的暗色方案
+  // （SchemeTonalSpot isDark=true，主色自动换成暗底可读的高亮度色调），
+  // 静态主题再由 style.css 末尾的 body.dark 层把表面压暗（强调色仍归各主题）。
+  appearance: 'light',
+  // 自定义背景图（v2.4.0）：替代壁纸当玻璃的底材。
+  //   enabled  开关
+  //   path     原图绝对路径（不复制，省磁盘；文件被移走就自动回退壁纸）
+  //   blur     图片模糊 px（0-40）
+  //   mask     白色蒙版不透明度 %（0-100，压亮图片当磨砂底）
+  //   scale    缩放 %（100-300，配合 offsetX/Y 就是"裁剪"）
+  //   offsetX/Y 图片位置 %（0-100，background-position）
+  //   fit      cover=裁剪铺满 / contain=完整显示 / tile=平铺
+  background: {
+    enabled: false, path: '', blur: 0, mask: 0,
+    scale: 100, offsetX: 50, offsetY: 50, fit: 'cover'
+  },
   // MD3 主色来源：'auto'=从壁纸提取（Monet/Material You 官方算法），
   //              'manual'=用 accentColor 指定的颜色，走同一条 tonal 派生链路
   colorMode: 'auto',
@@ -212,13 +228,24 @@ function monetRoles(scheme) {
   return out;
 }
 
-/** source → 整套 tonal palette。dynamic=false 表示"没取到色、用的是兜底" */
-function monetSchemePalette(hct, dynamic) {
-  const scheme = new monet.SchemeTonalSpot(hct, false, 0);
+/** source → 整套 tonal palette。dynamic=false 表示"没取到色、用的是兜底"。
+ *  isDark=true 走 Monet 的暗色方案（SchemeTonalSpot 的第二个参数），
+ *  主色/容器色会自动换成暗底可读的色调 —— 这就是"黑暗模式"在动态主题下的实现。 */
+function monetSchemePalette(hct, dynamic, isDark) {
+  const scheme = new monet.SchemeTonalSpot(hct, !!isDark, 0);
   const p = monetRoles(scheme);
   p.dynamic = !!dynamic;
+  // 标记这份配色是明还是暗：渲染层切主题时要判断"手上这份方案还能不能用"
+  p.dark = !!isDark;
   try { p.source = monet.hexFromArgb(hct.toInt()); } catch (e) { p.source = MD3_BASELINE; }
   return p;
+}
+
+/** 自定义背景图文件（启用且存在时）——它优先当底材、也优先当取色源 */
+function customBackgroundFile(cfg) {
+  const bg = cfg && cfg.background;
+  if (!bg || !bg.enabled || !bg.path) return null;
+  try { return fs.existsSync(bg.path) ? bg.path : null; } catch (e) { return null; }
 }
 
 /** 从壁纸文件里按 Monet 流程挑 source color；拿不到返回 null */
@@ -258,6 +285,42 @@ function monetSourceFromHex(hex) {
   try { return monet.Hct.fromInt(monet.argbFromHex(hex)); } catch (e) { return null; }
 }
 
+/**
+ * 壁纸平均亮度（0..1），给渲染层的 overLight 分档用（亮底要减弱折射、加重模糊）。
+ *
+ * 采样口径刻意与 Monet 取色完全一致（长边 72px、BGRA、同一份 nativeImage），
+ * 这样"配色"和"明暗"来自同一批像素，不会出现"色偏暗但亮度说很亮"的错位。
+ *
+ * 用的是 sRGB 加权平均（0.2126/0.7152/0.0722），**不做 gamma 线性化**：
+ * 这里只需要一个能分档的"感知亮度"，不是 WCAG 对比度计算。线性化会把暗部压得
+ * 很低（#808080 只有 0.216），阈值反而难定；加权平均下 0.62 正好对应
+ * "明显偏亮的壁纸 / 白底大窗口"。
+ *
+ * 失败（读不到文件、图损坏、无 monet 依赖）返回 null —— 渲染层会保持原分档。 */
+function wallpaperLuminance(file) {
+  if (!file) return null;
+  try {
+    const img = nativeImage.createFromPath(file);
+    const size = img.getSize();
+    if (!size.width || !size.height) return null;
+    const k = Math.max(size.width, size.height) / MONET_MAX_DIM;
+    const w = Math.max(1, Math.round(size.width / k));
+    const h = Math.max(1, Math.round(size.height / k));
+    const buf = img.resize({ width: w, height: h }).toBitmap();
+    if (!buf || buf.length < 4) return null;
+    let sum = 0;
+    let n = 0;
+    for (let i = 0; i + 3 < buf.length; i += 4) {
+      sum += 0.2126 * buf[i + 2] + 0.7152 * buf[i + 1] + 0.0722 * buf[i];   // BGRA
+      n++;
+    }
+    if (!n) return null;
+    return Math.round((sum / n / 255) * 1000) / 1000;
+  } catch (e) {
+    return null;
+  }
+}
+
 const PALETTE_CACHE = new Map();   // key = 取色参数指纹 → 调色板，避免重复聚类
 const PALETTE_CACHE_MAX = 8;
 
@@ -279,7 +342,8 @@ function paletteCacheSet(key, value) {
 
 /**
  * 产出当前配置对应的整套 MD3 配色。
- * @param {object} cfg    配置（colorMode: 'auto'|'manual'，accentColor: '#rrggbb'）
+ * @param {object} cfg    配置（colorMode: 'auto'|'manual'，accentColor: '#rrggbb'，
+ *                        appearance: 'light'|'dark'，background: {enabled,path}）
  * @param {?string} file  壁纸文件（auto 模式用）；传 null 时内部自行去读
  * @param {?string} sig   壁纸指纹（缓存 key 的一部分）
  */
@@ -287,34 +351,37 @@ async function buildPalette(cfg, file, sig) {
   if (!monet) return null;
   const mode = cfg && cfg.colorMode === 'manual' ? 'manual' : 'auto';
   const color = cfg && cfg.accentColor ? String(cfg.accentColor) : '';
+  const isDark = !!(cfg && cfg.appearance === 'dark');
 
   if (mode === 'manual') {
-    const key = 'manual|' + color.toLowerCase();
+    const key = 'manual|' + color.toLowerCase() + '|' + (isDark ? 'dark' : 'light');
     const hit = paletteCacheGet(key);
     if (hit) return hit;
     const hct = monetSourceFromHex(color);
     if (!hct) return null;
-    return paletteCacheSet(key, monetSchemePalette(hct, false));
+    return paletteCacheSet(key, monetSchemePalette(hct, false, isDark));
   }
 
+  // 自定义背景图优先当取色源：底材换了，配色就该跟着换（否则会跟壁纸串味）
+  const bgFile = customBackgroundFile(cfg);
   let meta = null;
-  let wantFile = file;
-  let wantSig = sig;
+  let wantFile = bgFile || file;
+  let wantSig = bgFile ? ('bg|' + bgFile) : sig;
   if (!wantFile) {
     meta = await readWallpaperMeta();
     if (!meta) return null;
     wantFile = meta.file;
     wantSig = wallpaperSignature(meta);
   }
-  const key = 'auto|' + (wantSig || '');
+  const key = 'auto|' + (wantSig || '') + '|' + (isDark ? 'dark' : 'light');
   const hit = paletteCacheGet(key);
   if (hit) return hit;
   const hct = monetSourceFromFile(wantFile);
   if (!hct) {
     // 灰白壁纸：用基线紫，但照样给出完整套装（dynamic=false 供 UI 提示）
-    return paletteCacheSet(key, monetSchemePalette(monetSourceFromHex(MD3_BASELINE), false));
+    return paletteCacheSet(key, monetSchemePalette(monetSourceFromHex(MD3_BASELINE), false, isDark));
   }
-  return paletteCacheSet(key, monetSchemePalette(hct, true));
+  return paletteCacheSet(key, monetSchemePalette(hct, true, isDark));
 }
 
 /* 取壁纸文件 + 填充方式（注册表 / 系统转码缓存），读不到返回 null */
@@ -345,6 +412,8 @@ async function readWallpaperMeta() {
 async function getWallpaperInfo(win) {
   if (process.platform !== 'win32' || !win || win.isDestroyed()) return null;
   try {
+    const cfg = loadConfig();
+    const bgFile = customBackgroundFile(cfg);
     const meta = await readWallpaperMeta();
     if (!meta) return null;
     const file = meta.file;
@@ -382,9 +451,19 @@ async function getWallpaperInfo(win) {
       y: rect.y - winB.y,
       tile: !!rect.tile,
       sig,
+      // 自定义背景图（v2.4.0）：渲染层拿 url 直接当底材（file:// 同源可加载），
+      // luminance 喂 overLight 亮底自适应，palette 也由它派生（见 buildPalette）
+      bg: bgFile ? {
+        url: pathToFileURL(bgFile).href,
+        path: bgFile,
+        luminance: wallpaperLuminance(bgFile)
+      } : null,
+      // 底材平均亮度（0..1）：玻璃主题的 overLight 亮底自适应要用（见渲染层）。
+      // 有自定义背景时以它为准 —— 那时候壁纸根本没显示。
+      luminance: bgFile ? wallpaperLuminance(bgFile) : wallpaperLuminance(file),
       // MD3 风格的配色：由 Monet 从这张壁纸（或用户手动指定的主色）派生
       // await 放在 return 里是不行的，这里必须先把 await 结果取出来
-      palette: await buildPalette(loadConfig(), file, sig)
+      palette: await buildPalette(cfg, file, sig)
     };
   } catch (e) {
     return null;   // 任何异常都静默降级到内置基底
@@ -415,6 +494,18 @@ function saveConfig(config) {
 
 function createWindow() {
   const config = loadConfig();
+  // v2.4.0：「透明（黑背景）」主题已下线（v2.3.3 曾把它设成默认并迁移过老配置，
+  // 所以这里要把已经迁移成 'transparent' 的配置收回来，否则 applyTheme 会退回基线）。
+  // 替代品是任意主题上的「黑暗模式」。
+  if (!config.themeMigratedToTransparent) {
+    config.themeMigratedToTransparent = true;
+    if (config.theme === 'glass') config.theme = 'transparent';
+    saveConfig(config);
+  }
+  if (config.theme === 'transparent') {
+    config.theme = 'glass';
+    saveConfig(config);
+  }
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: sw, height: sh } = primaryDisplay.workAreaSize;
 
@@ -709,6 +800,13 @@ ipcMain.handle('get-palette', (event, patch) => {
   if (patch && typeof patch === 'object') {
     if (patch.colorMode === 'auto' || patch.colorMode === 'manual') cfg.colorMode = patch.colorMode;
     if (typeof patch.accentColor === 'string') cfg.accentColor = patch.accentColor;
+    // v2.4.0：明暗模式与自定义背景都会改变"该用哪张图、走哪套方案"来派生配色
+    if (patch.appearance === 'auto' || patch.appearance === 'light' || patch.appearance === 'dark') {
+      cfg.appearance = patch.appearance === 'auto' ? 'light' : patch.appearance;
+    }
+    if (patch.background && typeof patch.background === 'object') {
+      cfg.background = { ...cfg.background, ...patch.background };
+    }
     saveConfig(cfg);
   }
   return buildPalette(cfg, null, null);
@@ -922,6 +1020,37 @@ ipcMain.handle('select-image', async () => {
     return { error: e.message };
   }
 });
+
+/* ---------- 自定义背景图（v2.4.0） ----------
+ * 只存路径、不复制文件：一张壁纸级的图动辄几 MB，复制一份纯浪费磁盘。
+ * 文件被移走 / 删除时 customBackgroundFile 返回 null，渲染层自动回退壁纸。 */
+function backgroundPayload(file) {
+  if (!file) return null;
+  try {
+    if (!fs.existsSync(file)) return null;
+    return {
+      url: pathToFileURL(file).href,
+      path: file,
+      luminance: wallpaperLuminance(file)
+    };
+  } catch (e) { return null; }
+}
+
+ipcMain.handle('pick-background', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '选择背景图片',
+    properties: ['openFile'],
+    filters: [
+      { name: '图片文件', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'] },
+      { name: '所有文件', extensions: ['*'] }
+    ]
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  const hit = backgroundPayload(result.filePaths[0]);
+  return hit || { error: '读不到这张图片' };
+});
+
+ipcMain.handle('load-background', () => backgroundPayload(customBackgroundFile(loadConfig())));
 
 /* ---------- 窗口控制 ---------- */
 ipcMain.handle('set-bounds', (event, bounds) => {

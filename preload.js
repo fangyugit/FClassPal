@@ -9,9 +9,11 @@ contextBridge.exposeInMainWorld('widgetAPI', {
   // 选择文件夹（目录）。Windows 的 openFile 对话框选不到目录，必须独立通道
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   // 自定义图标：选择本地图片，返回 { path, url }
-  selectImage: () => ipcRenderer.invoke('select-image'),
-  // 从 exe / 文件提取系统图标，返回 { path, url } 或 { error }
+  selectImage: () => ipcRenderer.invoke('select-image'),  // 从 exe / 文件提取系统图标，返回 { path, url } 或 { error }
   getFileIcon: (filePath) => ipcRenderer.invoke('get-file-icon', filePath),
+  // 自定义背景图（v2.4.0）：选图返回 { url, path, luminance }，启动时按配置回读
+  pickBackground: () => ipcRenderer.invoke('pick-background'),
+  loadBackground: () => ipcRenderer.invoke('load-background'),
   // 运行环境信息（是否支持 mica 毛玻璃等）
   getEnv: () => ipcRenderer.invoke('get-env'),
   // 桌面壁纸基底（渲染层折射用）：{ url, w, h, x, y, palette } 或 null

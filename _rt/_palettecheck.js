@@ -105,7 +105,9 @@ const isHidden = (el) => !el || el.classList.contains('hidden');
 
   console.log('[初始化]');
   check('脚本跑完（分组已渲染）', $('groups').children.length > 0);
-  check('glass 主题下不加任何 theme-* 类（玻璃是基线皮肤）', !/theme-/.test(document.body.className),
+  check('glass 主题只带 theme-glass 标记类（v2.3.1 起，皮肤覆盖仍只走 FLAT_THEMES）',
+    /(^| )theme-glass( |$)/.test(document.body.className) &&
+    !/theme-(md3|fluent|miuix|harmony|kitty|dog|kuromi|melody|sanrio)/.test(document.body.className),
     'class="' + document.body.className + '"');
 
   console.log('[设置面板 / 取色入口]');
@@ -120,7 +122,7 @@ const isHidden = (el) => !el || el.classList.contains('hidden');
   check('【glass 主题下取色面板也可见（旧版隐藏→用户找不到选色）】', !isHidden(box),
     'class="' + (box ? box.className : '') + '"');
   const themeSel = $('themeSelect');
-  check('主题下拉栏存在且选项 = 10（含三丽鸥混合）', !!themeSel && themeSel.options.length === 10,
+  check('主题下拉栏存在且选项 = 10（v2.4.0 起透明主题下线）', !!themeSel && themeSel.options.length === 10,
     'options=' + (themeSel ? themeSel.options.length : 'null'));
   /* 下拉切换助手：设值 + 派发 change（v2.2.2 起主题切换走 select） */
   const pickTheme = async (t) => {
@@ -188,7 +190,7 @@ const isHidden = (el) => !el || el.classList.contains('hidden');
     const fixed = ['miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'].indexOf(t) >= 0;
     await pickTheme(t);
     const cls = document.body.className;
-    check('【' + t + '】主题类生效', t === 'glass' ? !/theme-/.test(cls) : cls.includes('theme-' + t), 'class="' + cls + '"');
+    check('【' + t + '】主题类生效', t === 'glass' ? /(^| )theme-glass( |$)/.test(cls) : cls.includes('theme-' + t), 'class="' + cls + '"');
     check('【' + t + '】取色面板' + (fixed ? '隐藏（固定配色）' : '可见'), fixed ? isHidden(box) : !isHidden(box));
     if (!fixed) {
       const b3 = rootVar('--md3-primary');
