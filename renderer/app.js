@@ -128,6 +128,8 @@ const API = window.widgetAPI || (function () {
     /* 明暗模式 + 自定义背景（v2.4.0），与 main.js 的 DEFAULT_CONFIG 对齐 */
     appearance: 'light',
     background: { enabled: false, path: '', blur: 0, mask: 0, scale: 100, offsetX: 50, offsetY: 50, fit: 'cover' },
+    /* 图标外观（v2.4.2），与 main.js 的 DEFAULT_CONFIG 对齐 */
+    iconFit: 'cover', iconBorder: 'glass',
     cornerRadius: null,
     /* 与 main.js 的首次启动种子一致：只有一个空的「希沃应用」分组 */
     groups: [
@@ -157,7 +159,7 @@ const API = window.widgetAPI || (function () {
     selectImage: () => Promise.resolve({ path: 'demo', url: DEMO_ICON }),
     getEnv: () => Promise.resolve({ transparent: true, platform: 'browser', release: '0' }),
     // 关于界面：预览模式没有主进程，版本号给个占位；链接用新窗口模拟
-    getAppVersion: () => Promise.resolve('2.4.1'),
+    getAppVersion: () => Promise.resolve('2.4.2'),
     openExternal: (url) => { window.open(url, '_blank'); return Promise.resolve(true); },
     // 预览模式取不到真实壁纸：返回 null，让 #envLayer 用内置渐变基底，
     // MD3 则退回 CSS 里的 baseline 配色
@@ -444,6 +446,157 @@ function resolveIcon(it) {
   return { type: 'svg', value: ICONS[it.icon] || 'i-star' };
 }
 
+/* ---------- 图标外观（v2.4.2，全局设置） ----------
+ * 两个开关：
+ *   iconFit    'cover'=裁剪（默认）| 'contain'=内部。写进 --ic-fit，
+ *              CSS 里只给 `img` 用 —— 预设 SVG 与自定义字符是矢量/文字，没有裁的概念。
+ *   iconBorder 'glass'=玻璃白边（默认）| 'auto'=自动取色 | 'none'=透明。
+ *              写进 body 的 ic-auto / ic-none 状态类（两个都不挂 = 原来的样子）。
+ *              ※ 挂 body 而不是 #widget：图标网格在 #widget 里，而图标编辑弹窗
+ *              #itemModal 是 #widget 的兄弟节点 —— 只挂 #widget 的话弹窗预览不跟着变，
+ *              用户得保存完才知道图裁成什么样。
+ *
+ * 「自动取色」的颜色由主进程算（IPC get-icon-colors，一次批量拿全），缓存在 iconColors。
+ * 为什么不每个图标一次往返：首帧就会先画一圈主题色再跳成图片色，那种"掉画质"式的闪
+ * 正是这个项目一路在躲的毛病。 */
+const iconColors = new Map();       // 图标路径 → '#rrggbb' | null
+let iconColorsInFlight = null;      // 正在跑的取色批次（Promise），用来串行化而不是丢掉
+
+function iconPathsInUse() {
+  const out = [];
+  (config.groups || []).forEach((g) => (g.items || []).forEach((it) => {
+    if (it.iconPath && out.indexOf(it.iconPath) < 0) out.push(it.iconPath);
+  }));
+  return out;
+}
+
+/** 向主进程要若干图标的主色（已缓存过的跳过）。返回是否补到了新数据。
+ *
+ * 注意 这里**不能**用一个布尔标志"有批次在跑就直接 return"：那样并发的刷新会被
+ * 静默丢掉 —— 比如切到自动取色的同时刚好保存了一个新图标，第二次调用什么都没做，
+ * 图标就一直是主题色。正确做法是等前一批落地，再按差集算自己这批。 */
+async function fetchIconColors(paths) {
+  if (typeof API.getIconColors !== 'function') return false;
+  if (iconColorsInFlight) { try { await iconColorsInFlight; } catch (e) { /* 忽略，下面按差集重算 */ } }
+  const want = (paths || []).filter((p) => p && !iconColors.has(p));
+  if (!want.length) return false;
+
+  let got = {};
+  iconColorsInFlight = (async () => {
+    try { got = (await API.getIconColors(want)) || {}; } catch (e) { got = {}; }
+  })();
+  try { await iconColorsInFlight; } finally { iconColorsInFlight = null; }
+
+  want.forEach((p) => {
+    // 取不到色也要记成 null：否则每次 render 都要重问一遍主进程（那些图永远取不到色）
+    iconColors.set(p, got[p] || null);
+  });
+  return true;
+}
+
+/** 补齐配置里所有图片图标的主色 */
+function ensureIconColors() { return fetchIconColors(iconPathsInUse()); }
+
+/** 把 '#rrggbb' 拆成描边/外发光/底色三个变量要的写法；不是 6 位 hex 就返回 null */
+function iconColorVars(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return {
+    ring: '#' + m[1].toLowerCase(),
+    glow: 'rgba(' + r + ', ' + g + ', ' + b + ', 0.45)',
+    tint: 'rgba(' + r + ', ' + g + ', ' + b + ', 0.20)'
+  };
+}
+
+/** 把主色写到某个图标元素上。取不到色就**一个变量都不写**，让 CSS 的回退链
+ *  （--t-accent → :root 的 --accent）接手，退回当前主题的强调色。 */
+function applyIconColorVars(el, path) {
+  if (!el) return;
+  const vars = iconColorVars(iconColors.get(path));
+  if (!vars) {
+    el.style.removeProperty('--ic-ring-c');
+    el.style.removeProperty('--ic-glow');
+    el.style.removeProperty('--ic-tint');
+    return;
+  }
+  el.style.setProperty('--ic-ring-c', vars.ring);
+  el.style.setProperty('--ic-glow', vars.glow);
+  el.style.setProperty('--ic-tint', vars.tint);
+}
+
+/** 把填充方式与边框模式写到 DOM 上（只写状态，不管颜色够不够） */
+function applyIconLook() {
+  const fit = config.iconFit === 'contain' ? 'contain' : 'cover';
+  /* --ic-fit 挂 body，不挂 #widget：图标编辑弹窗 #itemModal 是 #widget 的**兄弟**
+   * 节点，自定义属性只沿 DOM 往下继承，挂 #widget 的话弹窗里的预览读不到这个值。
+   * （挂自定义属性和挂状态类不是一回事 —— 它不会像裸类名规则那样误伤祖先。） */
+  document.body.style.setProperty('--ic-fit', fit);
+  /* 边框模式用状态类，且必须挂 body：理由同上（要同时管到图标网格与弹窗预览）。 */
+  const bd = config.iconBorder === 'auto' ? 'auto'
+    : config.iconBorder === 'none' ? 'none' : 'glass';
+  document.body.classList.toggle('ic-auto', bd === 'auto');
+  document.body.classList.toggle('ic-none', bd === 'none');
+}
+
+/** 只刷新图标外观，**不重建 DOM**。
+ * render() 会给每个格子加 t-enter 入场动画，切个开关就整套重放一遍会很跳；
+ * 所以这里走"就地改变量"这条路。 */
+function refreshIconLook() {
+  applyIconLook();
+  const auto = config.iconBorder === 'auto';
+  document.querySelectorAll('.item-icon img').forEach((img) => {
+    const el = img.parentElement;
+    if (!el) return;
+    const path = img.getAttribute('src');
+    if (auto) applyIconColorVars(el, path);
+    else {
+      el.style.removeProperty('--ic-ring-c');
+      el.style.removeProperty('--ic-glow');
+      el.style.removeProperty('--ic-tint');
+    }
+  });
+  // 图标编辑弹窗里的预览：选图时就能看出裁成什么样、边框什么色
+  const prev = $('iconPreview');
+  if (prev) {
+    const src = prev.querySelector('img');
+    if (auto && src) applyIconColorVars(prev, src.getAttribute('src'));
+    else {
+      prev.style.removeProperty('--ic-ring-c');
+      prev.style.removeProperty('--ic-glow');
+      prev.style.removeProperty('--ic-tint');
+    }
+  }
+}
+
+function setIconFit(v) {
+  const next = v === 'contain' ? 'contain' : 'cover';
+  if (config.iconFit === next) return;
+  config.iconFit = next;
+  syncSettingsControls();
+  refreshIconLook();
+  persist();
+  toast(next === 'contain' ? '图标改为完整显示（内部）' : '图标改为裁剪填满');
+}
+
+function setIconBorder(v) {
+  const next = v === 'auto' ? 'auto' : v === 'none' ? 'none' : 'glass';
+  if (config.iconBorder === next) return;
+  config.iconBorder = next;
+  syncSettingsControls();
+  refreshIconLook();
+  persist();
+  if (next === 'auto') {
+    // 主色是异步算的：算完再刷一次，首屏先按主题强调色顶上
+    ensureIconColors().then((added) => { if (added) refreshIconLook(); });
+  }
+  toast(next === 'auto' ? '图标边框跟随各自图标的主色'
+    : next === 'none' ? '图标边框已透明' : '图标边框改回玻璃白边');
+}
+
 /* ---------- 渲染 ---------- */
 function render() {
   titleInput.value = config.title || 'FClassPal';
@@ -480,6 +633,8 @@ function render() {
         img.src = ic.value;
         img.alt = it.name || '';
         icon.appendChild(img);
+        // 自动取色：颜色已经在缓存里就同步写上（首帧就带色，不会先白边后变色）
+        if (config.iconBorder === 'auto') applyIconColorVars(icon, ic.value);
       } else if (ic.type === 'svg') {
         icon.innerHTML = svgIcon(ic.value);
       } else {
@@ -1695,6 +1850,22 @@ function syncSettingsControls() {
       b.setAttribute('aria-pressed', b.dataset.appearance === ap ? 'true' : 'false');
     });
   }
+  // 图标填充 / 图标边框（v2.4.2）：同样是各管各的 seg，靠 data-* 区分
+  const fSeg = $('iconFitSeg');
+  if (fSeg) {
+    const fit = config.iconFit === 'contain' ? 'contain' : 'cover';
+    fSeg.querySelectorAll('.seg-btn').forEach((b) => {
+      b.setAttribute('aria-pressed', b.dataset.fit === fit ? 'true' : 'false');
+    });
+  }
+  const bSeg = $('iconBorderSeg');
+  if (bSeg) {
+    const bd = config.iconBorder === 'auto' ? 'auto'
+      : config.iconBorder === 'none' ? 'none' : 'glass';
+    bSeg.querySelectorAll('.seg-btn').forEach((b) => {
+      b.setAttribute('aria-pressed', b.dataset.border === bd ? 'true' : 'false');
+    });
+  }
   const manual = mode === 'manual';
   const row = $('manualRow');
   const sw = $('swatches');
@@ -1916,6 +2087,24 @@ if (appearanceSeg) {
   });
 }
 
+/* ---------- 图标外观的事件绑定（v2.4.2） ---------- */
+const iconFitSeg = $('iconFitSeg');
+if (iconFitSeg) {
+  iconFitSeg.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if (!btn || !btn.dataset.fit) return;
+    setIconFit(btn.dataset.fit);
+  });
+}
+const iconBorderSeg = $('iconBorderSeg');
+if (iconBorderSeg) {
+  iconBorderSeg.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if (!btn || !btn.dataset.border) return;
+    setIconBorder(btn.dataset.border);
+  });
+}
+
 if ($('setBgOn')) {
   $('setBgOn').addEventListener('change', async (e) => {
     const want = e.target.checked;
@@ -2028,6 +2217,29 @@ function updateIconPreview() {
     if (iconState.char) prev.textContent = iconState.char;      // 自定义字符
     else prev.innerHTML = svgIcon(ICONS[iconState.preset] || 'i-star');  // 预设 SVG
   }
+  // 自动取色：刚选的这张图主色多半还没算过，去要一次，算完再刷预览
+  if (config.iconBorder === 'auto') syncPreviewIconColor();
+}
+
+/** 图标编辑弹窗里那张预览的自动取色。
+ * 注意 预览用的图**还没保存**，不在配置里 —— 所以不能走 ensureIconColors
+ * （它只认已存在的快捷方式），得直接把这一张的路径发过去。 */
+function syncPreviewIconColor() {
+  const prev = $('iconPreview');
+  if (!prev) return;
+  const clear = () => {
+    prev.style.removeProperty('--ic-ring-c');
+    prev.style.removeProperty('--ic-glow');
+    prev.style.removeProperty('--ic-tint');
+  };
+  const path = iconState.path;
+  if (!path) { clear(); return; }
+  if (iconColors.has(path)) { applyIconColorVars(prev, path); return; }
+  clear();   // 先按主题强调色顶上
+  fetchIconColors([path]).then(() => {
+    const p = $('iconPreview');
+    if (p && iconState.path === path) applyIconColorVars(p, path);
+  });
 }
 
 function setIconState(preset, char, path) {
@@ -2222,6 +2434,10 @@ $('btnItemSave').addEventListener('click', () => {
   itemModal.classList.add('hidden');
   render();
   toast('已保存');
+  // 刚保存的图标如果带图，主色可能还没算过：算完补刷一次（只在自动取色模式下有意义）
+  if (config.iconBorder === 'auto') {
+    ensureIconColors().then((added) => { if (added) refreshIconLook(); });
+  }
 });
 
 $('btnItemDelete').addEventListener('click', () => {
@@ -2501,6 +2717,9 @@ if (typeof API.onTrayAction === 'function') {
   // 明暗模式要在第一帧就位（和主题同理，否则会看到"先亮后暗"的闪一下）
   if (config.appearance !== 'dark') config.appearance = 'light';
   applyAppearance(config.appearance);
+  // 图标外观（v2.4.2）：老配置里没有这两个键，非法值一律收回默认
+  if (config.iconFit !== 'contain') config.iconFit = 'cover';
+  if (config.iconBorder !== 'auto' && config.iconBorder !== 'none') config.iconBorder = 'glass';
   syncSettingsControls();
   // 折射基底：自定义背景图优先，其次桌面壁纸（取不到就用内置渐变）
   loadCustomBackground();
@@ -2513,6 +2732,13 @@ if (typeof API.onTrayAction === 'function') {
     updateRealtimeInfo('静态壁纸', 'ok');
   }
   applyLocked();     // 锁定时隐藏缩放手柄、切换菜单文案
+  /* 图标外观（v2.4.2）：填充与边框状态必须在第一帧就位。
+   * 自动取色模式下先把主色算完再 render —— 否则首帧会先画一圈主题强调色、
+   * 下一帧才跳成图片自己的颜色，看上去就是"闪了一下"（这个项目一直在躲这种毛病）。 */
+  applyIconLook();
+  if (config.iconBorder === 'auto') {
+    try { await ensureIconColors(); } catch (e) { /* 取不到色 → 走主题强调色回退 */ }
+  }
   render();
   refreshUsb();   // 启动时先拉一次，已插着的 U 盘要立刻显示出来
 

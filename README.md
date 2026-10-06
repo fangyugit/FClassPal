@@ -2,7 +2,7 @@
 
 > FClassPal是一个主要为班级大屏打造的桌面快捷方式启动器小部件 可用于替代希沃管家助手/桌面助手
 
-![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-687%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.4.1-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
+![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-756%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.4.2-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **FClassPal**是一个常驻桌面的启动器小部件，用于替代希沃管家助手/桌面助手 把常用的应用、文件、文件夹和网页钉在桌面一角，顺手管理 U 盘的弹出。无任务栏图标——右键或长按唤醒菜单，其余时间安静地贴在桌面上。
 
@@ -13,6 +13,7 @@
 ## 功能
 
 - **快捷方式管理**：应用（.exe）/ 文件 / 文件夹 / 网页四种类型；exe 自动提取图标，也可自选图片或字符；支持分组
+- **图标外观**：填充方式可选「内部」（图片完整显示，带字的图不被切）或「裁剪」（填满圆形裁掉多余）；边框可选「自动取色」（描边 / 外发光 / 底色都取这张图自己的主色）、「透明」或「玻璃白边」。预设图标与字符图标没有自己的图，取色时退回当前主题的强调色
 - **U 盘管理**：自动列出即插 U 盘，一键打开；安全弹出采用五层降级策略（设备节点 → 卷级 IOCTL → Shell 动词 → WMI 卸载 → mountvol），每层都校验盘符真的消失，全失败时给出一键「管理员重试」
 - **窗口控制**：透明度、圆角弧度（8–40px）、尺寸、置底、锁定位置、开机自启、隐藏到托盘、隐藏任务栏图标
 - **明暗模式**：十套主题都支持明亮 / 暗色两套观感。动态配色主题走 Monet 官方暗色方案重算整套角色（主色色相守恒，主题身份色不漂）；固定配色主题只压暗表面、绝不动强调色——Kitty 在暗色下依然是粉的
@@ -62,25 +63,33 @@
 - **拖动**：Pointer Events + `screenX/screenY` 算位移 + rAF 合并 + 主进程 `setPosition`；拖动期间主进程暂停回推 bounds，避免自激振荡
 - **U 盘弹出**：`CM_Get_Parent` 上溯到 USB 父设备节点；卷级走 `FSCTL_LOCK_VOLUME` → `IOCTL_STORAGE_MEDIA_REMOVAL` → `FSCTL_DISMOUNT_VOLUME` → `IOCTL_STORAGE_EJECT_MEDIA`，可移动卷免管理员
 - **自定义背景图**：图层与壁纸层同层（`z-index:-1`）但排在它之后，仍在折射层之下，所以 `backdrop-filter` 采样到的就是这张图；白蒙版是同一元素上的第二层 `background-image`，模糊走 `filter: blur()`，缩放走 `transform: scale()`（带 `blur/160` 放大补偿）
+- **图标取色**：与壁纸取色同一套 Monet 引擎，但关掉 `Score` 的候选过滤（图标多是低饱和/深色，默认过滤会全部拒掉、塌回回退紫），并跳过透明像素（图标 PNG 带透明留白，一起统计会让主色恒为黑，每个图标都套一圈黑边）；一次 IPC 批量取全部图标的主色，首帧即着色，避免"先主题色再跳图片色"的闪烁
 
-## 测试（687 项断言，六层验证）
+## 测试（756 项断言，八层验证）
 
 | 层 | 命令 | 数量 | 说明 |
 |---|---|---|---|
-| 源码层 | `node smoke-test.js` | 304 | jsdom 跑 renderer 逻辑 |
-| 打包层 | `node _check.js` | 192 | 从 `dist/win-unpacked/resources/app.asar` 解包逐项断言 |
+| 源码层 | `node smoke-test.js` | 326 | jsdom 跑 renderer 逻辑 |
+| 打包层 | `node _check.js` | 216 | 从 `dist/win-unpacked/resources/app.asar` 解包逐项断言 |
 | 取色层 | `node _rt/_palettecheck.js` | 50 | 真 `vendor/monet.js` 产出的 palette 喂真 `renderer/app.js` |
 | 真机取色 | `electron _rt/_monetcheck.js` | 48 | 真 Electron + 合成壁纸验 Monet（含明暗两套方案） |
 | 真机图形 | `electron _rt/_garblecheck.js` | 64 | 真实产品页逐主题验 `<body>` 计算样式干净 + 81 点命中测试 |
 | 真机背景 | `electron _rt/_bgcheck.js` | 22 | 拉起真 `main.js` 验背景图真的能加载、响应不卡 |
+| 真机图标 | `electron _rt/_iconcheck.js` | 23 | 合成测试图验取色 / 描边 / 外发光 / 底色 / 填充，读 computed 样式 |
 | 拖动落盘 | `electron _rt/_dragcheck.js` | 7 | 真 Electron 验 saveBounds |
 
 全部绿了才交付 exe。
 
+想在构建前预跑打包层的断言（省掉一轮打包往返）：
+
+```bash
+node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，只换读文件的方式
+```
+
 
 ## 下载
 
-免安装便携版（Windows x64，约 94MB）：**[FClassPal-2.4.1.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.4.1/FClassPal-2.4.1.exe)** · [全部版本](https://github.com/fangyugit/FclassPal/releases)
+免安装便携版（Windows x64，约 94MB）：**[FClassPal-2.4.2.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.4.2/FClassPal-2.4.2.exe)** · [全部版本](https://github.com/fangyugit/FclassPal/releases)
 
 改动记录见 [CHANGELOG.md](CHANGELOG.md)
 
@@ -114,8 +123,9 @@ FclassPal/
 │   └── lg-displacement-map.js   # 预烘焙折射位移贴图（MIT © 2025 MAX ROVENSKY）
 │   └── theme/           # 角色主题贴图素材
 ├── vendor/monet.js      # esbuild 预打包的 Material You 取色（CJS）
-├── smoke-test.js        # 源码层回归（304 项）
-├── _check.js            # 打包层回归（192 项）
+├── smoke-test.js        # 源码层回归（326 项）
+├── _check.js            # 打包层回归（216 项）
+├── _mksrccheck.js       # 由 _check.js 生成源码版 _check_src.js（构建前预跑）
 ├── CHANGELOG.md         # 更新日志
 ├── _rt/                 # 运行时验证与素材管线脚本
 ├── tools/               # 托盘图标生成

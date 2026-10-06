@@ -1,7 +1,6 @@
 const path = require('path');
 const fs = require('fs');
 const { extractFile } = require('@electron/asar');
-const asar = path.join('dist', 'win-unpacked', 'resources', 'app.asar');
 const main = fs.readFileSync('main.js','utf-8').toString();
 const pre = fs.readFileSync('preload.js','utf-8').toString();
 const css = fs.readFileSync('renderer/style.css','utf-8').toString();
@@ -43,6 +42,9 @@ const themeTokens = (t) => {
 const moveBody = ruleBody('body.is-moving .glass-warp');
 const resizeBody = ruleBlockFrom('body.is-resizing .glass-warp');
 const srcPkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+// README / CHANGELOG 不在 asar 里（不是运行时文件），从磁盘读，用来防"发版忘了同步文档"
+const readme = (() => { try { return fs.readFileSync('README.md', 'utf8'); } catch (e) { return ''; } })();
+const changelog = (() => { try { return fs.readFileSync('CHANGELOG.md', 'utf8'); } catch (e) { return ''; } })();
 const checks = [
   ['html: SVG sprite svgDefs', html.includes('svgDefs')],
   ['html: 光斑宿主 sheen', html.includes('id="sheen"')],
@@ -333,7 +335,7 @@ const checks = [
      *   'renderer/theme/kitty/x.png' 报 not found，'renderer\theme\kitty\x.png' 才行）。 */
     ['kitty-head.png', 'kitty-full.png', 'kitty-sit.png', 'kitty-wave.png', 'kitty-ballet.png', 'kitty-kimono.png'].every((f) => {
       try {
-        return extractFile(asar, 'renderer\\theme\\kitty\\' + f).length > 1000;
+        return fs.readFileSync('renderer/theme/kitty/' + f,'utf-8').length > 1000;
       } catch (e) { return false; }
     })],
   ['多主题: 玉桂狗 v2.2 = 固定蓝白配色 + 真实裁剪图片（头像/飞机/眨眼）',
@@ -346,7 +348,7 @@ const checks = [
   ['资产: dog 图片进了 asar（v2.2.2 含单车/草莓）',
     ['cinna-head.png', 'cinna-plane.png', 'cinna-wink.png', 'cinna-bike.png', 'cinna-berry.png'].every((f) => {
       try {
-        return extractFile(asar, 'renderer\\theme\\dog\\' + f).length > 500;
+        return fs.readFileSync('renderer/theme/dog/' + f,'utf-8').length > 500;
       } catch (e) { return false; }
     })],
   ['多主题: 库洛米 v2.2 = 固定紫粉配色（#8E5BC8/#F06292）+ 真实裁剪图片',
@@ -361,7 +363,7 @@ const checks = [
   ['资产: kuromi 图片进了 asar（v2.2.2 含躺姿/伤心）',
     ['kuromi-stand.png', 'kuromi-love.png', 'kuromi-face.png', 'kuromi-head.png', 'kuromi-lie.png', 'kuromi-cry.png'].every((f) => {
       try {
-        return extractFile(asar, 'renderer\\theme\\kuromi\\' + f).length > 500;
+        return fs.readFileSync('renderer/theme/kuromi/' + f,'utf-8').length > 500;
       } catch (e) { return false; }
     })],
   ['多主题: 美乐蒂 v2.2 = 固定粉白配色（#EC6FA8）+ 真实裁剪图片',
@@ -374,7 +376,7 @@ const checks = [
   ['资产: melody 图片进了 asar（v2.2.2 含刺绣）',
     ['melody-full.png', 'melody-cheer.png', 'melody-head.png', 'melody-emb.png'].every((f) => {
       try {
-        return extractFile(asar, 'renderer\\theme\\melody\\' + f).length > 500;
+        return fs.readFileSync('renderer/theme/melody/' + f,'utf-8').length > 500;
       } catch (e) { return false; }
     })],
   ['多主题: 装饰不串（只有 Fluent 有噪点、md3/harmony 标题栏无贴图）',
@@ -439,8 +441,8 @@ const checks = [
     fs.existsSync('build/icon.ico') && fs.existsSync('build/icon.png')],
   ['main: BrowserWindow 挂 icon（开发模式/alt-tab 也有图标）',
     /icon:\s*fs\.existsSync\(path\.join\(__dirname, 'build', 'icon\.ico'\)\)/.test(main)],
-  ['产物: 便携 exe 已生成（v2.4.1）', fs.existsSync('dist/FClassPal-2.4.1.exe')],
-  ['配置: 版本号 2.4.1', srcPkg.version === '2.4.1'],
+  ['产物: 便携 exe 已生成（v2.4.2）', fs.existsSync('dist/FClassPal-2.4.2.exe')],
+  ['配置: 版本号 2.4.2', srcPkg.version === '2.4.2'],
   ['配置: 已移除 package.json description（exe 属性不再带描述）',
     srcPkg.description === undefined],
   ['author = YU（用户在远端改的大写）', srcPkg.author === 'YU'],
@@ -536,6 +538,112 @@ const checks = [
     /\.widget \{[\s\S]{0,900}?pointer-events:\s*auto/.test(css)],
   ['v2.4.0: 已下线主题回收（配置里存着 transparent 时收回 glass）',
     /if \(config\.theme === 'transparent'\) \{[\s\S]{0,80}?config\.theme = 'glass';/.test(main)],
+  ['★ v2.4.2 图标外观：新增两个状态标记类也在"裸类名①"守卫名单里',
+    // ic-auto / ic-none 挂在 body 上。写成裸 `.ic-auto{...}` 会命中 body 本身，
+    // 一旦那条规则带 position/pointer-events 就整片界面点不动（v2.4.1 真事故）
+    ['bg-custom', 'dark', 'dyn', 'lg-ready', 'over-light', 'preview', 'realtime',
+      'ic-auto', 'ic-none']
+      .every((m) => !new RegExp('(^|,)\\s*\\.' + m.replace(/-/g, '\\-') + '\\s*(,|\\{)', 'm')
+        .test(css.replace(/\/\*[\s\S]*?\*\//g, ''))) &&
+    /body\.ic-auto \.item-icon\.item-icon,/.test(css) &&
+    /body\.ic-none \.item-icon\.item-icon,/.test(css)],
+  ['★ v2.4.2 图标外观：选择器刻意重复类名压过主题块（(0,3,1) > (0,2,1)，不靠文件顺序）',
+    /body\.ic-auto \.item-icon\.item-icon,\s*\nbody\.ic-auto \.icon-preview\.icon-preview \{/.test(css) &&
+    /body\.ic-none \.icon-preview\.icon-preview \{/.test(css)],
+  ['v2.4.2 图标外观：描边色回退链三层且末层是确定值（否者 border-color 计算期作废→currentColor）',
+    /border-color: var\(--ic-ring-c, var\(--t-accent, var\(--accent\)\)\)/.test(css) &&
+    /--t-accent/.test(css) && /--accent\s*:/.test(css)],
+  ['★ v2.4.2 外发光：drop-shadow 只给三个长度（它没有 spread，多写一个会静默作废整条 filter）',
+    // 真事故：写成 drop-shadow(0 5px 11px -2px var(--ic-glow)) →
+    // 解析期整条声明作废、不报错，computed filter 变成 none，外发光凭空消失。
+    // 别用 [^)]* 去切参数：var(--a, var(--b, var(--c))) 里第一个 ) 就把串截断了。
+    // 这里直接查"四个连续长度"（规范里 drop-shadow 最多三个长度，第四个就是 spread）。
+    // 注意别去 indexOf 找"第一条 drop-shadow"：style.css 里早有别的元素在用
+    // drop-shadow(0 2px 4px rgb(...))，抓到它就会得到一串无关数字。
+    !/drop-shadow\(\s*(?:-?(?:\d+|\d*\.\d+)(?:px|r?em|%|vw|vh|vmin|vmax|ch|ex|pt|pc|cm|mm|in|q)?\s+){3}-?(?:\d+|\d*\.\d+)(?:px|r?em|%|vw|vh|vmin|vmax|ch|ex|pt|pc|cm|mm|in|q)?(?=[\s,)])/.test(css) &&
+    /filter: drop-shadow\(0 5px 11px var\(--ic-glow, var\(--t-accent, var\(--accent\)\)\)\)/.test(css)],
+  ['v2.4.2 图标外观：底色层 absolute（不参与 item-icon 的 flex 居中排布）',
+    /body\.ic-auto \.item-icon::before,[\s\S]{0,120}?position: absolute;/.test(css)],
+  ['v2.4.2 图标外观：img 的 object-fit 读 --ic-fit（主界面 + 弹窗预览两处）',
+    (css.match(/object-fit: var\(--ic-fit, cover\)/g) || []).length >= 2],
+  ['★ v2.4.2：--ic-fit 写在 body 上（#itemModal 是 #widget 的兄弟，挂 #widget 弹窗读不到）',
+    /document\.body\.style\.setProperty\('--ic-fit', fit\)/.test(app) &&
+    !/widget\.style\.setProperty\('--ic-fit'/.test(app)],
+  ['v2.4.2 图标外观：状态类 toggle 到 body 且三态互斥（glass 两不挂）',
+    /document\.body\.classList\.toggle\('ic-auto', bd === 'auto'\)/.test(app) &&
+    /document\.body\.classList\.toggle\('ic-none', bd === 'none'\)/.test(app)],
+  ['v2.4.2 图标外观：取色结果要三元组齐全（ring/glow/tint），不是只改一个 accent',
+    /ring: '#' \+ m\[1\]\.toLowerCase\(\)/.test(app) &&
+    /glow: 'rgba\(' \+ r \+ ', ' \+ g \+ ', ' \+ b \+ ', 0\.45\)'/.test(app) &&
+    /tint: 'rgba\(' \+ r \+ ', ' \+ g \+ ', ' \+ b \+ ', 0\.20\)'/.test(app)],
+  ['★ v2.4.2 图标取色：并发批次的刷新不能丢（Promise 串行化 + 落地后按差集重算）',
+    // 用布尔标志"有批次在跑就 return"会把并发刷新静默吞掉：
+    // 切到自动取色的同时保存了新图标 → 第二次调用啥也没干 → 图标一直是主题色
+    /let iconColorsInFlight = null/.test(app) &&
+    /if \(iconColorsInFlight\) \{ try \{ await iconColorsInFlight; \}/.test(app) &&
+    /const want = \(paths \|\| \[\]\)\.filter\(\(p\) => p && !iconColors\.has\(p\)\)/.test(app) &&
+    !/iconColorsPending/.test(app)],
+  ['v2.4.2 图标取色：取不到色也记 null 缓存（避免每次 render 重问主进程）',
+    /iconColors\.set\(p, got\[p\] \|\| null\)/.test(app)],
+  ['v2.4.2 图标外观：切开关走就地刷新，不重建 DOM（否则重放 t-enter 入场动画）',
+    // render() 会给每个格子加 t-enter 入场动画，切个开关整套重放会很跳。
+    // ★ 判"函数体里有没有 render()"不能直接用 [\s\S]{0,N} 开窗：
+    //   setIconBorder 后面隔着几十行就是 `/* ---- 渲染 ---- */ function render() {`，
+    //   窗口一大就把下一个函数的 render() 数进来，得到永远为红的假失败。
+    //   这里按"函数头 → 第一个行首 }"切出真正的函数体再判。
+    (function () {
+      const fnBody = (name) => {
+        const i = app.indexOf('function ' + name + '(');
+        if (i < 0) return null;
+        const j = app.indexOf('\n}', i);
+        return j < 0 ? null : app.slice(i, j);
+      };
+      const fit = fnBody('setIconFit'), bd = fnBody('setIconBorder'), rf = fnBody('refreshIconLook');
+      if (fit === null || bd === null || rf === null) return false;
+      return !/\brender\(\)/.test(fit) && !/\brender\(\)/.test(bd) && !/\brender\(\)/.test(rf);
+    })() &&
+    /function refreshIconLook\(\)/.test(app) &&
+    /config\.iconFit = next;\s*\n\s*syncSettingsControls\(\);\s*\n\s*refreshIconLook\(\);\s*\n\s*persist\(\);/.test(app) &&
+    /config\.iconBorder = next;\s*\n\s*syncSettingsControls\(\);\s*\n\s*refreshIconLook\(\);\s*\n\s*persist\(\);/.test(app)],
+  ['v2.4.2 图标外观：首帧就带着颜色渲染（init 里 auto 模式先 await 取色再 render）',
+    /applyIconLook\(\);[\s\S]{0,220}?await ensureIconColors\(\)[\s\S]{0,120}?render\(\);/.test(app)],
+  ['v2.4.2 图标外观：弹窗预览也用未保存的图去取色（选图即见效果）',
+    /function syncPreviewIconColor\(\)/.test(app) &&
+    /fetchIconColors\(\[path\]\)/.test(app) &&
+    /syncPreviewIconColor\(\)/.test(app)],
+  ['v2.4.2 主进程：图标取色跳过透明像素（否则主色恒为黑，每个图标都套黑圈）',
+    /if \(buf\[i \+ 3\] < 8\) continue;/.test(main) && /ICON_SAMPLE_DIM = 32/.test(main)],
+  ['v2.4.2 主进程：图标取色关掉 Score 的 filter（默认过滤会拒绝低饱和候选→塌回回退紫）',
+    /filter: false/.test(main) && /ipcMain\.handle\('get-icon-colors'/.test(main) &&
+    /function iconColorFromFile/.test(main)],
+  ['v2.4.2 主进程：取色缓存键含 mtime（换图立刻重新取色）',
+    /iconColorKey/.test(main) && /mtimeMs/.test(main)],
+  ['v2.4.2 preload 暴露 getIconColors；app.js 只在函数存在时才调',
+    /getIconColors: \(paths\) => ipcRenderer\.invoke\('get-icon-colors', paths\)/.test(pre) &&
+    /typeof API\.getIconColors !== 'function'/.test(app)],
+  ['v2.4.2 配置项：iconFit / iconBorder 默认值（cover / glass，与老版本观感一致）',
+    /iconFit: 'cover',/.test(mainNC) && /iconBorder: 'glass',/.test(mainNC)],
+  ['v2.4.2 配置项：渲染层只做"非法值收回默认"，不另立一套默认值（避免两边打架）',
+    /if \(config\.iconFit !== 'contain'\) config\.iconFit = 'cover';/.test(app) &&
+    /if \(config\.iconBorder !== 'auto' && config\.iconBorder !== 'none'\) config\.iconBorder = 'glass';/.test(app)],
+  ['v2.4.2 预览 mock 与 DEFAULT_CONFIG 对齐（缺键会让面板读出一堆空值）',
+    /iconFit: 'cover', iconBorder: 'glass',/.test(app)],
+  ['v2.4.2 UI：设置面板两组分段控件 + 图标编辑弹窗预览容器',
+    html.includes('id="iconFitSeg"') && html.includes('id="iconBorderSeg"') &&
+    html.includes('data-fit="contain"') && html.includes('data-fit="cover"') &&
+    html.includes('data-border="auto"') && html.includes('data-border="none"') &&
+    html.includes('id="iconPreview"')],
+  ['★ v2.4.2 用户报的按钮溢出：选择图片 / 清除 移出 30×30 的 .size-controls',
+    // .size-controls 是 30×30 的方形图标按钮容器，被复用去装文字按钮后
+    // `.size-controls button`(0,1,1) 压过 `.text-btn`(0,1,0)，又把按钮挤成 30px 宽，
+    // 而容器没有 overflow:hidden → 文字直接溢出到框外
+    /\.btn-row \{ display: flex;/.test(css) &&
+    /\.size-controls button\.text-btn \{ width: auto; height: auto; \}/.test(css) &&
+    /\.text-btn \{[\s\S]{0,300}?white-space: nowrap;/.test(css) &&
+    !/<div class="size-controls" id="bgRow"/.test(html)],
+  ['v2.4.2: README / CHANGELOG 已同步到本版（防"发版忘了改文档"）',
+    /2\.4\.2/.test(readme) && /CHANGELOG\.md/.test(readme) &&
+    /##\s*v2\.4\.2/.test(changelog) && /2\.4\.2/.test(changelog)],
   ['v2.3.2: 进度条跟随（--sl-fill 不在 input 上声明 + syncRangeFill 清元素自身陈旧变量）',
     !/body\.theme-glass input\[type="range"\]\s*\{[^}]*--sl-fill\s*:/.test(css) &&
     /el\.style\.removeProperty\('--sl-fill'\)/.test(app) &&
@@ -559,3 +667,5 @@ checks.forEach((c) => {
   if (!ok) bad++;
 });
 process.exit(bad ? 1 : 0);
+
+// ── 本文件由 _mksrccheck.js 从 _check.js 自动生成，请勿手工编辑 ──

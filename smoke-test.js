@@ -577,7 +577,7 @@ function themeTokens(theme) {
    * 只写 `.标记类`（逗号或花括号紧跟其后）的规则 —— 那种写法必然命中 body。
    * 图层元素改名 .bg-layer、样式改用 #bgCustom（id 永不可能命中 body）。 */
   const BODY_MARKERS = ['bg-custom', 'dark', 'dyn', 'lg-ready', 'over-light',
-    'preview', 'realtime'];
+    'preview', 'realtime', 'ic-auto', 'ic-none'];
   const cssNoComment = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const bareMarkers = BODY_MARKERS.filter((m) => new RegExp(
     '(^|,)\\s*\\.' + m.replace(/-/g, '\\-') + '\\s*(,|\\{)', 'm').test(cssNoComment));
@@ -590,6 +590,65 @@ function themeTokens(theme) {
     /class="bg-layer"/.test(html) && !/class="bg-custom"/.test(html));
   check('css: widget 显式收回点击权（pointer-events 会被继承，留一道兜底）',
     /\.widget \{[\s\S]{0,900}?pointer-events:\s*auto/.test(cssNoComment));
+  /* ---------- v2.4.2：图标填充方式 + 图标边框（自动取色 / 透明） ---------- */
+  check('main.js: 默认配置加了 iconFit / iconBorder（cover + glass = 原来的样子）',
+    /iconFit:\s*'cover'/.test(mainJs) && /iconBorder:\s*'glass'/.test(mainJs));
+  check('★ main.js: 图标取色跳过透明像素（透明留白是 0,0,0,0，算进去主色恒为黑、图标全被套黑边）',
+    /buf\[i \+ 3\] < 8\) continue/.test(mainJs) &&
+    /function iconColorFromFile/.test(mainJs));
+  check('main.js: 图标取色用 filter:false（不过滤低饱和候选，否则只剩兜底紫、跟图不像）',
+    /fallbackColorARGB:\s*fallback,\s*filter:\s*false/.test(mainJs));
+  check('main.js: 图标取色缓存带 mtime（同一路径换图不会拿到旧色）',
+    /function iconColorKey[\s\S]{0,240}?mtimeMs/.test(mainJs));
+  check('main.js + preload: 批量取色 IPC get-icon-colors / getIconColors 已接通',
+    /ipcMain\.handle\('get-icon-colors'/.test(mainJs) &&
+    /getIconColors:\s*\(paths\)\s*=>\s*ipcRenderer\.invoke\('get-icon-colors'/.test(preloadJs));
+  check('main.js: file:// URL 能转回本地路径（渲染层存的就是 file://）',
+    /fileURLToPath/.test(mainJs) && /function iconFileArg/.test(mainJs));
+  check('html: 设置面板有「图标填充」与「图标边框」两个分段控件',
+    /id="iconFitSeg"/.test(html) && /data-fit="cover"/.test(html) &&
+    /data-fit="contain"/.test(html) && /id="iconBorderSeg"/.test(html) &&
+    /data-border="auto"/.test(html) && /data-border="none"/.test(html));
+  check('app.js: setIconFit / setIconBorder / applyIconLook / refreshIconLook 齐备',
+    /function setIconFit/.test(js) && /function setIconBorder/.test(js) &&
+    /function applyIconLook/.test(js) && /function refreshIconLook/.test(js));
+  check('★ app.js: 切换图标外观走 refreshIconLook 而不是 render（render 会重放入场动画）',
+    /function setIconBorder[\s\S]{0,420}?refreshIconLook\(\)/.test(js) &&
+    /function setIconFit[\s\S]{0,420}?refreshIconLook\(\)/.test(js));
+  check('★ app.js: --ic-fit 与边框状态类都挂 body（弹窗是 #widget 的兄弟，挂 #widget 管不到预览）',
+    /document\.body\.style\.setProperty\('--ic-fit'/.test(js) &&
+    /document\.body\.classList\.toggle\('ic-auto'/.test(js));
+  check('app.js: 自动取色在首帧之前先取完色（否则先画主题色再跳成图片色 = 闪一下）',
+    /if \(config\.iconBorder === 'auto'\)[\s\S]{0,160}?await ensureIconColors\(\)[\s\S]{0,80}?render\(\)/.test(js));
+  check('app.js: 还没保存的预览图也能取到色（走 fetchIconColors，不是只认配置里的）',
+    /function syncPreviewIconColor[\s\S]{0,700}?fetchIconColors\(\[path\]\)/.test(js));
+  check('css: 图片填充从 --ic-fit 读，图标网格与弹窗预览都吃这个变量',
+    /\.item-icon img \{[\s\S]{0,220}?object-fit:\s*var\(--ic-fit, cover\)/.test(cssNoComment) &&
+    /\.icon-preview img \{[\s\S]{0,220}?object-fit:\s*var\(--ic-fit, cover\)/.test(cssNoComment));
+  check('★ css: 自动取色的回退链末端是确定值（自定义属性取不到值会让整条声明作废）',
+    /border-color:\s*var\(--ic-ring-c, var\(--t-accent, var\(--accent\)\)\)/.test(cssNoComment));
+  check('★ css: 图标描边规则重复一次类名提权（主题块同特异性且在文件后半段，不重复会输）',
+    /body\.ic-auto \.item-icon\.item-icon/.test(cssNoComment) &&
+    /body\.ic-none \.item-icon\.item-icon/.test(cssNoComment));
+  check('css: 自动取色用 drop-shadow 做外发光（不被 .item-icon 的 overflow:hidden 裁剪）',
+    /filter:\s*drop-shadow\([^;]*var\(--ic-glow/.test(cssNoComment));
+  check('★ css: drop-shadow 只能有三个长度（它没有 box-shadow 那样的扩张半径，多写一个整条 filter 就作废）',
+    /filter:\s*drop-shadow\(\s*(?:0|[\d.]+px)\s+(?:0|[\d.]+px)\s+(?:0|[\d.]+px)\s+var\(--ic-glow/.test(cssNoComment));
+  check('★ app.js: 取色批次串行化而不是"有批次在跑就丢掉"（否则并发刷新会被静默跳过）',
+    /if\s*\(iconColorsInFlight\)[\s\S]{0,160}?await iconColorsInFlight/.test(js));
+  check('css: 底色层是 absolute（否则会参与 .item-icon 的 flex 居中、把图标挤偏）',
+    /body\.ic-auto \.item-icon::before[\s\S]{0,220}?position:\s*absolute/.test(cssNoComment));
+  check('css: .icon-preview 有定位（底色层是 absolute，定位基准不能缺）',
+    /\.icon-preview \{[\s\S]{0,900}?position:\s*relative/.test(cssNoComment));
+
+  /* ---------- v2.4.1 补丁：文字按钮不得复用方形图标按钮的容器 ---------- */
+  check('★ 回归守卫：.size-controls 里不许再出现文字按钮（它写死 30×30，会把字挤到框外）',
+    !/class="size-controls"[^>]*>\s*<button[^>]*class="text-btn"/.test(html));
+  check('css: 文字按钮容器 .btn-row 存在、.text-btn 不换行、误用兜底也压不扁',
+    /\.btn-row \{/.test(cssNoComment) &&
+    /\.text-btn \{[\s\S]{0,320}?white-space:\s*nowrap/.test(cssNoComment) &&
+    /\.size-controls button\.text-btn \{/.test(cssNoComment));
+
   check('css: 九套主题形状标度各自符合设计（miuix 卡片 16dp = 官方 CardDefaults）',
     /--t-r-card:\s*16px/.test(themeTokens('md3')) &&
     /--t-r-card:\s*8px/.test(themeTokens('fluent')) &&

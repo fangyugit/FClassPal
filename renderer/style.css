@@ -494,14 +494,61 @@ body.locked .resize-handle { display: none; }
   transition: transform 0.18s ease, box-shadow 0.22s ease, color 0.2s ease;
 }
 .item-icon .ic { width: 25px; height: 25px; }
-/* 自定义图片图标：填满圆形，保持比例裁切 */
+/* 自定义图片图标：默认填满圆形并保持比例裁切。
+ * v2.4.2 起改从 --ic-fit 读（#widget 上由 JS 写）：
+ *   cover   = 裁剪填满（默认，原来的样子）
+ *   contain = 内部完整显示，四周留白（图上带字时不会被切掉） */
 .item-icon img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: var(--ic-fit, cover);
   display: block;
   pointer-events: none;
 }
+
+/* ====== 图标外观：边框「自动取色 / 透明」（v2.4.2，全局设置） ======
+ * 状态类挂在 body 上（ic-auto / ic-none），因为要同时覆盖**两个地方**：
+ * 主界面的图标网格在 #widget 里，而图标编辑弹窗的预览 #itemModal 是 #widget 的
+ * 兄弟节点 —— 只看 #widget 的话弹窗预览不会跟着变，改完设置得保存才知道裁成什么样。
+ *
+ * 注意 选择器里的 `.item-icon.item-icon` / `.icon-preview.icon-preview` 是**刻意重复**的：
+ *   主题块写的是 `body.theme-X .item-icon`，特异性 (0,2,1)，跟我 (0,2,1) 打平 ——
+ *   同特异性只比源码顺序，而主题块在文件后半段，我就会输。重复一次把权重提到 (0,3,1)，
+ *   这样规则摆在哪一段都赢，不用把这段挪到文件末尾。
+ *
+ * 注意 描边色的回退链 `var(--ic-ring-c, var(--t-accent, var(--accent)))` 是有意写三层的：
+ *   · --ic-ring-c 只有「自动取色」且主进程真的取到色时才由 JS 写上；
+ *   · 九套固定配色主题有自己的 --t-accent，glass 没有（它用 :root 的 --accent）；
+ *   · **最后一层必须是确定值**。自定义属性取不到值会让整条声明在计算期作废，
+ *     border-color 是非继承属性，作废后落到 initial = currentColor，
+ *     描边会变成文字色 —— 那不是"退回主题色"，是另一种 bug。
+ *
+ * 「透明」只做一件事：描边透明。各主题自己的底材质感（背景、内阴影）一律保留，
+ * 外发光也只属于「自动取色」—— 透明模式下不会莫名多出一圈彩光。 */
+body.ic-auto .item-icon.item-icon,
+body.ic-auto .icon-preview.icon-preview {
+  border-color: var(--ic-ring-c, var(--t-accent, var(--accent)));
+  /* 外发光用 drop-shadow 而不是 box-shadow：它跟着元素轮廓走，
+   * 而且**不受 .item-icon 的 overflow:hidden 裁剪**，省掉改那个属性的风险。
+   * 注意 drop-shadow() 只吃「x y 模糊 颜色」四个参数，**没有 box-shadow 那样的
+   *   扩张半径(spread)**。多写一个长度会让整条 filter 声明在解析期作废 —— 而且
+   *   不会报错，只是外发光悄悄消失（v2.4.2 真踩过：写成 `0 5px 11px -2px var(...)`，
+   *   实测 computed filter 是 none，是靠真机探针读 computed 样式才抓出来的）。 */
+  filter: drop-shadow(0 5px 11px var(--ic-glow, var(--t-accent, var(--accent))));
+}
+/* 底色：一层薄色压在主题自己的底材渐变之上、图片/字形之下。
+ * absolute 是为了不参与 .item-icon 的 flex 居中排布（否则会把图标挤偏）。 */
+body.ic-auto .item-icon::before,
+body.ic-auto .icon-preview::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--ic-tint, transparent);
+  pointer-events: none;
+}
+body.ic-none .item-icon.item-icon,
+body.ic-none .icon-preview.icon-preview { border-color: transparent; }
 .item-name {
   font-size: 0.78rem;
   color: var(--text);
@@ -946,8 +993,15 @@ body.theme-glass.over-light .glass-veil {
   border-radius: 10px;
   cursor: pointer;
   font-size: 0.82rem;
+  white-space: nowrap;      /* 文字按钮永远不换行：宽度不够时要撑开容器，而不是溢出 */
   transition: background 0.15s, transform 0.1s;
 }
+/* 文字按钮的容器。注意 **不要**用 .size-controls —— 那个类是给窗口尺寸的方形图标
+ * 按钮用的（写死 width/height 30px），文字按钮进去会被压成 30px 宽，而按钮默认
+ * 不裁剪，文字就跑到按钮外面去了（v2.4.1 真事故：「选择背景图和清除按键 字体在
+ * 按键外面了」）。下面这条兜底让误用即使再发生也不会压扁文字按钮。 */
+.btn-row { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.size-controls button.text-btn { width: auto; height: auto; }
 @media (hover: hover) and (pointer: fine) {
   .text-btn:hover { background: rgba(58, 99, 242, 0.18); }
 }
@@ -1226,6 +1280,10 @@ body.theme-glass.over-light .glass-veil {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* relative 只为给 v2.4.2 的「自动取色」底色层做定位基准（::before 是 absolute）。
+   * 这里原本是 static，加它只影响自身子树；主题的角色贴图挂的是 .panel::after，
+   * 锚在设置面板上，不受这里影响。 */
+  position: relative;
   background:
     radial-gradient(120% 100% at 30% 12%, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0) 55%),
     linear-gradient(150deg, rgba(255, 255, 255, 0.92), rgba(196, 213, 252, 0.75));
@@ -1241,7 +1299,7 @@ body.theme-glass.over-light .glass-veil {
 .icon-preview img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: var(--ic-fit, cover);   /* 跟随「图标填充」设置，选图时就能看出裁不裁 */
   display: block;
 }
 .icon-editor-rows {

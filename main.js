@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn, execFile } = require('child_process');
-const { pathToFileURL } = require('url');
+const { pathToFileURL, fileURLToPath } = require('url');
 
 // 配置存储路径
 const CONFIG_DIR = path.join(os.homedir(), '.desktop-widget');
@@ -65,6 +65,18 @@ const DEFAULT_CONFIG = {
   accentColor: '#6750A4',   // 手动模式下的主色（默认取 MD3 baseline 紫）
   accentPicked: false,      // 用户是否亲手挑过主色（false 时切风格会用该风格的推荐色）
   cornerRadius: null,       // 主界面圆角弧度 px（null = 跟随当前主题的默认值）
+  // 图标外观（v2.4.2，全局设置；十套主题共用）
+  //   iconFit    'cover'=裁剪（填满整块，超出圆形的部分裁掉，默认）
+  //              'contain'=内部（完整显示在圆内，四周留白，不会切掉图上的字）
+  //              —— 只对「自定义图片」和「exe 提取的图标」有意义；预设 SVG 与
+  //              自定义字符本来就是矢量/文字，没有"裁不裁"的问题，不受影响。
+  //   iconBorder 'glass'=玻璃白描边（默认，原来的样子）
+  //              'auto'=自动取色（从图标图里挑主色，同时染描边 + 外发光 + 底色）
+  //              'none'=透明（描边与外发光都去掉，只留主题自己的底材质感）
+  //              auto 取不到色的图标（预设 SVG / 字符 / 图片读不出来 / 全透明图）
+  //              退回当前主题的强调色，不会变成看不见的白边。
+  iconFit: 'cover',
+  iconBorder: 'glass',
   // 首次启动种子：只给一个空的「希沃应用」分组，快捷方式完全由用户自己添加
   groups: [
     {
@@ -198,6 +210,7 @@ const monet = (() => {
 const MD3_BASELINE = '#6750a4';          // 官方 MD3 baseline 紫（灰白壁纸兜底）
 const MONET_MAX_DIM = 72;                // 采样长边：再大几乎不影响结果，只烧 CPU
 const MONET_CLUSTERS = 48;
+const ICON_SAMPLE_DIM = 32;              // 图标取色采样长边（图标只显示 48px，72 采样没额外信息）
 
 /* 主进程里的驼峰键 ↔ MaterialDynamicColors 的方法名一一对应。
  * 渲染层会把驼峰转成 CSS 的短横变量（primaryContainer → --md3-primary-container）。 */
@@ -319,6 +332,76 @@ function wallpaperLuminance(file) {
   } catch (e) {
     return null;
   }
+}
+
+/* ---------- 图标主色（v2.4.2，图标边框「自动取色」用） ----------
+ * 与壁纸取色同一套流程（nativeImage → BGRA → QuantizerCelebi 聚类 → Score 打分），
+ * 但**不派生 MD3 调色板**：这里要的是"这张图看着是什么颜色"，不是"能当主题色"的颜色，
+ * 所以直接返回聚类冠军的 hex。
+ *
+ * 与壁纸取色刻意不同的两点：
+ *   1. **跳过透明像素** —— 最要命的一条。exe 提取的图标是带透明留白的 PNG，
+ *      透明区是 (0,0,0,0)。全算进去的话留白面积一大，主色就恒等于黑，
+ *      所有图标都会套上黑边。只统计 alpha>=8 的像素才拿得到真正的图形颜色。
+ *   2. `filter: false` —— Score 默认会滤掉低饱和/偏暗的候选（壁纸那样做对，
+ *      它要挑一个够"正"的主题色）。可图标的主色本来就可能是不饱和的灰蓝，
+ *      滤掉之后只剩兜底紫，反而跟图不像。这里不挑。
+ *
+ * 返回 '#rrggbb'；读不到 / 图坏了 / 没有不透明像素 / 没有 monet 依赖一律 null。 */
+const ICON_COLOR_CACHE = new Map();
+const ICON_COLOR_CACHE_MAX = 64;
+
+function iconColorKey(file) {
+  // 路径 + mtime：同路径换了图（重新选一张同名图覆盖）时不会拿到旧色
+  try { return file + '|' + fs.statSync(file).mtimeMs; } catch (e) { return file; }
+}
+
+function iconColorFromFile(file) {
+  if (!monet || !file) return null;
+  const key = iconColorKey(file);
+  if (ICON_COLOR_CACHE.has(key)) return ICON_COLOR_CACHE.get(key);
+
+  let out = null;
+  try {
+    const img = nativeImage.createFromPath(file);
+    const size = img.getSize();
+    if (size.width && size.height) {
+      const k = Math.max(size.width, size.height) / ICON_SAMPLE_DIM;
+      const w = Math.max(1, Math.round(size.width / k));
+      const h = Math.max(1, Math.round(size.height / k));
+      const buf = img.resize({ width: w, height: h }).toBitmap();
+      const pixels = [];
+      for (let i = 0; i + 3 < buf.length; i += 4) {
+        if (buf[i + 3] < 8) continue;                     // 透明像素不算（见注意 1）
+        pixels.push(monet.argbFromRgb(buf[i + 2], buf[i + 1], buf[i]));   // BGRA
+      }
+      if (pixels.length >= 16) {
+        const fallback = monet.argbFromHex(MD3_BASELINE);
+        const ranked = monet.Score.score(
+          monet.QuantizerCelebi.quantize(pixels, MONET_CLUSTERS),
+          { desired: 1, fallbackColorARGB: fallback, filter: false }
+        );
+        const best = ranked && ranked[0];
+        if (typeof best === 'number' && best !== fallback) out = monet.hexFromArgb(best);
+      }
+    }
+  } catch (e) { out = null; }
+
+  ICON_COLOR_CACHE.set(key, out);
+  while (ICON_COLOR_CACHE.size > ICON_COLOR_CACHE_MAX) {
+    ICON_COLOR_CACHE.delete(ICON_COLOR_CACHE.keys().next().value);
+  }
+  return out;
+}
+
+/** 渲染层存的是 file:// URL（选图与提取图标都这么存），这里转回本地路径；
+ *  已经是普通路径的就原样返回。 */
+function iconFileArg(value) {
+  if (typeof value !== 'string' || !value) return null;
+  if (/^file:\/\//i.test(value)) {
+    try { return fileURLToPath(value); } catch (e) { return null; }
+  }
+  return value;
 }
 
 const PALETTE_CACHE = new Map();   // key = 取色参数指纹 → 调色板，避免重复聚类
@@ -1197,6 +1280,23 @@ ipcMain.handle('get-file-icon', async (event, filePath) => {
   } catch (e) {
     return { error: e.message };
   }
+});
+
+/* ---------- 图标主色批量查询（v2.4.2） ----------
+ * 渲染层一次把所有图片图标的路径发过来，主进程回 path → '#rrggbb' 的表。
+ * 做成"一次拿全"而不是每个图标一次往返：首帧就能带上颜色，
+ * 否则会先画一圈白边再变色（用户明确不喜欢这种"掉画质"式的闪）。
+ * 取不到色的返回 null（或键根本不存在），渲染层退回主题强调色。 */
+ipcMain.handle('get-icon-colors', (event, list) => {
+  const out = {};
+  if (!Array.isArray(list)) return out;
+  for (const raw of list) {
+    if (typeof raw !== 'string' || !raw) continue;
+    const key = String(raw);
+    if (Object.prototype.hasOwnProperty.call(out, key)) continue;
+    out[key] = iconColorFromFile(iconFileArg(key));
+  }
+  return out;
 });
 
 /* ---------- U 盘 ---------- */

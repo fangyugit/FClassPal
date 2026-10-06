@@ -295,7 +295,12 @@
       </label>
       <div class="row">
         <span>背景图片</span>
-        <div class="size-controls">
+        <!-- 注意 别用 .size-controls 装文字按钮：那个类是给窗口尺寸的 30×30 方形图标
+             按钮用的（.size-controls button 写死 width/height 30px），文字按钮一进去
+             就被压成 30px 宽，而按钮默认不裁剪，文字会溢出到按钮外面
+             （v2.4.1 用户报的「选择背景图和清除按键 字体在按键外面了」）。
+             文字按钮统一放 .btn-row。 -->
+        <div class="btn-row">
           <button id="btnBgPick" class="text-btn">选择图片…</button>
           <button id="btnBgClear" class="text-btn">清除</button>
         </div>
@@ -341,6 +346,26 @@
         取色也改从这张图派生。模糊 0-40px、白色蒙版 0-100%（压亮图片做磨砂底），
         缩放 + 位置就是裁剪：放大后用两个位置滑块把想看的部分挪到中间。
         图片被移动或删除后会自动回退壁纸。</p>
+      <!-- 图标外观（v2.4.2）：填充方式只影响图片图标；边框对预设/字符图标也生效 -->
+      <div class="row">
+        <span>图标填充</span>
+        <div class="seg" id="iconFitSeg" role="group" aria-label="图标填充">
+          <button type="button" class="seg-btn" data-fit="cover" aria-pressed="true">裁剪</button>
+          <button type="button" class="seg-btn" data-fit="contain" aria-pressed="false">内部</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>图标边框</span>
+        <div class="seg" id="iconBorderSeg" role="group" aria-label="图标边框">
+          <button type="button" class="seg-btn" data-border="glass" aria-pressed="true">玻璃</button>
+          <button type="button" class="seg-btn" data-border="auto" aria-pressed="false">自动取色</button>
+          <button type="button" class="seg-btn" data-border="none" aria-pressed="false">透明</button>
+        </div>
+      </div>
+      <p class="row-hint">「裁剪」把图片填满整块、超出圆形的部分切掉；「内部」完整显示、四周留白，
+        图上有字时不会被切。<b>填充只管图片图标</b>，预设图标与自定义字符是矢量和文字，不受影响。
+        「自动取色」从图标图里挑主色，同时染描边、外发光和底色；预设图标、字符以及读不出颜色的图片
+        退回当前主题的强调色。「透明」只去掉描边，底材质感照旧。</p>
       <div class="row">
         <span>窗口大小</span>
         <div class="size-controls">

@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('widgetAPI', {
   // 自定义图标：选择本地图片，返回 { path, url }
   selectImage: () => ipcRenderer.invoke('select-image'),  // 从 exe / 文件提取系统图标，返回 { path, url } 或 { error }
   getFileIcon: (filePath) => ipcRenderer.invoke('get-file-icon', filePath),
+  // 图标主色（v2.4.2）：传图标路径数组（file:// URL 或本地路径），
+  // 回 { [path]: '#rrggbb' | null }。给图标边框「自动取色」用。
+  getIconColors: (paths) => ipcRenderer.invoke('get-icon-colors', paths),
   // 自定义背景图（v2.4.0）：选图返回 { url, path, luminance }，启动时按配置回读
   pickBackground: () => ipcRenderer.invoke('pick-background'),
   loadBackground: () => ipcRenderer.invoke('load-background'),
