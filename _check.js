@@ -442,8 +442,8 @@ const checks = [
     fs.existsSync('build/icon.ico') && fs.existsSync('build/icon.png')],
   ['main: BrowserWindow 挂 icon（开发模式/alt-tab 也有图标）',
     /icon:\s*fs\.existsSync\(path\.join\(__dirname, 'build', 'icon\.ico'\)\)/.test(main)],
-  ['产物: 便携 exe 已生成（v2.4.2）', fs.existsSync('dist/FClassPal-2.4.2.exe')],
-  ['配置: 版本号 2.4.2', srcPkg.version === '2.4.2'],
+  ['产物: 便携 exe 已生成（v2.4.3）', fs.existsSync('dist/FClassPal-2.4.3.exe')],
+  ['配置: 版本号 2.4.3', srcPkg.version === '2.4.3'],
   ['配置: 已移除 package.json description（exe 属性不再带描述）',
     srcPkg.description === undefined],
   ['author = YU（用户在远端改的大写）', srcPkg.author === 'YU'],
@@ -539,44 +539,67 @@ const checks = [
     /\.widget \{[\s\S]{0,900}?pointer-events:\s*auto/.test(css)],
   ['v2.4.0: 已下线主题回收（配置里存着 transparent 时收回 glass）',
     /if \(config\.theme === 'transparent'\) \{[\s\S]{0,80}?config\.theme = 'glass';/.test(main)],
-  ['★ v2.4.2 图标外观：新增两个状态标记类也在"裸类名①"守卫名单里',
-    // ic-auto / ic-none 挂在 body 上。写成裸 `.ic-auto{...}` 会命中 body 本身，
-    // 一旦那条规则带 position/pointer-events 就整片界面点不动（v2.4.1 真事故）
+  ['★ v2.4.2 图标外观：body 状态标记类都在"裸类名①"守卫名单里',
+    // ic-ring / ic-none / ic-contain / ic-shape 挂在 body 上。写成裸 `.ic-ring{...}`
+    // 会命中 body 本身，一旦那条规则带 position/pointer-events 就整片界面点不动（v2.4.1 真事故）
     ['bg-custom', 'dark', 'dyn', 'lg-ready', 'over-light', 'preview', 'realtime',
-      'ic-auto', 'ic-none']
+      'ic-ring', 'ic-none', 'ic-contain', 'ic-shape']
       .every((m) => !new RegExp('(^|,)\\s*\\.' + m.replace(/-/g, '\\-') + '\\s*(,|\\{)', 'm')
         .test(css.replace(/\/\*[\s\S]*?\*\//g, ''))) &&
-    /body\.ic-auto \.item-icon\.item-icon,/.test(css) &&
-    /body\.ic-none \.item-icon\.item-icon,/.test(css)],
-  ['★ v2.4.2 图标外观：选择器刻意重复类名压过主题块（(0,3,1) > (0,2,1)，不靠文件顺序）',
-    /body\.ic-auto \.item-icon\.item-icon,\s*\nbody\.ic-auto \.icon-preview\.icon-preview \{/.test(css) &&
+    /body\.ic-ring \.item-icon\.item-icon,/.test(css) &&
+    /body\.ic-none \.item-icon\.item-icon,/.test(css) &&
+    /body\.ic-shape \.item-icon\.item-icon,/.test(css) &&
+    /body\.ic-contain \.item-icon img,/.test(css)],
+  ['★ v2.4.2/3 图标外观：选择器刻意重复类名压过主题块（(0,3,1) > (0,2,1)，不靠文件顺序）',
+    /body\.ic-ring \.item-icon\.item-icon,\s*\nbody\.ic-ring \.icon-preview\.icon-preview \{/.test(css) &&
     /body\.ic-none \.icon-preview\.icon-preview \{/.test(css)],
-  ['v2.4.2 图标外观：描边色回退链三层且末层是确定值（否者 border-color 计算期作废→currentColor）',
-    /border-color: var\(--ic-ring-c, var\(--t-accent, var\(--accent\)\)\)/.test(css) &&
-    /--t-accent/.test(css) && /--accent\s*:/.test(css)],
+  ['★ v2.4.3 描边色：一套解析链管三种取色策略，末层必须是确定值',
+    // 自定义属性取不到值会让整条声明在计算期作废，border-color 是非继承属性，
+    // 作废后落到 initial = currentColor —— 描边变成文字色，那是另一种 bug
+    /--ic-c: var\(--ic-ring-c, var\(--t-accent, var\(--accent\)\)\)/.test(css) &&
+    /border-color: var\(--ic-c\)/.test(css) &&
+    /--accent\s*:/.test(css)],
+  ['★ v2.4.3 跟随主题：靠 CSS 回退链，**不写任何 JS 颜色钩子**（否则换主题会留下陈旧色）',
+    // theme 模式下 JS 一个颜色变量都不写 → --ic-ring-c 未定义 → 回退到 --t-accent
+    /body\.classList\.toggle\('ic-ring',/.test(app) &&
+    /function iconRingColorFor[\s\S]{0,900}?return '';/.test(app) &&
+    // 「跟随主题」分支里不允许出现"算出颜色再写变量"的代码 —— 那正是要避免的钩子
+    !/iconBorder === 'theme'[\s\S]{0,400}?setProperty\('--ic-ring-c'/.test(app)],
+  ['★ v2.4.3 外发光/底色：透明度用 color-mix 现算（跟随主题模式才能免钩子自动变色）',
+    /drop-shadow\(0 5px 11px color-mix\(in srgb, var\(--ic-c\) 45%, transparent\)\)/.test(css) &&
+    /background: color-mix\(in srgb, var\(--ic-c\) 20%, transparent\)/.test(css)],
   ['★ v2.4.2 外发光：drop-shadow 只给三个长度（它没有 spread，多写一个会静默作废整条 filter）',
     // 真事故：写成 drop-shadow(0 5px 11px -2px var(--ic-glow)) →
     // 解析期整条声明作废、不报错，computed filter 变成 none，外发光凭空消失。
-    // 别用 [^)]* 去切参数：var(--a, var(--b, var(--c))) 里第一个 ) 就把串截断了。
-    // 这里直接查"四个连续长度"（规范里 drop-shadow 最多三个长度，第四个就是 spread）。
+    // 这里查"四个连续长度"（规范里 drop-shadow 最多三个长度，第四个就是 spread）。
     // 注意别去 indexOf 找"第一条 drop-shadow"：style.css 里早有别的元素在用
     // drop-shadow(0 2px 4px rgb(...))，抓到它就会得到一串无关数字。
     !/drop-shadow\(\s*(?:-?(?:\d+|\d*\.\d+)(?:px|r?em|%|vw|vh|vmin|vmax|ch|ex|pt|pc|cm|mm|in|q)?\s+){3}-?(?:\d+|\d*\.\d+)(?:px|r?em|%|vw|vh|vmin|vmax|ch|ex|pt|pc|cm|mm|in|q)?(?=[\s,)])/.test(css) &&
-    /filter: drop-shadow\(0 5px 11px var\(--ic-glow, var\(--t-accent, var\(--accent\)\)\)\)/.test(css)],
+    /filter: drop-shadow\(0 5px 11px color-mix/.test(css)],
   ['v2.4.2 图标外观：底色层 absolute（不参与 item-icon 的 flex 居中排布）',
-    /body\.ic-auto \.item-icon::before,[\s\S]{0,120}?position: absolute;/.test(css)],
+    /body\.ic-ring \.item-icon::before,[\s\S]{0,120}?position: absolute;/.test(css)],
   ['v2.4.2 图标外观：img 的 object-fit 读 --ic-fit（主界面 + 弹窗预览两处）',
     (css.match(/object-fit: var\(--ic-fit, cover\)/g) || []).length >= 2],
-  ['★ v2.4.2：--ic-fit 写在 body 上（#itemModal 是 #widget 的兄弟，挂 #widget 弹窗读不到）',
-    /document\.body\.style\.setProperty\('--ic-fit', fit\)/.test(app) &&
+  ['★ v2.4.2：--ic-fit / --ic-pad / 状态类都写在 body 上（#itemModal 是 #widget 的兄弟，挂 #widget 弹窗读不到）',
+    /const body = document\.body;/.test(app) &&
+    /body\.style\.setProperty\('--ic-fit', fit\)/.test(app) &&
+    /body\.style\.setProperty\('--ic-pad',/.test(app) &&
     !/widget\.style\.setProperty\('--ic-fit'/.test(app)],
-  ['v2.4.2 图标外观：状态类 toggle 到 body 且三态互斥（glass 两不挂）',
-    /document\.body\.classList\.toggle\('ic-auto', bd === 'auto'\)/.test(app) &&
-    /document\.body\.classList\.toggle\('ic-none', bd === 'none'\)/.test(app)],
-  ['v2.4.2 图标外观：取色结果要三元组齐全（ring/glow/tint），不是只改一个 accent',
-    /ring: '#' \+ m\[1\]\.toLowerCase\(\)/.test(app) &&
-    /glow: 'rgba\(' \+ r \+ ', ' \+ g \+ ', ' \+ b \+ ', 0\.45\)'/.test(app) &&
-    /tint: 'rgba\(' \+ r \+ ', ' \+ g \+ ', ' \+ b \+ ', 0\.20\)'/.test(app)],
+  ['v2.4.2 图标外观：状态类 toggle 到 body（ic-ring 有色 / ic-none 透明 / ic-contain 内部）',
+    /body\.classList\.toggle\('ic-ring',/.test(app) &&
+    /body\.classList\.toggle\('ic-none', bd === 'none'\)/.test(app) &&
+    /body\.classList\.toggle\('ic-contain', fit === 'contain'\)/.test(app)],
+  ['v2.4.3 图标外观：颜色来源只在一处决定（自定义 > 图自己的主色 > CSS 回退主题色）',
+    /function iconRingColorFor/.test(app) &&
+    /const custom = normalizeHex\(config\.iconRingColor\);\s*\n\s*if \(custom && config\.iconBorder !== 'none'\) return custom;/.test(app) &&
+    // 透明必须能盖过自定义色：上面那行已经保证，这里再钉死"none 时不写任何色"
+    /if \(config\.iconBorder === 'none'\)[\s\S]{0,200}?body\.classList\.toggle\('ic-none', true\)/.test(app) === false ||
+    /bd !== 'glass' && bd !== 'none'/.test(app)],
+  ['★ v2.4.3 自定义色管所有图标类型：refreshIconLook 只有一遍遍历（分"图片写/非图片清"会把自定义色清掉）',
+    // 真事故：预设 SVG / 字符图标没有取色源，被当成"该清变量"的一类，
+    // 结果设了自定义色只有图片图标变色。统一交给 iconRingColorFor() 决定。
+    /document\.querySelectorAll\('\.item-icon, \.icon-preview'\)\.forEach\(\(el\) => \{[\s\S]{0,200}?applyIconColorVars\(el, img \? img\.getAttribute\('src'\) : ''\)/.test(app) &&
+    !/el\.querySelector\('img'\) \? el\.style\.removeProperty/.test(app)],
   ['★ v2.4.2 图标取色：并发批次的刷新不能丢（Promise 串行化 + 落地后按差集重算）',
     // 用布尔标志"有批次在跑就 return"会把并发刷新静默吞掉：
     // 切到自动取色的同时保存了新图标 → 第二次调用啥也没干 → 图标一直是主题色
@@ -599,15 +622,37 @@ const checks = [
         const j = app.indexOf('\n}', i);
         return j < 0 ? null : app.slice(i, j);
       };
-      const fit = fnBody('setIconFit'), bd = fnBody('setIconBorder'), rf = fnBody('refreshIconLook');
-      if (fit === null || bd === null || rf === null) return false;
-      return !/\brender\(\)/.test(fit) && !/\brender\(\)/.test(bd) && !/\brender\(\)/.test(rf);
+      const names = ['setIconFit', 'setIconBorder', 'setIconShape', 'setIconRadius',
+        'setIconRingColor', 'refreshIconLook'];
+      const bodies = names.map(fnBody);
+      if (bodies.some((b) => b === null)) return false;
+      return bodies.every((b) => !/\brender\(\)/.test(b));
     })() &&
-    /function refreshIconLook\(\)/.test(app) &&
     /config\.iconFit = next;\s*\n\s*syncSettingsControls\(\);\s*\n\s*refreshIconLook\(\);\s*\n\s*persist\(\);/.test(app) &&
     /config\.iconBorder = next;\s*\n\s*syncSettingsControls\(\);\s*\n\s*refreshIconLook\(\);\s*\n\s*persist\(\);/.test(app)],
+  ['v2.4.3 图标外观：三个新 setter 也走就地刷新 + 落盘',
+    /function setIconShape[\s\S]{0,420}?refreshIconLook\(\)/.test(app) &&
+    /function setIconRadius[\s\S]{0,420}?refreshIconLook\(\)/.test(app) &&
+    /function setIconRingColor[\s\S]{0,520}?persist\(\)/.test(app)],
+  ['★ v2.4.3 「内部」= 完整落在边框形状内：内缩量 = 0.2929 × 圆角半径百分比',
+    // 只写 object-fit: contain 是内切于**方框**，方形图的四角照样顶在圆外被切掉。
+    // 0.2929 = 1 - 1/√2 的一半（正方形内切于圆角矩形的解析解）。
+    /\(0\.2929 \* radiusPct\)\.toFixed\(2\)/.test(app) &&
+    /body\.ic-contain \.item-icon img,[\s\S]{0,120}?padding:\s*var\(--ic-pad, 0\)/.test(css)],
+  ['★ v2.4.3 内缩只作用于 contain 模式（cover 模式照旧铺满、由 overflow:hidden 裁）',
+    !/\.item-icon img \{[\s\S]{0,260}?padding:\s*var\(--ic-pad/.test(css) &&
+    /\.item-icon img \{[\s\S]{0,260}?box-sizing:\s*border-box/.test(css) &&
+    /\.icon-preview img \{[\s\S]{0,260}?box-sizing:\s*border-box/.test(css)],
+  ['★ v2.4.3 形状=跟随主题：不写 --ic-rad、不挂 ic-shape（十套主题各自的形状语言要活着）',
+    /body\.classList\.toggle\('ic-shape', shape !== 'auto'\)/.test(app) &&
+    /body\.style\.removeProperty\('--ic-rad'\)/.test(app) &&
+    /function measureIconRadiusPct/.test(app) &&
+    /measured === null \? 50 : measured/.test(app)],
+  ['★ v2.4.3 换主题要重算内缩几何（否则 MD3 会沿用玻璃的 14.65%，白白多留一圈白）',
+    /function applyTheme[\s\S]{0,2400}?refreshIconLook\(\);\s*\n\}/.test(app) &&
+    /render\(\);[\s\S]{0,320}?refreshIconLook\(\);/.test(app)],
   ['v2.4.2 图标外观：首帧就带着颜色渲染（init 里 auto 模式先 await 取色再 render）',
-    /applyIconLook\(\);[\s\S]{0,220}?await ensureIconColors\(\)[\s\S]{0,120}?render\(\);/.test(app)],
+    /if \(config\.iconBorder === 'auto' && !config\.iconRingColor\) \{[\s\S]{0,200}?await ensureIconColors\(\)[\s\S]{0,120}?render\(\);/.test(app)],
   ['v2.4.2 图标外观：弹窗预览也用未保存的图去取色（选图即见效果）',
     /function syncPreviewIconColor\(\)/.test(app) &&
     /fetchIconColors\(\[path\]\)/.test(app) &&
@@ -622,18 +667,36 @@ const checks = [
   ['v2.4.2 preload 暴露 getIconColors；app.js 只在函数存在时才调',
     /getIconColors: \(paths\) => ipcRenderer\.invoke\('get-icon-colors', paths\)/.test(pre) &&
     /typeof API\.getIconColors !== 'function'/.test(app)],
-  ['v2.4.2 配置项：iconFit / iconBorder 默认值（cover / glass，与老版本观感一致）',
-    /iconFit: 'cover',/.test(mainNC) && /iconBorder: 'glass',/.test(mainNC)],
-  ['v2.4.2 配置项：渲染层只做"非法值收回默认"，不另立一套默认值（避免两边打架）',
+  ['v2.4.2/3 配置项：五个图标外观键的默认值（全部等于"现在的样子"）',
+    /iconFit: 'cover',/.test(mainNC) && /iconBorder: 'glass',/.test(mainNC) &&
+    /iconShape: 'auto',/.test(mainNC) && /iconRadius: 22,/.test(mainNC) &&
+    /iconRingColor: '',/.test(mainNC)],
+  ['v2.4.2/3 配置项：渲染层只做"非法值收回默认"，不另立一套默认值（避免两边打架）',
     /if \(config\.iconFit !== 'contain'\) config\.iconFit = 'cover';/.test(app) &&
-    /if \(config\.iconBorder !== 'auto' && config\.iconBorder !== 'none'\) config\.iconBorder = 'glass';/.test(app)],
-  ['v2.4.2 预览 mock 与 DEFAULT_CONFIG 对齐（缺键会让面板读出一堆空值）',
-    /iconFit: 'cover', iconBorder: 'glass',/.test(app)],
-  ['v2.4.2 UI：设置面板两组分段控件 + 图标编辑弹窗预览容器',
+    /\['glass', 'auto', 'theme', 'none'\]\.indexOf\(config\.iconBorder\) < 0\) config\.iconBorder = 'glass';/.test(app) &&
+    /\['circle', 'rounded', 'square'\]\.indexOf\(config\.iconShape\) < 0\) config\.iconShape = 'auto';/.test(app) &&
+    /config\.iconRingColor = normalizeHex\(config\.iconRingColor\);/.test(app)],
+  ['v2.4.2/3 预览 mock 与 DEFAULT_CONFIG 对齐（缺键会让面板读出一堆空值）',
+    /iconFit: 'cover', iconBorder: 'glass',/.test(app) &&
+    /iconShape:\s*'auto', iconRadius:\s*22, iconRingColor:\s*''/.test(app)],
+  ['v2.4.2/3 UI：设置面板四组控件 + 圆角滑块 + 边框颜色自定义 + 弹窗预览容器',
     html.includes('id="iconFitSeg"') && html.includes('id="iconBorderSeg"') &&
+    html.includes('id="iconShapeSeg"') && html.includes('id="iconRadius"') &&
+    html.includes('id="iconRadiusRow"') && html.includes('id="iconRingColor"') &&
+    html.includes('id="btnIconRingClear"') &&
     html.includes('data-fit="contain"') && html.includes('data-fit="cover"') &&
-    html.includes('data-border="auto"') && html.includes('data-border="none"') &&
+    html.includes('data-border="auto"') && html.includes('data-border="theme"') &&
+    html.includes('data-border="none"') &&
+    html.includes('data-shape="auto"') && html.includes('data-shape="circle"') &&
+    html.includes('data-shape="rounded"') && html.includes('data-shape="square"') &&
     html.includes('id="iconPreview"')],
+  ['v2.4.3 事件绑定：形状 seg / 圆角滑块 / 颜色取色器 / 恢复默认按钮',
+    /iconShapeSeg\.addEventListener\('click'/.test(app) &&
+    /iconRadiusEl\.addEventListener\('input'/.test(app) &&
+    /iconRingColorEl\.addEventListener\('change'/.test(app) &&
+    /\$\('btnIconRingClear'\)\.addEventListener\('click'/.test(app)],
+  ['v2.4.3 圆角大小只在「圆角」形状下露出（调了没反应的控件不该出现）',
+    /rRow\.classList\.toggle\('hidden', shape !== 'rounded'\)/.test(app)],
   ['★ v2.4.2 用户报的按钮溢出：选择图片 / 清除 移出 30×30 的 .size-controls',
     // .size-controls 是 30×30 的方形图标按钮容器，被复用去装文字按钮后
     // `.size-controls button`(0,1,1) 压过 `.text-btn`(0,1,0)，又把按钮挤成 30px 宽，
@@ -642,9 +705,9 @@ const checks = [
     /\.size-controls button\.text-btn \{ width: auto; height: auto; \}/.test(css) &&
     /\.text-btn \{[\s\S]{0,300}?white-space: nowrap;/.test(css) &&
     !/<div class="size-controls" id="bgRow"/.test(html)],
-  ['v2.4.2: README / CHANGELOG 已同步到本版（防"发版忘了改文档"）',
-    /2\.4\.2/.test(readme) && /CHANGELOG\.md/.test(readme) &&
-    /##\s*v2\.4\.2/.test(changelog) && /2\.4\.2/.test(changelog)],
+  ['v2.4.3: README / CHANGELOG 已同步到本版（防"发版忘了改文档"）',
+    /2\.4\.3/.test(readme) && /CHANGELOG\.md/.test(readme) &&
+    /##\s*v2\.4\.3/.test(changelog) && /2\.4\.3/.test(changelog)],
   ['v2.3.2: 进度条跟随（--sl-fill 不在 input 上声明 + syncRangeFill 清元素自身陈旧变量）',
     !/body\.theme-glass input\[type="range"\]\s*\{[^}]*--sl-fill\s*:/.test(css) &&
     /el\.style\.removeProperty\('--sl-fill'\)/.test(app) &&

@@ -137,6 +137,24 @@ function hitSummary(h) {
   return Object.keys(h.hits).sort((x, y) => h.hits[y] - h.hits[x])
     .map((k) => k + '×' + h.hits[k]).join(', ');
 }
+/** 等到命中直方图**连着两次一样**再当基线。
+ *
+ * 为什么要这样：格子有入场动画（t-enter），init 里还有 render / 量圆角等一串活儿，
+ * 固定 2.5s 之后直接采样时快时慢 —— 曾经抓到过 before=「item-grid×41 + svg×1」、
+ * after=「item-grid×31 + use×1」的假失败（前后其实完全一致，是**基线**采早了，
+ * 那一刻格子还没铺满、预设图标的内层 <use> 也还没画出来）。
+ * 与"选了背景图之后界面有没有被接管"无关，纯粹是采样时机问题，所以这里等它稳定。 */
+async function stableHit(wc, tries = 10, gap = 250) {
+  let prev = null, cur = null;
+  for (let i = 0; i < tries; i++) {
+    cur = await wc.executeJavaScript(HIT_TEST);
+    const s = hitSummary(cur);
+    if (prev === s) return cur;
+    prev = s;
+    await new Promise((r) => setTimeout(r, gap));
+  }
+  return cur;
+}
 
 app.whenReady().then(async () => {
   // 等主进程把窗口建出来
@@ -161,7 +179,7 @@ app.whenReady().then(async () => {
              envDisplay: getComputedStyle(document.getElementById('envLayer')).display };
   })()`);
   console.log('  · 基线状态 ' + JSON.stringify(baseState));
-  const hitBefore = await wc.executeJavaScript(HIT_TEST);
+  const hitBefore = await stableHit(wc);
   console.log('  · 选图前命中分布: ' + hitSummary(hitBefore));
   resetLag();
 
@@ -198,7 +216,7 @@ app.whenReady().then(async () => {
   assert('底材层已让位（env-layer display:none）', s1.envDisplay === 'none', s1.envDisplay);
 
   /* ★★ 决定性的那条：选图之后界面有没有被隐形层接管 */
-  const hitAfter = await wc.executeJavaScript(HIT_TEST);
+  const hitAfter = await stableHit(wc);
   console.log('  · 选图后命中分布: ' + hitSummary(hitAfter));
   assert('★ 选图后没有多出接管界面的满窗层（命中分布与选图前一致）',
     hitSummary(hitAfter) === hitSummary(hitBefore),
@@ -295,7 +313,7 @@ app.whenReady().then(async () => {
   const p5 = await ping(wc, '开关路径选图后');
   assert('★ 开关路径选图后界面仍响应', p5.ok && p5.dt < 1500, p5.dt + 'ms');
   note(`开关路径主进程最大延迟 = ${lagWindow}ms`);
-  const hit5 = await wc.executeJavaScript(HIT_TEST);
+  const hit5 = await stableHit(wc);
   console.log('  · 命中分布: ' + hitSummary(hit5));
   assert('★ opacity=0 + 自定义背景：命中分布仍与最初一致（界面没被接管）',
     hitSummary(hit5) === hitSummary(hitBefore),

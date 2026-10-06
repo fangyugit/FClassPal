@@ -14,6 +14,8 @@ _rt/*
 !_rt/_dragcheck.js
 !_rt/_garblecheck.js
 !_rt/_ghsync.py
+!_rt/_iconcheck.js
+!_rt/_iconshot.js
 !_rt/_monetcheck.js
 !_rt/_palettecheck.js
 !_rt/probe.html

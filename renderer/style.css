@@ -494,61 +494,102 @@ body.locked .resize-handle { display: none; }
   transition: transform 0.18s ease, box-shadow 0.22s ease, color 0.2s ease;
 }
 .item-icon .ic { width: 25px; height: 25px; }
-/* 自定义图片图标：默认填满圆形并保持比例裁切。
- * v2.4.2 起改从 --ic-fit 读（#widget 上由 JS 写）：
+/* 自定义图片图标：默认填满整块并保持比例裁切。
+ * v2.4.2 起 object-fit 从 --ic-fit 读（body 上由 JS 写）：
  *   cover   = 裁剪填满（默认，原来的样子）
- *   contain = 内部完整显示，四周留白（图上带字时不会被切掉） */
+ *   contain = 内部完整显示。
+ * v2.4.3 起 contain 再叠一层内缩，让图片**完整落在边框形状之内** ——
+ * 内缩量由「图标外观」块里的 body.ic-contain 规则统一给（这里不写 padding，
+ * 免得 cover 模式下也留着一条要靠 JS 写 0 才不生效的声明）。
+ * box-sizing 必须是 border-box：img 是替换元素，默认 content-box 的话内缩的
+ * padding 会往外撑，图片反而变大并溢出。 */
 .item-icon img {
   width: 100%;
   height: 100%;
+  box-sizing: border-box;
   object-fit: var(--ic-fit, cover);
   display: block;
   pointer-events: none;
 }
 
-/* ====== 图标外观：边框「自动取色 / 透明」（v2.4.2，全局设置） ======
- * 状态类挂在 body 上（ic-auto / ic-none），因为要同时覆盖**两个地方**：
- * 主界面的图标网格在 #widget 里，而图标编辑弹窗的预览 #itemModal 是 #widget 的
- * 兄弟节点 —— 只看 #widget 的话弹窗预览不会跟着变，改完设置得保存才知道裁成什么样。
+/* ====== 图标外观：形状 / 填充 / 边框配色（v2.4.2 起，v2.4.3 扩充） ======
+ * 状态类挂在 body 上（ic-ring / ic-none / ic-contain / ic-shape），因为要同时覆盖
+ * **两个地方**：主界面的图标网格在 #widget 里，而图标编辑弹窗的预览 #itemModal 是
+ * #widget 的兄弟节点 —— 只看 #widget 的话弹窗预览不会跟着变，改完设置得保存才知道
+ * 会裁成什么样。自定义属性同理，挂 #widget 弹窗读不到。
  *
  * 注意 选择器里的 `.item-icon.item-icon` / `.icon-preview.icon-preview` 是**刻意重复**的：
  *   主题块写的是 `body.theme-X .item-icon`，特异性 (0,2,1)，跟我 (0,2,1) 打平 ——
  *   同特异性只比源码顺序，而主题块在文件后半段，我就会输。重复一次把权重提到 (0,3,1)，
- *   这样规则摆在哪一段都赢，不用把这段挪到文件末尾。
+ *   这样规则摆在哪段都赢，不用把这段挪到文件末尾。
  *
- * 注意 描边色的回退链 `var(--ic-ring-c, var(--t-accent, var(--accent)))` 是有意写三层的：
- *   · --ic-ring-c 只有「自动取色」且主进程真的取到色时才由 JS 写上；
- *   · 九套固定配色主题有自己的 --t-accent，glass 没有（它用 :root 的 --accent）；
- *   · **最后一层必须是确定值**。自定义属性取不到值会让整条声明在计算期作废，
+ * ── 形状（--ic-rad） ────────────────────────────────────────────────
+ * 形状选「跟随主题」（默认）时**一个变量都不写**，让十套主题各自的形状语言活着：
+ * MD3 用 --t-r-card、Fluent/MIUIX 用 --t-r-ctl、其余是 50%。只有用户显式选了
+ * 圆形/圆角/方形才挂 ic-shape 并覆盖 --ic-rad。
+ *
+ * ── 内部填充的内缩量（--ic-pad） ────────────────────────────────────
+ * 「内部」要的是"图片完整落在边框形状之内"，只写 object-fit: contain 是**不够**的：
+ * contain 是内切于**方框**，方形图的四个角依然顶在圆外（圆形边框下就是被切掉四角）。
+ * 需要的是内切于**边框形状**。设圆角半径为 R（占边长比例），其内切正方形半边长 s：
+ *     s ≤ (0.5 - R) + R/√2   →  四周内缩 = 0.5 - s = 0.2929 · R
+ *   · 圆形 R=50% → 14.65% ｜ 圆角 R=22% → 6.44% ｜ 方形 R=0 → 0
+ * 所以 --ic-pad = 0.2929 × 半径百分比。形状选「跟随主题」时半径由主题决定，
+ * 只能由 JS 实测量出来再写（写死常量的话，要么圆形主题被切角，要么圆角主题里
+ * 图片莫名缩小一圈）。用**百分比**而不是 px：主界面 48px、弹窗预览更大，
+ * 百分比各自按自己的宽度解析，两处内缩比例自动一致。
+ *
+ * ── 描边配色（--ic-c） ──────────────────────────────────────────────
+ * 一套解析链管三种取色策略，颜色只在一个变量上体现：
+ *     --ic-c: var(--ic-ring-c, var(--t-accent, var(--accent)))
+ *   · 自动取色：JS 给**每个图标元素**写 --ic-ring-c（图自己的主色）
+ *   · 跟随主题：JS 什么都不写 → 回退到主题强调色，所以换风格 / 换壁纸自动跟着变，
+ *               不需要任何 JS 钩子（这是把它写成 CSS 回退而不是 JS 算色值的原因）
+ *   · 自定义色：JS 给每个元素写 --ic-ring-c（自定义值），优先级由 JS 一处决定，
+ *               避免"元素内联值 vs body 继承值"两套来源打架
+ *   · **末层必须是确定值**：自定义属性取不到值会让整条声明在计算期作废，
  *     border-color 是非继承属性，作废后落到 initial = currentColor，
  *     描边会变成文字色 —— 那不是"退回主题色"，是另一种 bug。
  *
- * 「透明」只做一件事：描边透明。各主题自己的底材质感（背景、内阴影）一律保留，
- * 外发光也只属于「自动取色」—— 透明模式下不会莫名多出一圈彩光。 */
-body.ic-auto .item-icon.item-icon,
-body.ic-auto .icon-preview.icon-preview {
-  border-color: var(--ic-ring-c, var(--t-accent, var(--accent)));
+ * 「透明」只做两件事：去掉描边与外发光。各主题自己的底材质感（背景、内阴影）保留，
+ * 底色层也不会出现 —— 透明模式下不会莫名多出一层彩色蒙版。 */
+body.ic-ring .item-icon.item-icon,
+body.ic-ring .icon-preview.icon-preview {
+  --ic-c: var(--ic-ring-c, var(--t-accent, var(--accent)));
+  border-color: var(--ic-c);
   /* 外发光用 drop-shadow 而不是 box-shadow：它跟着元素轮廓走，
    * 而且**不受 .item-icon 的 overflow:hidden 裁剪**，省掉改那个属性的风险。
    * 注意 drop-shadow() 只吃「x y 模糊 颜色」四个参数，**没有 box-shadow 那样的
    *   扩张半径(spread)**。多写一个长度会让整条 filter 声明在解析期作废 —— 而且
    *   不会报错，只是外发光悄悄消失（v2.4.2 真踩过：写成 `0 5px 11px -2px var(...)`，
-   *   实测 computed filter 是 none，是靠真机探针读 computed 样式才抓出来的）。 */
-  filter: drop-shadow(0 5px 11px var(--ic-glow, var(--t-accent, var(--accent))));
+   *   实测 computed filter 是 none，是靠真机探针读 computed 样式才抓出来的）。
+   * 颜色的 45% / 20% 透明度用 color-mix 现算（Chromium 111+，本机 Electron 31 = 126）：
+   *   这样"跟随主题"模式连外发光都是 CSS 自己跟着主题变的，JS 不用在换主题时
+   *   回来重算 rgba —— 少一处忘记调用就会留下陈旧颜色的钩子。 */
+  filter: drop-shadow(0 5px 11px color-mix(in srgb, var(--ic-c) 45%, transparent));
 }
 /* 底色：一层薄色压在主题自己的底材渐变之上、图片/字形之下。
  * absolute 是为了不参与 .item-icon 的 flex 居中排布（否则会把图标挤偏）。 */
-body.ic-auto .item-icon::before,
-body.ic-auto .icon-preview::before {
+body.ic-ring .item-icon::before,
+body.ic-ring .icon-preview::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--ic-tint, transparent);
+  background: color-mix(in srgb, var(--ic-c) 20%, transparent);
   pointer-events: none;
 }
 body.ic-none .item-icon.item-icon,
 body.ic-none .icon-preview.icon-preview { border-color: transparent; }
+
+/* 形状覆盖：只在用户显式选了形状时挂 ic-shape（「跟随主题」不挂，主题形状活着） */
+body.ic-shape .item-icon.item-icon,
+body.ic-shape .icon-preview.icon-preview { border-radius: var(--ic-rad, 50%); }
+
+/* 内部填充：只有 contain 模式吃这层内缩；cover 模式 --ic-pad 是 0，
+ * 图片照旧填满整块、超出边框形状的部分由 .item-icon 的 overflow:hidden 裁掉 */
+body.ic-contain .item-icon img,
+body.ic-contain .icon-preview img { padding: var(--ic-pad, 0); }
 .item-name {
   font-size: 0.78rem;
   color: var(--text);
@@ -1299,6 +1340,7 @@ body.theme-glass.over-light .glass-veil {
 .icon-preview img {
   width: 100%;
   height: 100%;
+  box-sizing: border-box;
   object-fit: var(--ic-fit, cover);   /* 跟随「图标填充」设置，选图时就能看出裁不裁 */
   display: block;
 }

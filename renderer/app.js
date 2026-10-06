@@ -128,8 +128,9 @@ const API = window.widgetAPI || (function () {
     /* 明暗模式 + 自定义背景（v2.4.0），与 main.js 的 DEFAULT_CONFIG 对齐 */
     appearance: 'light',
     background: { enabled: false, path: '', blur: 0, mask: 0, scale: 100, offsetX: 50, offsetY: 50, fit: 'cover' },
-    /* 图标外观（v2.4.2），与 main.js 的 DEFAULT_CONFIG 对齐 */
+    /* 图标外观（v2.4.2 / v2.4.3），与 main.js 的 DEFAULT_CONFIG 对齐 */
     iconFit: 'cover', iconBorder: 'glass',
+    iconShape: 'auto', iconRadius: 22, iconRingColor: '',
     cornerRadius: null,
     /* 与 main.js 的首次启动种子一致：只有一个空的「希沃应用」分组 */
     groups: [
@@ -159,7 +160,7 @@ const API = window.widgetAPI || (function () {
     selectImage: () => Promise.resolve({ path: 'demo', url: DEMO_ICON }),
     getEnv: () => Promise.resolve({ transparent: true, platform: 'browser', release: '0' }),
     // 关于界面：预览模式没有主进程，版本号给个占位；链接用新窗口模拟
-    getAppVersion: () => Promise.resolve('2.4.2'),
+    getAppVersion: () => Promise.resolve('2.4.3'),
     openExternal: (url) => { window.open(url, '_blank'); return Promise.resolve(true); },
     // 预览模式取不到真实壁纸：返回 null，让 #envLayer 用内置渐变基底，
     // MD3 则退回 CSS 里的 baseline 配色
@@ -279,6 +280,11 @@ function applyTheme(theme) {
   document.body.classList.toggle('dyn', isDynamicTheme(t));
   const sel = $('themeSelect');
   if (sel && sel.value !== t) sel.value = t;
+  /* 图标外观要跟着主题"重算几何"（v2.4.3）：形状选「跟随主题」时，「内部」的内缩量
+   * 是从主题给的圆角半径实测出来的 —— 换了主题不重测，MD3 会沿用玻璃的 14.65%
+   * （多留一圈白）、玻璃会沿用 MD3 的 10.98%（圆角处切掉一点点）。
+   * 只重写几何量，颜色那边「跟随主题」本来就是 CSS 回退链，不需要钩子。 */
+  refreshIconLook();
 }
 
 /** 动态配色（跟底材取色）的主题：玻璃基线 + MD3 + Fluent */
@@ -446,19 +452,28 @@ function resolveIcon(it) {
   return { type: 'svg', value: ICONS[it.icon] || 'i-star' };
 }
 
-/* ---------- 图标外观（v2.4.2，全局设置） ----------
- * 两个开关：
- *   iconFit    'cover'=裁剪（默认）| 'contain'=内部。写进 --ic-fit，
- *              CSS 里只给 `img` 用 —— 预设 SVG 与自定义字符是矢量/文字，没有裁的概念。
- *   iconBorder 'glass'=玻璃白边（默认）| 'auto'=自动取色 | 'none'=透明。
- *              写进 body 的 ic-auto / ic-none 状态类（两个都不挂 = 原来的样子）。
- *              ※ 挂 body 而不是 #widget：图标网格在 #widget 里，而图标编辑弹窗
- *              #itemModal 是 #widget 的兄弟节点 —— 只挂 #widget 的话弹窗预览不跟着变，
- *              用户得保存完才知道图裁成什么样。
+/* ---------- 图标外观（v2.4.2 起，v2.4.3 扩充，全局设置） ----------
+ *   iconFit     'cover'=裁剪（默认）| 'contain'=内部。
+ *               contain 的语义是「图片**完整落在边框形状之内**」：只写 object-fit
+ *               是不够的（那是内切于方框，方形图的四角照样顶在圆外被切掉），
+ *               还要按内切解内缩 --ic-pad = 0.2929 × 圆角半径百分比。
+ *   iconBorder  'glass'=玻璃白边（默认）| 'auto'=自动取色 | 'theme'=跟随主题 | 'none'=透明。
+ *   iconShape   'auto'=跟随主题（默认）| 'circle' | 'rounded' | 'square'。
+ *   iconRadius  形状选「圆角」时的圆角百分比。
+ *   iconRingColor ''=按 iconBorder 取色 | '#rrggbb'=自定义描边色（优先，透明除外）。
+ *
+ * 状态类与自定义属性都挂 body，**不挂 #widget**：图标网格在 #widget 里，而图标编辑
+ * 弹窗 #itemModal 是 #widget 的**兄弟**节点 —— 只挂 #widget 的话弹窗预览不跟着变，
+ * 用户得保存完才知道图裁成什么样。自定义属性只沿 DOM 往下继承，同理。
  *
  * 「自动取色」的颜色由主进程算（IPC get-icon-colors，一次批量拿全），缓存在 iconColors。
  * 为什么不每个图标一次往返：首帧就会先画一圈主题色再跳成图片色，那种"掉画质"式的闪
- * 正是这个项目一路在躲的毛病。 */
+ * 正是这个项目一路在躲的毛病。
+ *
+ * 「跟随主题」刻意**不写任何颜色变量**：CSS 的 `var(--ic-ring-c, var(--t-accent,
+ * var(--accent)))` 回退链自己会拿到当前主题强调色（外发光的 45%、底色的 20% 用
+ * color-mix 现算），所以换风格 / 换壁纸时它自动跟着变，不需要在这里挂任何钩子 ——
+ * 少一处"忘记在换主题时重新调用"的机会。 */
 const iconColors = new Map();       // 图标路径 → '#rrggbb' | null
 let iconColorsInFlight = null;      // 正在跑的取色批次（Promise），用来串行化而不是丢掉
 
@@ -497,49 +512,101 @@ async function fetchIconColors(paths) {
 /** 补齐配置里所有图片图标的主色 */
 function ensureIconColors() { return fetchIconColors(iconPathsInUse()); }
 
-/** 把 '#rrggbb' 拆成描边/外发光/底色三个变量要的写法；不是 6 位 hex 就返回 null */
-function iconColorVars(hex) {
+/** 归一化 6 位 hex；不合法返回 '' */
+function normalizeHex(hex) {
   const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
-  if (!m) return null;
-  const n = parseInt(m[1], 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return {
-    ring: '#' + m[1].toLowerCase(),
-    glow: 'rgba(' + r + ', ' + g + ', ' + b + ', 0.45)',
-    tint: 'rgba(' + r + ', ' + g + ', ' + b + ', 0.20)'
-  };
+  return m ? '#' + m[1].toLowerCase() : '';
 }
 
-/** 把主色写到某个图标元素上。取不到色就**一个变量都不写**，让 CSS 的回退链
- *  （--t-accent → :root 的 --accent）接手，退回当前主题的强调色。 */
+/** 某个图标路径在当前设置下该用哪个描边色；返回 '' 表示"交给 CSS 回退到主题色"。
+ *
+ * 优先级（**一处决定**，避免"元素内联值 vs body 继承值"两套来源打架）：
+ *   自定义颜色 > 自动取色（该图主色）> 跟随主题 / 玻璃（都不写，走 CSS 回退） */
+function iconRingColorFor(path) {
+  const custom = normalizeHex(config.iconRingColor);
+  if (custom && config.iconBorder !== 'none') return custom;
+  if (config.iconBorder === 'auto') {
+    const own = normalizeHex(iconColors.get(path));
+    if (own) return own;
+  }
+  return '';
+}
+
+/** 把描边色写到某个图标元素上。没有颜色就**一个变量都不写**，让 CSS 的回退链
+ *  （--ic-ring-c → --t-accent → :root 的 --accent）接手，退回当前主题的强调色。
+ *  v2.4.3 起只写一个 --ic-ring-c：外发光与底色由 CSS 的 color-mix 从它派生，
+ *  省掉 JS 里再算两份 rgba（也就不会再出现"三份值不同步"这种状态）。 */
 function applyIconColorVars(el, path) {
   if (!el) return;
-  const vars = iconColorVars(iconColors.get(path));
-  if (!vars) {
-    el.style.removeProperty('--ic-ring-c');
-    el.style.removeProperty('--ic-glow');
-    el.style.removeProperty('--ic-tint');
-    return;
-  }
-  el.style.setProperty('--ic-ring-c', vars.ring);
-  el.style.setProperty('--ic-glow', vars.glow);
-  el.style.setProperty('--ic-tint', vars.tint);
+  const hex = iconRingColorFor(path);
+  if (!hex) { el.style.removeProperty('--ic-ring-c'); return; }
+  el.style.setProperty('--ic-ring-c', hex);
 }
 
-/** 把填充方式与边框模式写到 DOM 上（只写状态，不管颜色够不够） */
+/** 量出某个图标元素当前的圆角占边长的百分比（「内部」内缩量要用）。
+ *
+ * 为什么要实测量：「形状=跟随主题」时圆角由主题决定 —— MD3 用 --t-r-card(18px)、
+ * Fluent/MIUIX 用 --t-r-ctl、其余是 50%。写死一个常量的话，要么圆形主题里图片
+ * 仍被切角，要么圆角主题里图片莫名缩小一圈。
+ * border-radius 的 computed 值会**保留百分比原样**（Chrome 里 50% 就是 "50%"），
+ * px 值则要除以边长换算，所以两种写法都要认。 */
+function measureIconRadiusPct(el) {
+  if (!el) return null;
+  const cs = getComputedStyle(el);
+  const raw = cs.borderTopLeftRadius || '0px';
+  const num = parseFloat(raw);
+  if (!isFinite(num)) return null;
+  if (/%/.test(raw)) return Math.max(0, Math.min(50, num));
+  const w = el.getBoundingClientRect().width || parseFloat(cs.width) || 0;
+  if (!w) return null;
+  return Math.max(0, Math.min(50, (num / w) * 100));
+}
+
+/** 把形状 / 填充 / 边框状态写到 DOM 上（只写状态与几何量，颜色由 refreshIconLook 补） */
 function applyIconLook() {
+  const body = document.body;
   const fit = config.iconFit === 'contain' ? 'contain' : 'cover';
-  /* --ic-fit 挂 body，不挂 #widget：图标编辑弹窗 #itemModal 是 #widget 的**兄弟**
-   * 节点，自定义属性只沿 DOM 往下继承，挂 #widget 的话弹窗里的预览读不到这个值。
-   * （挂自定义属性和挂状态类不是一回事 —— 它不会像裸类名规则那样误伤祖先。） */
-  document.body.style.setProperty('--ic-fit', fit);
-  /* 边框模式用状态类，且必须挂 body：理由同上（要同时管到图标网格与弹窗预览）。 */
+  body.style.setProperty('--ic-fit', fit);
+
+  /* 形状：'auto' 时**一个变量都不写**，让十套主题各自的形状语言活着
+   * （MD3 的 --t-r-card、Fluent/MIUIX 的 --t-r-ctl、其余 50%）。 */
+  const shape = ['circle', 'rounded', 'square'].indexOf(config.iconShape) >= 0
+    ? config.iconShape : 'auto';
+  const radius = Math.max(4, Math.min(50, Number(config.iconRadius) || 22));
+  let radiusPct;
+  if (shape === 'circle') radiusPct = 50;
+  else if (shape === 'square') radiusPct = 0;
+  else if (shape === 'rounded') radiusPct = radius;
+  else radiusPct = null;             // 跟随主题 → 下面实测量
+  body.classList.toggle('ic-shape', shape !== 'auto');
+  if (shape === 'auto') body.style.removeProperty('--ic-rad');
+  else body.style.setProperty('--ic-rad', radiusPct + '%');
+
+  /* 「内部」的内缩量：内切于圆角矩形的解析解（见 style.css 里的推导）。
+   *   pad = 0.2929 × 圆角半径百分比
+   * 跟随主题时半径只能实测 —— 网格里没图标（空分组）时量不到，退回 14.65%
+   * （圆形的值）：宁可多留白，也不能因为量不到就把图切了。 */
+  if (radiusPct === null) {
+    const probe = document.querySelector('.item-icon');
+    const measured = measureIconRadiusPct(probe);
+    radiusPct = measured === null ? 50 : measured;
+  }
+  body.style.setProperty('--ic-pad', (0.2929 * radiusPct).toFixed(2) + '%');
+
+  /* 边框：一套解析链管三种取色策略，所以只需要一个"有色描边生效"的类。
+   * 颜色来源由 iconRingColorFor() 一处决定：
+   *   auto  → 每图标写 --ic-ring-c（图自己的主色）
+   *   theme → 什么都不写 → CSS 回退到主题强调色（换主题自动跟着变）
+   *   custom→ 每图标写 --ic-ring-c（自定义值，压过 auto）
+   *   glass → 什么都不写，也不挂 ic-ring（保持主题原本的描边） */
   const bd = config.iconBorder === 'auto' ? 'auto'
-    : config.iconBorder === 'none' ? 'none' : 'glass';
-  document.body.classList.toggle('ic-auto', bd === 'auto');
-  document.body.classList.toggle('ic-none', bd === 'none');
+    : config.iconBorder === 'theme' ? 'theme'
+      : config.iconBorder === 'none' ? 'none' : 'glass';
+  const custom = !!normalizeHex(config.iconRingColor);
+  const ring = bd !== 'glass' && bd !== 'none';
+  body.classList.toggle('ic-ring', ring || (custom && bd !== 'none'));
+  body.classList.toggle('ic-none', bd === 'none');
+  body.classList.toggle('ic-contain', fit === 'contain');
 }
 
 /** 只刷新图标外观，**不重建 DOM**。
@@ -547,29 +614,18 @@ function applyIconLook() {
  * 所以这里走"就地改变量"这条路。 */
 function refreshIconLook() {
   applyIconLook();
-  const auto = config.iconBorder === 'auto';
-  document.querySelectorAll('.item-icon img').forEach((img) => {
-    const el = img.parentElement;
-    if (!el) return;
-    const path = img.getAttribute('src');
-    if (auto) applyIconColorVars(el, path);
-    else {
-      el.style.removeProperty('--ic-ring-c');
-      el.style.removeProperty('--ic-glow');
-      el.style.removeProperty('--ic-tint');
-    }
+  /* 一次遍历管全部图标，不做"图片写、非图片清"的分支：
+   * 自定义边框色对**所有类型**的图标都生效，而预设 SVG / 字符图标没有取色源，
+   * 早期版本用"没有 img 就 removeProperty"清变量，结果把自定义色也一起清掉了 ——
+   * 表现是设了颜色只有图片图标变色、预设和字符还是主题色（真机探针抓出来的）。
+   * 正确做法：统一交给 iconRingColorFor() 决定 —— 它认识「自定义色 > 图自己的色
+   * > 空（交给 CSS 回退主题色）」三种情况，path 传空串就是"没有取色源"。
+   * 清变量这件事也不能省：从「自动取色」切到「跟随主题」时元素上会残留上一张图的
+   * 内联色，而元素自身声明优先级高于继承，主题色永远顶不上来。 */
+  document.querySelectorAll('.item-icon, .icon-preview').forEach((el) => {
+    const img = el.querySelector('img');
+    applyIconColorVars(el, img ? img.getAttribute('src') : '');
   });
-  // 图标编辑弹窗里的预览：选图时就能看出裁成什么样、边框什么色
-  const prev = $('iconPreview');
-  if (prev) {
-    const src = prev.querySelector('img');
-    if (auto && src) applyIconColorVars(prev, src.getAttribute('src'));
-    else {
-      prev.style.removeProperty('--ic-ring-c');
-      prev.style.removeProperty('--ic-glow');
-      prev.style.removeProperty('--ic-tint');
-    }
-  }
 }
 
 function setIconFit(v) {
@@ -579,22 +635,56 @@ function setIconFit(v) {
   syncSettingsControls();
   refreshIconLook();
   persist();
-  toast(next === 'contain' ? '图标改为完整显示（内部）' : '图标改为裁剪填满');
+  toast(next === 'contain' ? '图标改为完整显示在边框内（内部）' : '图标改为裁剪填满');
 }
 
 function setIconBorder(v) {
-  const next = v === 'auto' ? 'auto' : v === 'none' ? 'none' : 'glass';
+  const next = v === 'auto' ? 'auto' : v === 'theme' ? 'theme'
+    : v === 'none' ? 'none' : 'glass';
   if (config.iconBorder === next) return;
   config.iconBorder = next;
   syncSettingsControls();
   refreshIconLook();
   persist();
-  if (next === 'auto') {
+  if (next === 'auto' && !normalizeHex(config.iconRingColor)) {
     // 主色是异步算的：算完再刷一次，首屏先按主题强调色顶上
     ensureIconColors().then((added) => { if (added) refreshIconLook(); });
   }
   toast(next === 'auto' ? '图标边框跟随各自图标的主色'
-    : next === 'none' ? '图标边框已透明' : '图标边框改回玻璃白边');
+    : next === 'theme' ? '图标边框跟随当前主题的强调色（换风格会跟着变）'
+      : next === 'none' ? '图标边框已透明' : '图标边框改回玻璃白边');
+}
+
+function setIconShape(v) {
+  const next = ['circle', 'rounded', 'square'].indexOf(v) >= 0 ? v : 'auto';
+  if (config.iconShape === next) return;
+  config.iconShape = next;
+  syncSettingsControls();
+  refreshIconLook();
+  persist();
+  toast(next === 'auto' ? '图标形状跟随主题'
+    : next === 'circle' ? '图标改为圆形'
+      : next === 'rounded' ? '图标改为圆角矩形' : '图标改为方形');
+}
+
+function setIconRadius(v) {
+  const next = Math.max(4, Math.min(50, Math.round(Number(v) || 22)));
+  if (config.iconRadius === next) return;
+  config.iconRadius = next;
+  syncSettingsControls();
+  refreshIconLook();
+  persist();
+}
+
+/** 自定义描边色。传 '' 表示交还给「图标边框」的取色策略。 */
+function setIconRingColor(hex) {
+  const next = normalizeHex(hex);
+  if (normalizeHex(config.iconRingColor) === next) return;
+  config.iconRingColor = next;
+  syncSettingsControls();
+  refreshIconLook();
+  persist();
+  toast(next ? '图标边框使用自定义颜色 ' + next.toUpperCase() : '图标边框颜色交还给上面的取色策略');
 }
 
 /* ---------- 渲染 ---------- */
@@ -1850,7 +1940,7 @@ function syncSettingsControls() {
       b.setAttribute('aria-pressed', b.dataset.appearance === ap ? 'true' : 'false');
     });
   }
-  // 图标填充 / 图标边框（v2.4.2）：同样是各管各的 seg，靠 data-* 区分
+  // 图标填充 / 形状 / 边框 / 边框颜色（v2.4.2 起）：各管各的控件，靠 data-* 区分
   const fSeg = $('iconFitSeg');
   if (fSeg) {
     const fit = config.iconFit === 'contain' ? 'contain' : 'cover';
@@ -1858,14 +1948,41 @@ function syncSettingsControls() {
       b.setAttribute('aria-pressed', b.dataset.fit === fit ? 'true' : 'false');
     });
   }
+  const shSeg = $('iconShapeSeg');
+  const shape = ['circle', 'rounded', 'square'].indexOf(config.iconShape) >= 0
+    ? config.iconShape : 'auto';
+  if (shSeg) {
+    shSeg.querySelectorAll('.seg-btn').forEach((b) => {
+      b.setAttribute('aria-pressed', b.dataset.shape === shape ? 'true' : 'false');
+    });
+  }
+  // 圆角大小只在「圆角」形状下有意义，别的形状下藏起来，免得调了没反应
+  const rRow = $('iconRadiusRow');
+  if (rRow) rRow.classList.toggle('hidden', shape !== 'rounded');
+  const rIn = $('iconRadius');
+  const radius = Math.max(4, Math.min(50, Number(config.iconRadius) || 22));
+  if (rIn) {
+    rIn.value = String(radius);
+    if (typeof syncRangeFill === 'function') syncRangeFill(rIn);
+  }
+  const rVal = $('iconRadiusVal');
+  if (rVal) rVal.textContent = radius + '%';
   const bSeg = $('iconBorderSeg');
   if (bSeg) {
     const bd = config.iconBorder === 'auto' ? 'auto'
-      : config.iconBorder === 'none' ? 'none' : 'glass';
+      : config.iconBorder === 'theme' ? 'theme'
+        : config.iconBorder === 'none' ? 'none' : 'glass';
     bSeg.querySelectorAll('.seg-btn').forEach((b) => {
       b.setAttribute('aria-pressed', b.dataset.border === bd ? 'true' : 'false');
     });
   }
+  const rc = $('iconRingColor');
+  const rcHex = normalizeHex(config.iconRingColor);
+  if (rc) rc.value = rcHex || '#3a63f2';
+  const rcSpan = $('iconRingHex');
+  if (rcSpan) rcSpan.textContent = rcHex ? rcHex.toUpperCase() : '按上面取色';
+  const rcClear = $('btnIconRingClear');
+  if (rcClear) rcClear.classList.toggle('hidden', !rcHex);
   const manual = mode === 'manual';
   const row = $('manualRow');
   const sw = $('swatches');
@@ -2087,7 +2204,7 @@ if (appearanceSeg) {
   });
 }
 
-/* ---------- 图标外观的事件绑定（v2.4.2） ---------- */
+/* ---------- 图标外观的事件绑定（v2.4.2 起） ---------- */
 const iconFitSeg = $('iconFitSeg');
 if (iconFitSeg) {
   iconFitSeg.addEventListener('click', (e) => {
@@ -2103,6 +2220,36 @@ if (iconBorderSeg) {
     if (!btn || !btn.dataset.border) return;
     setIconBorder(btn.dataset.border);
   });
+}
+const iconShapeSeg = $('iconShapeSeg');
+if (iconShapeSeg) {
+  iconShapeSeg.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if (!btn || !btn.dataset.shape) return;
+    setIconShape(btn.dataset.shape);
+  });
+}
+/* 圆角滑块：input 事件里就生效（拖动即时预览）—— setIconRadius 内部有同值短路，
+ * 所以每次 input 不会重复落盘，真正的持久化只在值真的变了那一次发生。 */
+const iconRadiusEl = $('iconRadius');
+if (iconRadiusEl) {
+  iconRadiusEl.addEventListener('input', (e) => setIconRadius(e.target.value));
+}
+const iconRingColorEl = $('iconRingColor');
+if (iconRingColorEl) {
+  iconRingColorEl.addEventListener('input', (e) => {
+    // 拖动取色器即时预览，但不落盘 —— 与主色取色器同一套手感
+    const hex = normalizeHex(e.target.value);
+    if (!hex) return;
+    config.iconRingColor = hex;
+    refreshIconLook();
+    const span = $('iconRingHex');
+    if (span) span.textContent = hex.toUpperCase();
+  });
+  iconRingColorEl.addEventListener('change', (e) => setIconRingColor(e.target.value));
+}
+if ($('btnIconRingClear')) {
+  $('btnIconRingClear').addEventListener('click', () => setIconRingColor(''));
 }
 
 if ($('setBgOn')) {
@@ -2217,8 +2364,9 @@ function updateIconPreview() {
     if (iconState.char) prev.textContent = iconState.char;      // 自定义字符
     else prev.innerHTML = svgIcon(ICONS[iconState.preset] || 'i-star');  // 预设 SVG
   }
-  // 自动取色：刚选的这张图主色多半还没算过，去要一次，算完再刷预览
-  if (config.iconBorder === 'auto') syncPreviewIconColor();
+  // 需要按图片取色时才去问主进程（自定义色/跟随主题/玻璃都不需要这张图的主色）
+  if (config.iconBorder === 'auto' && !normalizeHex(config.iconRingColor)) syncPreviewIconColor();
+  else applyIconColorVars($('iconPreview'), iconState.path);
 }
 
 /** 图标编辑弹窗里那张预览的自动取色。
@@ -2227,11 +2375,7 @@ function updateIconPreview() {
 function syncPreviewIconColor() {
   const prev = $('iconPreview');
   if (!prev) return;
-  const clear = () => {
-    prev.style.removeProperty('--ic-ring-c');
-    prev.style.removeProperty('--ic-glow');
-    prev.style.removeProperty('--ic-tint');
-  };
+  const clear = () => { prev.style.removeProperty('--ic-ring-c'); };
   const path = iconState.path;
   if (!path) { clear(); return; }
   if (iconColors.has(path)) { applyIconColorVars(prev, path); return; }
@@ -2717,9 +2861,12 @@ if (typeof API.onTrayAction === 'function') {
   // 明暗模式要在第一帧就位（和主题同理，否则会看到"先亮后暗"的闪一下）
   if (config.appearance !== 'dark') config.appearance = 'light';
   applyAppearance(config.appearance);
-  // 图标外观（v2.4.2）：老配置里没有这两个键，非法值一律收回默认
+  // 图标外观（v2.4.2 起）：老配置里没有这几个键，非法值一律收回默认
   if (config.iconFit !== 'contain') config.iconFit = 'cover';
-  if (config.iconBorder !== 'auto' && config.iconBorder !== 'none') config.iconBorder = 'glass';
+  if (['glass', 'auto', 'theme', 'none'].indexOf(config.iconBorder) < 0) config.iconBorder = 'glass';
+  if (['circle', 'rounded', 'square'].indexOf(config.iconShape) < 0) config.iconShape = 'auto';
+  config.iconRadius = Math.max(4, Math.min(50, Number(config.iconRadius) || 22));
+  config.iconRingColor = normalizeHex(config.iconRingColor);
   syncSettingsControls();
   // 折射基底：自定义背景图优先，其次桌面壁纸（取不到就用内置渐变）
   loadCustomBackground();
@@ -2736,10 +2883,14 @@ if (typeof API.onTrayAction === 'function') {
    * 自动取色模式下先把主色算完再 render —— 否则首帧会先画一圈主题强调色、
    * 下一帧才跳成图片自己的颜色，看上去就是"闪了一下"（这个项目一直在躲这种毛病）。 */
   applyIconLook();
-  if (config.iconBorder === 'auto') {
+  if (config.iconBorder === 'auto' && !config.iconRingColor) {
     try { await ensureIconColors(); } catch (e) { /* 取不到色 → 走主题强调色回退 */ }
   }
   render();
+  /* render 之后再刷一次外观：形状选「跟随主题」且填充是「内部」时，内缩量要**实测**
+   * 主题给的圆角半径，而上面那次 applyIconLook 跑在 render 之前、网格还是空的，
+   * 量不到就只能退回圆形的值 —— 圆角主题（MD3/Fluent/MIUIX）里会白白多留一圈白。 */
+  refreshIconLook();
   refreshUsb();   // 启动时先拉一次，已插着的 U 盘要立刻显示出来
 
   // 环境信息：v1.7 起放弃 mica（它要求窗口不透明，会在四角露出方形底色），

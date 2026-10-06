@@ -346,7 +346,7 @@
         取色也改从这张图派生。模糊 0-40px、白色蒙版 0-100%（压亮图片做磨砂底），
         缩放 + 位置就是裁剪：放大后用两个位置滑块把想看的部分挪到中间。
         图片被移动或删除后会自动回退壁纸。</p>
-      <!-- 图标外观（v2.4.2）：填充方式只影响图片图标；边框对预设/字符图标也生效 -->
+      <!-- 图标外观（v2.4.2 起）：填充方式只影响图片图标；边框与形状对预设/字符图标也生效 -->
       <div class="row">
         <span>图标填充</span>
         <div class="seg" id="iconFitSeg" role="group" aria-label="图标填充">
@@ -355,17 +355,46 @@
         </div>
       </div>
       <div class="row">
+        <span>图标形状</span>
+        <div class="seg" id="iconShapeSeg" role="group" aria-label="图标形状">
+          <button type="button" class="seg-btn" data-shape="auto" aria-pressed="true">跟随主题</button>
+          <button type="button" class="seg-btn" data-shape="circle" aria-pressed="false">圆形</button>
+          <button type="button" class="seg-btn" data-shape="rounded" aria-pressed="false">圆角</button>
+          <button type="button" class="seg-btn" data-shape="square" aria-pressed="false">方形</button>
+        </div>
+      </div>
+      <label class="row" id="iconRadiusRow">
+        <span>圆角大小</span>
+        <input type="range" id="iconRadius" min="4" max="50" step="1" value="22"
+               aria-label="图标圆角大小" />
+        <span id="iconRadiusVal" class="val">22%</span>
+      </label>
+      <div class="row">
         <span>图标边框</span>
         <div class="seg" id="iconBorderSeg" role="group" aria-label="图标边框">
           <button type="button" class="seg-btn" data-border="glass" aria-pressed="true">玻璃</button>
           <button type="button" class="seg-btn" data-border="auto" aria-pressed="false">自动取色</button>
+          <button type="button" class="seg-btn" data-border="theme" aria-pressed="false">跟随主题</button>
           <button type="button" class="seg-btn" data-border="none" aria-pressed="false">透明</button>
         </div>
       </div>
-      <p class="row-hint">「裁剪」把图片填满整块、超出圆形的部分切掉；「内部」完整显示、四周留白，
-        图上有字时不会被切。<b>填充只管图片图标</b>，预设图标与自定义字符是矢量和文字，不受影响。
-        「自动取色」从图标图里挑主色，同时染描边、外发光和底色；预设图标、字符以及读不出颜色的图片
-        退回当前主题的强调色。「透明」只去掉描边，底材质感照旧。</p>
+      <div class="row">
+        <span>边框颜色</span>
+        <div class="color-pick">
+          <input type="color" id="iconRingColor" value="#3a63f2" aria-label="自定义图标边框颜色" />
+          <span id="iconRingHex" class="val">按上面取色</span>
+          <button type="button" class="text-btn" id="btnIconRingClear">恢复默认</button>
+        </div>
+      </div>
+      <p class="row-hint">「裁剪」把图片填满整块、超出边框形状的部分切掉；「内部」让图片
+        <b>完整落在边框形状之内</b>（按内切解留白，第三方异形图标不会被圆边切掉一角）。
+        <b>填充只管图片图标</b>，预设图标与自定义字符是矢量和文字，不受影响。
+        「图标形状」默认跟随主题（十套主题各自的形状语言不动），也可以强制成圆形 / 圆角 / 方形。
+        「图标边框」四选一：玻璃白边、从图标图里取主色（自动取色）、用当前主题的强调色
+        （跟随主题，换风格 / 换壁纸会跟着变）、透明。取色会同时染描边、外发光和底色；
+        预设图标、字符以及读不出颜色的图片自动退回主题强调色。
+        「边框颜色」一旦指定就优先于上面的取色策略（只有「透明」能盖过它），
+        「恢复默认」则交还给上面的策略。</p>
       <div class="row">
         <span>窗口大小</span>
         <div class="size-controls">
