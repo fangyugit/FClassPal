@@ -119,5 +119,20 @@ app.whenReady().then(async () => {
   await sleep(400);
   await shot('icon_v243_modal_preview.png');
 
+  // ⑥ 统一图标风格（v2.4.4）：内部 + 圆形 + 边框跟随主题 + 统一色
+  //    = Pixel 那种"同色底 + 同色图标"的成套图标；图片保留明暗细节（不是纯色块）
+  await hide();   // ⑤ 开过编辑弹窗，先关掉再拍主界面
+  await wc.executeJavaScript(`(function(){
+    setIconShape('circle'); setIconBorder('theme'); setIconRingColor('');
+    setIconFit('contain'); setIconMono(true);
+    return 1; })()`);
+  await sleep(900);
+  await shot('icon_v244_mono_theme.png');
+
+  // ⑦ 统一色 = 自定义色（设了「边框颜色」就直接用它当整套图标的色）
+  await wc.executeJavaScript(`(function(){ setIconRingColor('#ff8800'); return 1; })()`);
+  await sleep(900);
+  await shot('icon_v244_mono_custom.png');
+
   app.exit(0);
 }).catch((e) => { console.error(e); app.exit(1); });

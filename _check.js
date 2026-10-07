@@ -442,8 +442,8 @@ const checks = [
     fs.existsSync('build/icon.ico') && fs.existsSync('build/icon.png')],
   ['main: BrowserWindow 挂 icon（开发模式/alt-tab 也有图标）',
     /icon:\s*fs\.existsSync\(path\.join\(__dirname, 'build', 'icon\.ico'\)\)/.test(main)],
-  ['产物: 便携 exe 已生成（v2.4.3）', fs.existsSync('dist/FClassPal-2.4.3.exe')],
-  ['配置: 版本号 2.4.3', srcPkg.version === '2.4.3'],
+  ['产物: 便携 exe 已生成（v2.4.4）', fs.existsSync('dist/FClassPal-2.4.4.exe')],
+  ['配置: 版本号 2.4.4', srcPkg.version === '2.4.4'],
   ['配置: 已移除 package.json description（exe 属性不再带描述）',
     srcPkg.description === undefined],
   ['author = YU（用户在远端改的大写）', srcPkg.author === 'YU'],
@@ -705,9 +705,31 @@ const checks = [
     /\.size-controls button\.text-btn \{ width: auto; height: auto; \}/.test(css) &&
     /\.text-btn \{[\s\S]{0,300}?white-space: nowrap;/.test(css) &&
     !/<div class="size-controls" id="bgRow"/.test(html)],
-  ['v2.4.3: README / CHANGELOG 已同步到本版（防"发版忘了改文档"）',
-    /2\.4\.3/.test(readme) && /CHANGELOG\.md/.test(readme) &&
-    /##\s*v2\.4\.3/.test(changelog) && /2\.4\.3/.test(changelog)],
+  ['★ v2.4.4 统一图标风格：iconMonoActive 要求 contain（它是「内部」的附加项，裁剪下让位）',
+    /function iconMonoActive\(\)\s*\{[^}]*config\.iconFit === 'contain'/.test(app)],
+  ['★ v2.4.4 统一色由 body 一处下发（逐图标写内联值会把"一个色"拆成 N 份）',
+    /body\.classList\.toggle\('ic-mono', iconMonoActive\(\)\)/.test(app) &&
+    /iconMonoActive\(\) && normalizeHex\(config\.iconRingColor\)\)[\s\S]{0,140}?setProperty\('--ic-ring-c'[\s\S]{0,140}?removeProperty\('--ic-ring-c'\)/.test(app)],
+  ['★ v2.4.4 统一模式下逐图标取色一律返回空（返回 \'\'=交给 CSS 回退）',
+    /function iconRingColorFor[\s\S]{0,120}?if \(iconMonoActive\(\)\) return '';/.test(app)],
+  ['★ v2.4.4 蒙版变量：从元素自己的 <img> 取（img.src 已编码），关掉时真清掉，同一次遍历里刷',
+    /function applyIconMaskVar\(el\)[\s\S]{0,700}?querySelector\('img'\)[\s\S]{0,700}?removeProperty\('--ic-mask'\)[\s\S]{0,700}?setProperty\('--ic-mask',/.test(app) &&
+    /querySelectorAll\('\.item-icon, \.icon-preview'\)\.forEach\(\(el\) => \{[\s\S]{0,260}?applyIconMaskVar\(el\)/.test(app)],
+  ['★ v2.4.4 CSS：蒙版层几何与图片内容盒一致（inset=--ic-pad / contain），且用 :has(img) 限定',
+    /body\.ic-mono \.item-icon:has\(img\)::after[\s\S]{0,900}?inset:\s*var\(--ic-pad, 0\)[\s\S]{0,900}?mask-image:\s*var\(--ic-mask\)[\s\S]{0,900}?mask-size:\s*contain/.test(css) &&
+    // 选择器是两个（.item-icon.item-icon + .icon-preview.icon-preview）的列表，别锚成单选择器加 {
+    /body\.ic-mono \.item-icon\.item-icon,[\s\S]{0,200}?--ic-c: var\(--ic-ring-c, var\(--t-accent, var\(--accent\)\)\)/.test(css)],
+  ['★ v2.4.4 CSS：color 混合保留明暗细节（满幅不透明图标才不会变成纯色方块）+ isolation',
+    /body\.ic-mono \.item-icon:has\(img\)::after[\s\S]{0,900}?mix-blend-mode:\s*color/.test(css) &&
+    /body\.ic-mono \.item-icon\.item-icon,[\s\S]{0,300}?isolation:\s*isolate/.test(css)],
+  ['v2.4.4 事件绑定 + 开关行只在「内部」下露出 + 老配置回收布尔默认',
+    /\$\('iconMono'\)\.addEventListener\('change'/.test(app) &&
+    /mnRow\.classList\.toggle\('hidden', fitNow !== 'contain'\)/.test(app) &&
+    /config\.iconMono = !!config\.iconMono/.test(app) &&
+    /function setIconMono\(on\)[\s\S]{0,420}?persist\(\)/.test(app)],
+  ['v2.4.4: README / CHANGELOG 已同步到本版（防"发版忘了改文档"）',
+    /2\.4\.4/.test(readme) && /CHANGELOG\.md/.test(readme) &&
+    /##\s*v2\.4\.4/.test(changelog) && /2\.4\.4/.test(changelog)],
   ['v2.3.2: 进度条跟随（--sl-fill 不在 input 上声明 + syncRangeFill 清元素自身陈旧变量）',
     !/body\.theme-glass input\[type="range"\]\s*\{[^}]*--sl-fill\s*:/.test(css) &&
     /el\.style\.removeProperty\('--sl-fill'\)/.test(app) &&

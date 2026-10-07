@@ -354,6 +354,11 @@
           <button type="button" class="seg-btn" data-fit="contain" aria-pressed="false">内部</button>
         </div>
       </div>
+      <!-- 统一图标风格（v2.4.4）：只在「内部」填充下露出（裁剪模式下藏起来，调了没反应） -->
+      <label class="row toggle hidden" id="iconMonoRow">
+        <span>统一图标风格</span>
+        <input type="checkbox" id="iconMono" aria-label="统一图标风格" />
+      </label>
       <div class="row">
         <span>图标形状</span>
         <div class="seg" id="iconShapeSeg" role="group" aria-label="图标形状">
@@ -394,7 +399,12 @@
         （跟随主题，换风格 / 换壁纸会跟着变）、透明。取色会同时染描边、外发光和底色；
         预设图标、字符以及读不出颜色的图片自动退回主题强调色。
         「边框颜色」一旦指定就优先于上面的取色策略（只有「透明」能盖过它），
-        「恢复默认」则交还给上面的策略。</p>
+        「恢复默认」则交还给上面的策略。
+        「统一图标风格」只在「内部」下出现（裁剪模式图标已填满整块，再上单色没有意义）：
+        打开后所有图标收敛到<b>同一个颜色</b>——图片按自己的形状染成单色（明暗细节留着，
+        认得出是哪个应用），预设线条图标与字符图标直接换色，像 Pixel 的主题图标那样
+        一整套图标统一取色。统一色取当前主题的强调色，设了「边框颜色」就用它；
+        再配上「图标形状 = 圆形」和「图标边框 = 跟随主题」，就是 Pixel 那种同色底的成套图标。</p>
       <div class="row">
         <span>窗口大小</span>
         <div class="size-controls">

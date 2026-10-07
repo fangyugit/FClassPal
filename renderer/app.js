@@ -128,9 +128,9 @@ const API = window.widgetAPI || (function () {
     /* 明暗模式 + 自定义背景（v2.4.0），与 main.js 的 DEFAULT_CONFIG 对齐 */
     appearance: 'light',
     background: { enabled: false, path: '', blur: 0, mask: 0, scale: 100, offsetX: 50, offsetY: 50, fit: 'cover' },
-    /* 图标外观（v2.4.2 / v2.4.3），与 main.js 的 DEFAULT_CONFIG 对齐 */
+    /* 图标外观（v2.4.2 / v2.4.3 / v2.4.4），与 main.js 的 DEFAULT_CONFIG 对齐 */
     iconFit: 'cover', iconBorder: 'glass',
-    iconShape: 'auto', iconRadius: 22, iconRingColor: '',
+    iconShape: 'auto', iconRadius: 22, iconRingColor: '', iconMono: false,
     cornerRadius: null,
     /* 与 main.js 的首次启动种子一致：只有一个空的「希沃应用」分组 */
     groups: [
@@ -452,7 +452,7 @@ function resolveIcon(it) {
   return { type: 'svg', value: ICONS[it.icon] || 'i-star' };
 }
 
-/* ---------- 图标外观（v2.4.2 起，v2.4.3 扩充，全局设置） ----------
+/* ---------- 图标外观（v2.4.2 起，v2.4.3/2.4.4 扩充，全局设置） ----------
  *   iconFit     'cover'=裁剪（默认）| 'contain'=内部。
  *               contain 的语义是「图片**完整落在边框形状之内**」：只写 object-fit
  *               是不够的（那是内切于方框，方形图的四角照样顶在圆外被切掉），
@@ -461,6 +461,15 @@ function resolveIcon(it) {
  *   iconShape   'auto'=跟随主题（默认）| 'circle' | 'rounded' | 'square'。
  *   iconRadius  形状选「圆角」时的圆角百分比。
  *   iconRingColor ''=按 iconBorder 取色 | '#rrggbb'=自定义描边色（优先，透明除外）。
+ *   iconMono    true=统一图标风格（v2.4.4）：所有图标收敛到**同一个颜色**，
+ *               像 Pixel 的主题图标那样"取一个色、统一整套图标"。
+ *               图片做法：拿图自己的 alpha 裁出形状（--ic-mask），在上面压一层
+ *               统一色并用 mix-blend-mode:color 混合 —— 色相/饱和度取统一色、
+ *               明暗仍来自图标本身，所以细节还在、认得出是什么应用；
+ *               预设线条图标与字符图标本来就是单色，直接换色。
+ *               统一色 = iconRingColor（设了就用它）> 当前主题的强调色。
+ *               **它是「内部」填充的附加项**：填充切到「裁剪」时自动让位
+ *               （配置保留，切回「内部」就恢复）。
  *
  * 状态类与自定义属性都挂 body，**不挂 #widget**：图标网格在 #widget 里，而图标编辑
  * 弹窗 #itemModal 是 #widget 的**兄弟**节点 —— 只挂 #widget 的话弹窗预览不跟着变，
@@ -476,6 +485,14 @@ function resolveIcon(it) {
  * 少一处"忘记在换主题时重新调用"的机会。 */
 const iconColors = new Map();       // 图标路径 → '#rrggbb' | null
 let iconColorsInFlight = null;      // 正在跑的取色批次（Promise），用来串行化而不是丢掉
+
+/** 「统一图标风格」此刻是否真的生效。
+ * 它是「内部」填充的附加项：裁剪模式下图标已经填满整块，再上单色没有意义，
+ * 所以那里自动让位（但配置留着，切回「内部」立刻恢复 —— 不能因为换个填充
+ * 就把用户另一个开关悄悄清掉）。 */
+function iconMonoActive() {
+  return !!config.iconMono && config.iconFit === 'contain';
+}
 
 function iconPathsInUse() {
   const out = [];
@@ -521,8 +538,13 @@ function normalizeHex(hex) {
 /** 某个图标路径在当前设置下该用哪个描边色；返回 '' 表示"交给 CSS 回退到主题色"。
  *
  * 优先级（**一处决定**，避免"元素内联值 vs body 继承值"两套来源打架）：
- *   自定义颜色 > 自动取色（该图主色）> 跟随主题 / 玻璃（都不写，走 CSS 回退） */
+ *   自定义颜色 > 自动取色（该图主色）> 跟随主题 / 玻璃（都不写，走 CSS 回退）
+ *
+ * ※ 统一图标风格时一律返回 ''（连自定义色也不逐图标写）：那时"所有图标同一个色"
+ *   是这套外观的全部意义，逐图标写内联色会让统一失效 —— 统一色改由 body 上的
+ *   --ic-ring-c 一处下发（见 applyIconLook）。 */
 function iconRingColorFor(path) {
+  if (iconMonoActive()) return '';
   const custom = normalizeHex(config.iconRingColor);
   if (custom && config.iconBorder !== 'none') return custom;
   if (config.iconBorder === 'auto') {
@@ -541,6 +563,22 @@ function applyIconColorVars(el, path) {
   const hex = iconRingColorFor(path);
   if (!hex) { el.style.removeProperty('--ic-ring-c'); return; }
   el.style.setProperty('--ic-ring-c', hex);
+}
+
+/** 把图标的图源写成 CSS 蒙版变量（--ic-mask），统一图标风格要用它裁出形状。
+ *
+ * 用 `img.src` 而不是 `getAttribute('src')`：前者是 DOM 解析后的**绝对且已编码**的
+ * URL（中文路径、空格都处理好了），直接塞进 `url()` 才不会因为引号/空格断掉。
+ * 统一风格关掉时必须真清掉变量 —— 留着的话下一张图会继续沿用上一个蒙版形状。
+ * 蒙版来源直接从元素自己的 `<img>` 取，不另传参数：传进来的路径一旦和实际渲染的
+ * 图源不一致（比如预览用的是"未保存的选择"），蒙版就会错位成另一个形状。 */
+function applyIconMaskVar(el) {
+  if (!el) return;
+  const img = el.querySelector('img');
+  if (!img || !iconMonoActive()) { el.style.removeProperty('--ic-mask'); return; }
+  const url = String(img.currentSrc || img.src || '').replace(/["\\]/g, '\\$&');
+  if (!url) { el.style.removeProperty('--ic-mask'); return; }
+  el.style.setProperty('--ic-mask', 'url("' + url + '")');
 }
 
 /** 量出某个图标元素当前的圆角占边长的百分比（「内部」内缩量要用）。
@@ -607,6 +645,18 @@ function applyIconLook() {
   body.classList.toggle('ic-ring', ring || (custom && bd !== 'none'));
   body.classList.toggle('ic-none', bd === 'none');
   body.classList.toggle('ic-contain', fit === 'contain');
+
+  /* 统一图标风格（v2.4.4）：挂状态的**同时**把统一色下发到 body。
+   * 为什么统一色要写 body 而不是逐图标：@see iconRingColorFor —— 逐图标写内联值
+   * 会把"所有图标一个色"这件事拆成 N 份，改一次颜色要刷 N 个元素，且中间态会花。
+   * 元素内联的 --ic-ring-c 优先级高于继承，所以这里必须**真清掉**（非统一模式也一样），
+   * 否则从「自动取色」切走时上一位的图色会顶住主题色。 */
+  body.classList.toggle('ic-mono', iconMonoActive());
+  if (iconMonoActive() && normalizeHex(config.iconRingColor)) {
+    body.style.setProperty('--ic-ring-c', normalizeHex(config.iconRingColor));
+  } else {
+    body.style.removeProperty('--ic-ring-c');
+  }
 }
 
 /** 只刷新图标外观，**不重建 DOM**。
@@ -625,6 +675,9 @@ function refreshIconLook() {
   document.querySelectorAll('.item-icon, .icon-preview').forEach((el) => {
     const img = el.querySelector('img');
     applyIconColorVars(el, img ? img.getAttribute('src') : '');
+    /* 统一图标风格要靠 --ic-mask 裁出图的形状，同一遍里一起写掉：
+     * 再开一轮遍历的话，两次遍历之间就有一次"有的图标换了色、有的还没换蒙版"的中间态。 */
+    applyIconMaskVar(el);
   });
 }
 
@@ -635,6 +688,12 @@ function setIconFit(v) {
   syncSettingsControls();
   refreshIconLook();
   persist();
+  /* 切到「裁剪」时统一风格会暂时让位（@see iconMonoActive），但配置留着 ——
+   * 用户以为"我的开关被吃了"，所以这里必须说一句。 */
+  if (next === 'cover' && config.iconMono) {
+    toast('图标改为裁剪填满（统一图标风格在「裁剪」下不生效，设置保留）');
+    return;
+  }
   toast(next === 'contain' ? '图标改为完整显示在边框内（内部）' : '图标改为裁剪填满');
 }
 
@@ -685,6 +744,20 @@ function setIconRingColor(hex) {
   refreshIconLook();
   persist();
   toast(next ? '图标边框使用自定义颜色 ' + next.toUpperCase() : '图标边框颜色交还给上面的取色策略');
+}
+
+/** 统一图标风格（v2.4.4）。只在「内部」填充下有意义，所以顺带把开关那一行
+ *  的可见性也交给 syncSettingsControls 统一处理（@see 那里）。 */
+function setIconMono(on) {
+  const next = !!on;
+  if (!!config.iconMono === next) return;
+  config.iconMono = next;
+  syncSettingsControls();
+  refreshIconLook();
+  persist();
+  if (!next) { toast('图标恢复各自原本的配色'); return; }
+  if (!iconMonoActive()) { toast('统一图标风格已记住，切到「内部」填充时生效'); return; }
+  toast('所有图标统一成' + (normalizeHex(config.iconRingColor) ? '自定义色 ' + normalizeHex(config.iconRingColor).toUpperCase() : '当前主题的强调色'));
 }
 
 /* ---------- 渲染 ---------- */
@@ -1959,6 +2032,13 @@ function syncSettingsControls() {
   // 圆角大小只在「圆角」形状下有意义，别的形状下藏起来，免得调了没反应
   const rRow = $('iconRadiusRow');
   if (rRow) rRow.classList.toggle('hidden', shape !== 'rounded');
+  // 统一图标风格（v2.4.4）同理：它是「内部」填充的附加项，裁剪模式下藏着 ——
+  // 但那只是"藏"，配置值一直留着，切回「内部」立刻生效（不能顺手把用户的设置清掉）
+  const mnRow = $('iconMonoRow');
+  const fitNow = config.iconFit === 'contain' ? 'contain' : 'cover';
+  if (mnRow) mnRow.classList.toggle('hidden', fitNow !== 'contain');
+  const mnIn = $('iconMono');
+  if (mnIn) mnIn.checked = !!config.iconMono;
   const rIn = $('iconRadius');
   const radius = Math.max(4, Math.min(50, Number(config.iconRadius) || 22));
   if (rIn) {
@@ -2250,6 +2330,9 @@ if (iconRingColorEl) {
 }
 if ($('btnIconRingClear')) {
   $('btnIconRingClear').addEventListener('click', () => setIconRingColor(''));
+}
+if ($('iconMono')) {
+  $('iconMono').addEventListener('change', (e) => setIconMono(e.target.checked));
 }
 
 if ($('setBgOn')) {
@@ -2867,6 +2950,7 @@ if (typeof API.onTrayAction === 'function') {
   if (['circle', 'rounded', 'square'].indexOf(config.iconShape) < 0) config.iconShape = 'auto';
   config.iconRadius = Math.max(4, Math.min(50, Number(config.iconRadius) || 22));
   config.iconRingColor = normalizeHex(config.iconRingColor);
+  config.iconMono = !!config.iconMono;
   syncSettingsControls();
   // 折射基底：自定义背景图优先，其次桌面壁纸（取不到就用内置渐变）
   loadCustomBackground();

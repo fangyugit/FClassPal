@@ -205,7 +205,17 @@ app.whenReady().then(async () => {
         fit: img ? cs(img).objectFit : null,
         pad: img ? px(cs(img).paddingLeft) : null,
         contentBox: img ? img.getBoundingClientRect().width - px(cs(img).paddingLeft)
-                                   - px(cs(img).paddingRight) : null
+                                   - px(cs(img).paddingRight) : null,
+        /* v2.4.4 统一图标风格：--ic-c 是"这套外观统一用的那个色"，
+         * 它落在元素上的**最终取值**就是"颜色真的统一了吗"的判据；
+         * color 则直接证明预设线条图标 / 字符图标换色了（.ic 用 currentColor）。 */
+        icC: s.getPropertyValue('--ic-c').trim(),
+        color: s.color,
+        mask: el.style.getPropertyValue('--ic-mask'),
+        blend: img ? cs(el, '::after').mixBlendMode : null,
+        veilLeft: img ? px(cs(el, '::after').left) : null,
+        veilMask: img ? String(cs(el, '::after').maskImage || '').slice(0, 24) : null,
+        veilBg: img ? cs(el, '::after').backgroundColor : null
       };
       return o;
     };
@@ -290,6 +300,48 @@ app.whenReady().then(async () => {
     out.autoAgain = read(all()[0]);
     setIconBorder('theme');
     out.afterAutoSwitch = read(all()[0]);
+
+    /* ---------- v2.4.4：统一图标风格（只在「内部」下生效） ---------- */
+    /* 先设一个自定义色当统一色的判据：三种图标（图片 / 预设 / 字符）最终落在元素上的
+     * --ic-c 必须**完全相同**，那才是"统一"。 */
+    setIconFit('cover');
+    setIconMono(true);
+    out.monoRowInCover = document.getElementById('iconMonoRow').classList.contains('hidden');
+    out.monoClassInCover = document.body.className;
+    out.monoMaskInCover = all()[0].style.getPropertyValue('--ic-mask');
+    setIconRingColor('#ff8800');
+    setIconFit('contain');
+    out.monoRowInContain = document.getElementById('iconMonoRow').classList.contains('hidden');
+    out.monoClass = document.body.className;
+    out.monoBodyRing = cs(document.body).getPropertyValue('--ic-ring-c').trim();
+    /* ★ .item-icon 上有 transition: ... color 0.2s（模板字符串里不能出现反引号，
+     * 所以这段注释不写代码引号）：改色后**立刻**读 computed 拿到的是过渡的**起始值**
+     * —— 这里就踩过一次：--ic-c 已经是 #ff8800，color 却还是旧的文字色，
+     * 看起来像"我的 color 规则没生效"。等过渡走完再读。 */
+    await new Promise(function(r){ setTimeout(r, 300); });
+    out.monoImg = read(all()[0]);
+    out.monoSvg = read(all()[1]);
+    out.monoChr = read(all()[2]);
+    out.monoImgPad = px(cs(all()[0].querySelector('img')).paddingLeft);
+    // 关掉自定义色 → 统一色应当自动变成当前主题强调色（纯 CSS 回退链）
+    setIconRingColor('');
+    await new Promise(function(r){ setTimeout(r, 300); });
+    out.monoTheme = read(all()[0]);
+    out.monoAccent = accent();
+    // 换主题（不调 refreshIconLook）：统一色必须自己跟着变
+    switchTheme('md3');
+    await new Promise(function(r){ setTimeout(r, 260); });
+    out.monoMd3 = read(all()[0]);
+    out.monoAccentMd3 = accent();
+    switchTheme('glass');
+    await new Promise(function(r){ setTimeout(r, 260); });
+    // 关掉统一风格：状态类、蒙版、元素内联变量都要收干净
+    setIconMono(false);
+    out.monoOff = read(all()[0]);
+    out.monoOffSvg = read(all()[1]);
+    out.bodyClassAfterMono = document.body.className;
+    out.monoOffBodyRing = cs(document.body).getPropertyValue('--ic-ring-c').trim();
+    setIconFit('cover');
 
     // 透明边框
     setIconBorder('none');
@@ -547,6 +599,56 @@ app.whenReady().then(async () => {
     nearRgb(rgbOf(look.afterAutoSwitch.border), accentRgb) &&
     !nearRgb(rgbOf(look.afterAutoSwitch.border), rgbRed),
     'border=' + look.afterAutoSwitch.border + ' 期望=' + look.accentTheme);
+
+  /* ---------- v2.4.4：统一图标风格（「内部」的附加项） ---------- */
+  /* 核心判据不是"挂上了 ic-mono"，而是**三种图标最终落在元素上的 --ic-c 完全一致**
+   * —— 那才叫统一。另外要证两件事：颜色是 body 一处下发的（逐图标内联值会让"统一"
+   * 拆成 N 份），以及裁剪模式下它真的让位、且配置没被清掉。 */
+  const uniRgb = rgbOf(look.monoImg.icC);
+  note('统一图标风格核对：--ic-c 图片=' + look.monoImg.icC + ' 预设=' + look.monoSvg.icC +
+    ' 字符=' + look.monoChr.icC + '  body --ic-ring-c=' + look.monoBodyRing +
+    '  蒙版=' + String(look.monoImg.mask).slice(0, 46) +
+    '  蒙版层 left=' + look.monoImg.veilLeft + 'px vs 图片内缩=' + look.monoImgPad + 'px');
+  assert('★ 统一图标风格：三种图标（图片 / 预设 / 字符）最终用的色**完全相同**',
+    !!uniRgb && nearRgb(rgbOf(look.monoSvg.icC), uniRgb) && nearRgb(rgbOf(look.monoChr.icC), uniRgb),
+    '图片=' + look.monoImg.icC + ' 预设=' + look.monoSvg.icC + ' 字符=' + look.monoChr.icC);
+  assert('★ 统一色 = 自定义色（设了就用它），且由 body 一处下发（元素上不留内联变量）',
+    nearRgb(uniRgb, ORANGE) && look.monoBodyRing.toUpperCase() === '#FF8800' &&
+    look.monoImg.inlineRing === '' && look.monoSvg.inlineRing === '' && look.monoChr.inlineRing === '',
+    '--ic-c=' + look.monoImg.icC + ' body=' + look.monoBodyRing +
+    ' inline=[' + look.monoImg.inlineRing + '][' + look.monoSvg.inlineRing + '][' + look.monoChr.inlineRing + ']');
+  assert('★ 预设线条图标与字符图标真的换了色（stroke / 文字都吃 currentColor）',
+    nearRgb(rgbOf(look.monoSvg.color), ORANGE) && nearRgb(rgbOf(look.monoChr.color), ORANGE),
+    '预设 color=' + look.monoSvg.color + ' 字符 color=' + look.monoChr.color);
+  assert('★ 图片图标拿到了蒙版（--ic-mask = 自己的图源），没有图片的图标不给蒙版',
+    /^url\("file:\/\//.test(look.monoImg.mask) && look.monoSvg.mask === '' && look.monoChr.mask === '',
+    '图片=' + String(look.monoImg.mask).slice(0, 40) + ' 预设="' + look.monoSvg.mask + '" 字符="' + look.monoChr.mask + '"');
+  assert('★ 蒙版层与图片内容盒**逐像素对齐**（left = 图片内缩量，对不齐会看到色块飘在图标旁边）',
+    Math.abs(look.monoImg.veilLeft - look.monoImgPad) <= 0.1,
+    '蒙版层 left=' + look.monoImg.veilLeft + 'px 图片内缩=' + look.monoImgPad + 'px');
+  assert('★ 蒙版层用 color 混合（色相取统一色、明暗仍来自图标本身，细节留着认得出应用）',
+    look.monoImg.blend === 'color' && /^url\(/.test(look.monoImg.veilMask) &&
+    nearRgb(rgbOf(look.monoImg.veilBg), ORANGE),
+    'blend=' + look.monoImg.blend + ' mask=' + look.monoImg.veilMask + ' bg=' + look.monoImg.veilBg);
+  assert('★ 统一色没设自定义色时 = 当前主题强调色（图片 / 预设都跟着走）',
+    nearRgb(rgbOf(look.monoTheme.icC), rgbOf(look.monoAccent)) &&
+    nearRgb(rgbOf(look.monoTheme.icC), accentRgb),
+    '--ic-c=' + look.monoTheme.icC + ' 强调色=' + look.monoAccent);
+  assert('★ 统一风格下换主题，颜色自动跟着变（CSS 回退链，不靠 JS 重刷）',
+    !nearRgb(rgbOf(look.monoMd3.icC), rgbOf(look.monoAccent)) &&
+    nearRgb(rgbOf(look.monoMd3.icC), rgbOf(look.monoAccentMd3)),
+    'glass=' + look.monoTheme.icC + '(' + look.monoAccent + ') → md3=' + look.monoMd3.icC +
+    '(' + look.monoAccentMd3 + ')');
+  assert('★ 统一风格只在「内部」下生效：切到裁剪自动让位，且**配置留着**（切回就恢复）',
+    !/ic-mono/.test(look.monoClassInCover) && look.monoMaskInCover === '' && look.monoRowInCover === true,
+    'class=[' + look.monoClassInCover + '] mask="' + look.monoMaskInCover + '" 行隐藏=' + look.monoRowInCover);
+  assert('★ 统一风格生效时：挂 ic-mono，且「内部」下开关那一行露出来',
+    /ic-mono/.test(look.monoClass) && look.monoRowInContain === false,
+    'class=[' + look.monoClass + '] 行隐藏=' + look.monoRowInContain);
+  assert('★ 关掉统一风格：状态类、蒙版、body 上的统一色全部收干净（不留残留态）',
+    !/ic-mono/.test(look.bodyClassAfterMono) && look.monoOff.mask === '' && look.monoOffSvg.mask === '' &&
+    look.monoOffBodyRing === '',
+    'class=[' + look.bodyClassAfterMono + '] 图片蒙版="' + look.monoOff.mask + '" bodyRing="' + look.monoOffBodyRing + '"');
 
   const pvTintRgb = rgbOf(look.preview.tint);
   const pvBorderRgb = rgbOf(look.preview.border);

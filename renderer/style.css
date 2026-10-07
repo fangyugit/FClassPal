@@ -512,8 +512,8 @@ body.locked .resize-handle { display: none; }
   pointer-events: none;
 }
 
-/* ====== 图标外观：形状 / 填充 / 边框配色（v2.4.2 起，v2.4.3 扩充） ======
- * 状态类挂在 body 上（ic-ring / ic-none / ic-contain / ic-shape），因为要同时覆盖
+/* ====== 图标外观：形状 / 填充 / 边框配色 / 统一风格（v2.4.2 起，v2.4.4 扩充） ======
+ * 状态类挂在 body 上（ic-ring / ic-none / ic-contain / ic-shape / ic-mono），因为要同时覆盖
  * **两个地方**：主界面的图标网格在 #widget 里，而图标编辑弹窗的预览 #itemModal 是
  * #widget 的兄弟节点 —— 只看 #widget 的话弹窗预览不会跟着变，改完设置得保存才知道
  * 会裁成什么样。自定义属性同理，挂 #widget 弹窗读不到。
@@ -590,6 +590,51 @@ body.ic-shape .icon-preview.icon-preview { border-radius: var(--ic-rad, 50%); }
  * 图片照旧填满整块、超出边框形状的部分由 .item-icon 的 overflow:hidden 裁掉 */
 body.ic-contain .item-icon img,
 body.ic-contain .icon-preview img { padding: var(--ic-pad, 0); }
+
+/* ── 统一图标风格（v2.4.4，ic-mono） ──────────────────────────────────
+ * 「内部」填充的附加项：像 Pixel 的主题图标那样"取一个色、统一整套图标"。
+ *   · 统一色共用一个来源：--ic-c 回退链（自定义色 > --t-accent > --accent）。
+ *     自定义色由 JS 写在 **body** 的 --ic-ring-c 上（不是逐图标），@see app.js
+ *     的 iconRingColorFor —— 逐图标写内联值会把"一个色"拆成 N 份。
+ *   · 图片的做法：拿图自己的 alpha 当蒙版裁出形状（--ic-mask，JS 从 img.src 写），
+ *     在这层形状上压统一色，再用 mix-blend-mode: color 混合 ——
+ *     色相/饱和度取统一色、明暗仍来自图标本身，所以细节留着、认得出是什么应用。
+ *     顺带一个好处：**不透明满幅图标不会变成一块纯色方块**（那等于把图标毁了）。
+ *     （不想要细节、要彻底平涂的剪影，把 mix-blend-mode 那行去掉即可：
+ *      蒙版+纯色层本身就是一张完整的单色剪影。）
+ *   · **蒙版几何必须与图片逐像素对齐**：img 走的是 padding: var(--ic-pad) +
+ *     object-fit: contain，所以这里用 inset: var(--ic-pad) + mask-size: contain，
+ *     两者算出来的盒子完全一致（百分比 padding 与百分比 inset 都按包含块换算，
+ *     绝对定位元素的包含块是 .item-icon 的 padding box，与 img 的内容盒同一套）。
+ *     对不齐的症状：统一色飘在图标旁边、或者图标只有一半被染上。
+ *   · `:has(img)` 只让真有图片的图标长出这一层：预设 SVG / 字符图标没有蒙版源，
+ *     万一也生成这层，mask-image 取不到值会退回 none = 不蒙版 = 整块被涂满。
+ *   · isolation 把混合关在自己这一层里：否则 color 混合会把玻璃底材的色相
+ *     也算进去（图标半透明的边缘会吃到底材的颜色）。
+ *   · 预设线条图标与字符图标本来就是单色，直接换 color（.ic 用 currentColor）。 */
+body.ic-mono .item-icon.item-icon,
+body.ic-mono .icon-preview.icon-preview {
+  --ic-c: var(--ic-ring-c, var(--t-accent, var(--accent)));
+  color: var(--ic-c);
+  isolation: isolate;
+}
+body.ic-mono .item-icon:has(img)::after,
+body.ic-mono .icon-preview:has(img)::after {
+  content: '';
+  position: absolute;
+  inset: var(--ic-pad, 0);
+  background: var(--ic-c);
+  -webkit-mask-image: var(--ic-mask);
+  mask-image: var(--ic-mask);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  mix-blend-mode: color;
+  pointer-events: none;
+}
 .item-name {
   font-size: 0.78rem;
   color: var(--text);

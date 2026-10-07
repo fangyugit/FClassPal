@@ -137,16 +137,46 @@ function hitSummary(h) {
   return Object.keys(h.hits).sort((x, y) => h.hits[y] - h.hits[x])
     .map((k) => k + '×' + h.hits[k]).join(', ');
 }
-/** 等到命中直方图**连着两次一样**再当基线。
+/** 等渲染层的 CSS 动画/过渡全部结束（最多 tries 轮，防无限动画卡死探测）。
+ *
+ * 为什么要这样：测试配置是 kitty 主题，格子的入场动画带**错峰延迟**
+ * （`animation-delay: var(--i) × --t-stagger`，fill-mode: backwards）——
+ * 延迟期间格子停在 `from` 态（translateY(10px) scale(0.96)），
+ * `elementFromPoint` 的命中分布和静止态**不一样**。 */
+const SETTLE_ANIMS = `(async function(){
+  try {
+    for (var round = 0; round < 8; round++) {
+      var pend = document.getAnimations().filter(function(a){
+        return a.playState === 'running' || a.playState === 'pending'; });
+      if (!pend.length) return 0;
+      await Promise.all(pend.map(function(a){
+        return Promise.race([a.finished.catch(function(){}), new Promise(function(r){ setTimeout(r, 1200); })]);
+      }));
+    }
+    return document.getAnimations().filter(function(a){
+      return a.playState === 'running' || a.playState === 'pending'; }).length;
+  } catch (e) { return -1; }
+})()`;
+async function settleAnimations(wc, tries = 8) {
+  for (let i = 0; i < tries; i++) {
+    if ((await wc.executeJavaScript(SETTLE_ANIMS)) === 0) return true;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return false;
+}
+/** 等到命中直方图**连着两次一样**再当基线（先等动画结束，再连采两次核对）。
  *
  * 为什么要这样：格子有入场动画（t-enter），init 里还有 render / 量圆角等一串活儿，
  * 固定 2.5s 之后直接采样时快时慢 —— 曾经抓到过 before=「item-grid×41 + svg×1」、
  * after=「item-grid×31 + use×1」的假失败（前后其实完全一致，是**基线**采早了，
  * 那一刻格子还没铺满、预设图标的内层 <use> 也还没画出来）。
- * 与"选了背景图之后界面有没有被接管"无关，纯粹是采样时机问题，所以这里等它稳定。 */
+ * ★ 只"连采两次一样"还不够：动画还没**开始**时（还在错峰延迟里），两次采样
+ * 也一样 —— 必须先用 getAnimations 把动画等完（第二版真踩过）。
+ * 与"选了背景图之后界面有没有被接管"无关，纯粹是采样时机问题。 */
 async function stableHit(wc, tries = 10, gap = 250) {
   let prev = null, cur = null;
   for (let i = 0; i < tries; i++) {
+    await settleAnimations(wc);
     cur = await wc.executeJavaScript(HIT_TEST);
     const s = hitSummary(cur);
     if (prev === s) return cur;

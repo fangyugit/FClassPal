@@ -577,7 +577,7 @@ function themeTokens(theme) {
    * 只写 `.标记类`（逗号或花括号紧跟其后）的规则 —— 那种写法必然命中 body。
    * 图层元素改名 .bg-layer、样式改用 #bgCustom（id 永不可能命中 body）。 */
   const BODY_MARKERS = ['bg-custom', 'dark', 'dyn', 'lg-ready', 'over-light',
-    'preview', 'realtime', 'ic-ring', 'ic-none', 'ic-contain', 'ic-shape'];
+    'preview', 'realtime', 'ic-ring', 'ic-none', 'ic-contain', 'ic-shape', 'ic-mono'];
   const cssNoComment = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const bareMarkers = BODY_MARKERS.filter((m) => new RegExp(
     '(^|,)\\s*\\.' + m.replace(/-/g, '\\-') + '\\s*(,|\\{)', 'm').test(cssNoComment));
@@ -735,6 +735,44 @@ function themeTokens(theme) {
   check('main.js: 配置注释里写清了 iconBorder 四档语义（theme = 跟随主题强调色）',
     /'theme'=跟随主题/.test(mainJs) && /'auto'=自动取色/.test(mainJs) &&
     /'glass'=玻璃白描边/.test(mainJs) && /'none'=透明/.test(mainJs));
+
+  /* ---------- v2.4.4：统一图标风格（「内部」的附加项） ---------- */
+  check('★ main.js: 默认配置加了 iconMono: false（默认关，老配置不受影响）',
+    /iconMono:\s*false/.test(mainJs));
+  check('★ app.js: iconMonoActive() 要求 contain —— 它是「内部」的附加项，裁剪下自动让位',
+    /function iconMonoActive\(\)\s*\{[^}]*config\.iconFit === 'contain'/.test(js));
+  check('★ app.js: 统一模式下 iconRingColorFor 一律返回空（连自定义色也不逐图标写，',
+    // 统一是这套外观的全部意义：逐图标写内联值会把"一个色"拆成 N 份
+    /function iconRingColorFor[\s\S]{0,120}?if \(iconMonoActive\(\)\) return '';/ .test(js));
+  check('★ app.js: 统一色由 body 一处下发（设了自定义色写 body 的 --ic-ring-c，否则真清掉）',
+    /body\.classList\.toggle\('ic-mono', iconMonoActive\(\)\)/.test(js) &&
+    /iconMonoActive\(\) && normalizeHex\(config\.iconRingColor\)\)[\s\S]{0,120}?setProperty\('--ic-ring-c'[\s\S]{0,120}?removeProperty\('--ic-ring-c'\)/.test(js));
+  check('★ css: ic-mono 复用 --ic-c 回退链 + color 换色 + isolation（混合别吃到底材色相）',
+    /body\.ic-mono \.item-icon\.item-icon,\s*\nbody\.ic-mono \.icon-preview\.icon-preview \{[^}]*--ic-c: var\(--ic-ring-c, var\(--t-accent, var\(--accent\)\)\)[^}]*color: var\(--ic-c\)[^}]*isolation:\s*isolate/.test(cssNoComment));
+  check('★ css: 蒙版层 = 图标自己的 alpha（--ic-mask）+ 与图片内容盒同款几何（inset=--ic-pad / contain）',
+    /body\.ic-mono \.item-icon:has\(img\)::after,[\s\S]{0,120}?body\.ic-mono \.icon-preview:has\(img\)::after \{[\s\S]{0,700}?inset:\s*var\(--ic-pad, 0\)[\s\S]{0,700}?mask-image:\s*var\(--ic-mask\)[\s\S]{0,700}?mask-size:\s*contain[\s\S]{0,700}?mask-position:\s*center/.test(cssNoComment));
+  check('★ css: 蒙版层只在真有 <img> 的图标上长出来（:has(img)）',
+    /body\.ic-mono \.item-icon:has\(img\)::after/.test(cssNoComment));
+  check('★ css: 统一色用 mix-blend-mode: color 混合（色相取统一色、明暗留给图标本身，',
+    // 满幅不透明图标才不会变成一块纯色方块；去掉这行就是彻底平涂的剪影
+    /body\.ic-mono \.item-icon:has\(img\)::after[\s\S]{0,900}?mix-blend-mode:\s*color/.test(cssNoComment));
+  check('★ app.js: 蒙版变量从元素自己的 <img> 取（img.src 已是编码后的绝对 URL），关掉时真清掉',
+    /function applyIconMaskVar\(el\)[\s\S]{0,700}?el\.querySelector\('img'\)[\s\S]{0,700}?removeProperty\('--ic-mask'\)[\s\S]{0,700}?setProperty\('--ic-mask',\s*'url\("' \+/.test(js));
+  check('★ app.js: refreshIconLook 的同一次遍历里把蒙版一起刷掉（两轮遍历会有中间态）',
+    /querySelectorAll\('\.item-icon, \.icon-preview'\)\.forEach\(\(el\) => \{[\s\S]{0,260}?applyIconColorVars\(el,[\s\S]{0,260}?applyIconMaskVar\(el\)/.test(js));
+  check('app.js: setIconMono 齐备（同步面板 + 就地刷新 + 落盘）',
+    /function setIconMono\(on\)[\s\S]{0,420}?syncSettingsControls\(\)[\s\S]{0,420}?refreshIconLook\(\)[\s\S]{0,420}?persist\(\)/.test(js));
+  check('app.js: 老配置没有 iconMono 键，非法值收回布尔默认',
+    /config\.iconMono = !!config\.iconMono/.test(js));
+  check('app.js: 预览 mock 补了 iconMono: false（缺键会让面板读出空值）',
+    /iconRingColor:\s*'', iconMono:\s*false/.test(js));
+  check('app.js: 切到「裁剪」且统一风格开着时要说明"设置保留"（用户会以为开关被吃了）',
+    /next === 'cover' && config\.iconMono\)[\s\S]{0,200}?设置保留/.test(js));
+  check('html: 统一图标风格 = 开关行（iconMonoRow 默认藏，iconMono 复选框）',
+    /id="iconMonoRow"/.test(html) && /class="row toggle hidden" id="iconMonoRow"/.test(html) &&
+    /type="checkbox" id="iconMono"/.test(html));
+  check('html: 行为说明里写清了统一风格的语义（取哪个色 / 只在内部下出现 / 图片保细节）',
+    /统一图标风格/.test(html) && /只在「内部」下出现/.test(html) && /明暗细节留着/.test(html));
 
   /* ---------- v2.4.1 补丁：文字按钮不得复用方形图标按钮的容器 ---------- */
   check('★ 回归守卫：.size-controls 里不许再出现文字按钮（它写死 30×30，会把字挤到框外）',
