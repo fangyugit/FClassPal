@@ -54,6 +54,10 @@
 |---|---|---|
 | ![before](docs/screenshots/glass-refraction-before.png) | ![after](docs/screenshots/glass-refraction-after.png) | ![edge](docs/screenshots/glass-refraction-edge-3x.png) |
 
+图标外观（v2.4.2–v2.4.4 的合力）——「内部」填充 + 圆形 + 边框跟随主题 + 统一图标风格（所有图标统一成主题强调色，Pixel 风格）：
+
+![icon-look](docs/screenshots/icon-look.png)
+
 
 ## 技术要点
 
