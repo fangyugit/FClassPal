@@ -174,7 +174,8 @@ OrionYU
 
 ### 提示
 
-- 仅支持 Windows 10/11（依赖 DWM 模糊、WMI、Cfgmgr32）
+- Windows版本仅支持 Windows 10/11（依赖 DWM 模糊、WMI、Cfgmgr32）
+- 安卓/Linux/MacOS版本均测试是否可用
 - 开启「实时桌面模糊」后，系统截图/录屏会看不到本窗口（Windows 采集排除机制所致）
 - 「自定义背景图」的白蒙版可以替代模糊达到「虚化但不透出桌面」的效果，两者也能叠加
 - `renderer/theme/` 中的三丽鸥角色图片版权归 © Sanrio 及原权利方所有，仅供学习与个人使用，请勿商用
