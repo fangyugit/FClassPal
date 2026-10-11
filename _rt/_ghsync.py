@@ -301,7 +301,9 @@ def release(tag, name=None, notes_file=None, notes=None, asset=None, prerelease=
     print('release %s 已建 %s' % (tag, rel['html_url']))
 
     if asset:
-        upload_asset(rel['upload_url'], asset, token)
+        # --asset 可以重复给（action='append'），按顺序逐个传
+        for one in (asset if isinstance(asset, list) else [asset]):
+            upload_asset(rel['upload_url'], one, token)
     return rel
 
 
@@ -369,7 +371,8 @@ def main():
     p_rel.add_argument('--name')
     p_rel.add_argument('--notes-file')
     p_rel.add_argument('--notes')
-    p_rel.add_argument('--asset')
+    p_rel.add_argument('--asset', action='append',
+                       help='要上传的产物文件，可重复给多个（注意：不给就只建 Release）')
     p_rel.add_argument('--prerelease', action='store_true')
 
     args = ap.parse_args()
