@@ -48,11 +48,6 @@
 |---|---|---|---|---|
 | ![kitty](docs/screenshots/kitty.png) | ![dog](docs/screenshots/dog.png) | ![kuromi](docs/screenshots/kuromi.png) | ![melody](docs/screenshots/melody.png) | ![sanrio](docs/screenshots/sanrio.png) |
 
-液态玻璃的折射效果（左：无折射；右：standard 模式位移贴图，边缘 3× 放大）：
-
-| 无折射 | 折射后 | 边缘 3× |
-|---|---|---|
-| ![before](docs/screenshots/glass-refraction-before.png) | ![after](docs/screenshots/glass-refraction-after.png) | ![edge](docs/screenshots/glass-refraction-edge-3x.png) |
 
 图标外观（v2.4.2–v2.4.4 的合力）——「内部」填充 + 圆形 + 边框跟随主题 + 统一图标风格（所有图标统一成主题强调色，Pixel 风格）：
 
@@ -99,12 +94,12 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 
 | 平台 | 产物 | 处理器架构 |
 |---|---|---|
-| Windows | [FClassPal-2.4.5.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.4.5/FClassPal-2.4.5.exe)（免安装便携版，约 94MB） | x64 |
+| Windows |`FClassPal-2.4.5.exe` | x64 |
 | Linux | `FClassPal-2.4.5-linux-amd64.deb` / `FClassPal-2.4.5-linux-x64.tar.gz` | x64 |
 | Linux | `FClassPal-2.4.5-linux-arm64.deb` / `FClassPal-2.4.5-linux-arm64.tar.gz` | arm64 |
 | macOS | `FClassPal-2.4.5-mac-x64.dmg` / `.zip` | Intel x64 |
 | macOS | `FClassPal-2.4.5-mac-arm64.dmg` / `.zip` | Apple 芯片（M 系列） |
-| Android | `FClassPal-2.4.5-android-debug.apk`（直接安装） | arm64 / armv7 / x86_64 |
+| Android | `FClassPal-2.4.5-android-debug.apk` | arm64 / armv7 / x86_64 |
 
 - 产物名都带平台与架构，下载时一眼看清装的是哪一份；[全部版本](https://github.com/fangyugit/FclassPal/releases)
 - 安卓版的用法与能力取舍见 [docs/ANDROID.md](docs/ANDROID.md)（界面与桌面版同源，桌面专有的
@@ -175,7 +170,7 @@ OrionYU
 ### 提示
 
 - Windows版本仅支持 Windows 10/11（依赖 DWM 模糊、WMI、Cfgmgr32）
-- 安卓/Linux/MacOS版本均测试是否可用
+- 安卓/Linux/MacOS版本均未测试是否可用
 - 开启「实时桌面模糊」后，系统截图/录屏会看不到本窗口（Windows 采集排除机制所致）
 - 「自定义背景图」的白蒙版可以替代模糊达到「虚化但不透出桌面」的效果，两者也能叠加
 - `renderer/theme/` 中的三丽鸥角色图片版权归 © Sanrio 及原权利方所有，仅供学习与个人使用，请勿商用
