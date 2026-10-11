@@ -31,7 +31,11 @@ jobs:
         env:
           # 不签名：没有开发者证书，产物保持未签名状态
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac --x64 --arm64
+          # --publish never：tag 构建时 electron-builder 默认会自己往 GitHub 发
+          # （要 GH_TOKEN，没有就整个 job 报错退出——产物其实早就 build 完了）；
+          # 发布统一交给后面的 gh release upload，这里只管产出文件
+          PUBLISH: never
+        run: npx electron-builder --mac --x64 --arm64 --publish never
       - name: Collect artifacts
         run: |
           mkdir -p _out
