@@ -442,8 +442,8 @@ const checks = [
     fs.existsSync('build/icon.ico') && fs.existsSync('build/icon.png')],
   ['main: BrowserWindow 挂 icon（开发模式/alt-tab 也有图标）',
     /icon:\s*fs\.existsSync\(path\.join\(__dirname, 'build', 'icon\.ico'\)\)/.test(main)],
-  ['产物: 便携 exe 已生成（v2.4.4）', fs.existsSync('dist/FClassPal-2.4.4.exe')],
-  ['配置: 版本号 2.4.4', srcPkg.version === '2.4.4'],
+  ['产物: 便携 exe 已生成（v2.4.5）', fs.existsSync('dist/FClassPal-2.4.5.exe')],
+  ['配置: 版本号 2.4.5', srcPkg.version === '2.4.5'],
   ['配置: 已移除 package.json description（exe 属性不再带描述）',
     srcPkg.description === undefined],
   ['author = YU（用户在远端改的大写）', srcPkg.author === 'YU'],
@@ -730,6 +730,48 @@ const checks = [
   ['v2.4.4: README / CHANGELOG 已同步到本版（防"发版忘了改文档"）',
     /2\.4\.4/.test(readme) && /CHANGELOG\.md/.test(readme) &&
     /##\s*v2\.4\.4/.test(changelog) && /2\.4\.4/.test(changelog)],
+  ['v2.4.5: README / CHANGELOG 已同步到本版（防"发版忘了改文档"）',
+    /2\.4\.5/.test(readme) && /##\s*v2\.4\.5/.test(changelog)],
+  ['v2.4.5: CHANGELOG 只写新增/改变（本版没有"测试"小节，规范改了）',
+    /##\s*v2\.4\.5[\s\S]*?(?=\n##\s|\n*$)/.test(changelog) &&
+    !/##\s*v2\.4\.5[\s\S]*?###\s*测试/.test(changelog)],
+  ['v2.4.5: 明暗三档（主进程解析 + 渲染层解析 + 第三档按钮）',
+    /function resolvedAppearance\(cfg\)/.test(main) &&
+    /nativeTheme\.shouldUseDarkColors/.test(main) &&
+    /nativeTheme\.on\('updated'/.test(main) &&
+    main.includes("'system-appearance-changed'") &&
+    pre.includes('getSystemAppearance') &&
+    /function resolveDarkValue\(v\)/.test(app) &&
+    /function effectiveDark\(\)/.test(app) &&
+    html.includes('data-appearance="auto"')],
+  ['v2.4.5: get-palette 不再把 auto 折叠成 light（跟随系统要被记住）',
+    /get-palette', \(event, patch\) => \{[\s\S]{0,800}?cfg\.appearance = patch\.appearance/.test(main) &&
+    /patch\.appearance === 'auto' \|\| patch\.appearance === 'light'/.test(main) &&
+    !/patch\.appearance === 'auto' \? 'light' : patch\.appearance/.test(main)],
+  ['v2.4.5: 安卓壳就位（装配脚本 / 桥接 / 原生插件 / 出包脚本）',
+    fs.existsSync('mobile/tools/assemble-web.js') &&
+    fs.existsSync('mobile/web/mobile-bridge.js') &&
+    fs.existsSync('mobile/web/mobile.css') &&
+    fs.existsSync('mobile/tools/build-apk.js') &&
+    fs.existsSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/PalBridgePlugin.java') &&
+    fs.existsSync('docs/ANDROID.md')],
+  ['v2.4.5: 安卓桥接层在 app.js 之前注入 window.widgetAPI（装配自检保证顺序）',
+    /check\.indexOf\('<script src="mobile-bridge\.js"><\/script>'\)/.test(
+      fs.readFileSync('mobile/tools/assemble-web.js', 'utf8')) &&
+    /atBridge < atApp/.test(fs.readFileSync('mobile/tools/assemble-web.js', 'utf8'))],
+  ['v2.4.5: 多平台打包配置（linux deb/tar.gz 双架构 + mac dmg/zip 双架构）',
+    !!srcPkg.build.linux && !!srcPkg.build.mac &&
+    JSON.stringify(srcPkg.build.linux.target).includes('"x64"') &&
+    JSON.stringify(srcPkg.build.linux.target).includes('"arm64"') &&
+    JSON.stringify(srcPkg.build.mac.target).includes('"x64"') &&
+    JSON.stringify(srcPkg.build.mac.target).includes('"arm64"') &&
+    srcPkg.build.linux.artifactName === 'FClassPal-${version}-linux-${arch}.${ext}' &&
+    srcPkg.build.mac.artifactName === 'FClassPal-${version}-mac-${arch}.${ext}'],
+  ['v2.4.5: Linux 产物已生成（两个架构的 deb + tar.gz）',
+    fs.existsSync('dist/FClassPal-2.4.5-linux-amd64.deb') &&
+    fs.existsSync('dist/FClassPal-2.4.5-linux-arm64.deb') &&
+    fs.existsSync('dist/FClassPal-2.4.5-linux-x64.tar.gz') &&
+    fs.existsSync('dist/FClassPal-2.4.5-linux-arm64.tar.gz')],
   ['v2.3.2: 进度条跟随（--sl-fill 不在 input 上声明 + syncRangeFill 清元素自身陈旧变量）',
     !/body\.theme-glass input\[type="range"\]\s*\{[^}]*--sl-fill\s*:/.test(css) &&
     /el\.style\.removeProperty\('--sl-fill'\)/.test(app) &&

@@ -1,6 +1,6 @@
 const {
   app, BrowserWindow, ipcMain, dialog, shell, screen, Tray, Menu, nativeImage,
-  desktopCapturer, session
+  desktopCapturer, session, nativeTheme
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -43,9 +43,11 @@ const DEFAULT_CONFIG = {
   // 系统截图/录屏看不到本窗口（setContentProtection 的副作用）。
   realtime: false,
   theme: 'glass',      // 界面风格：'glass'=液态玻璃，'md3'=Material Design 3（壁纸取色）
-  // 明暗模式（v2.4.0）：'light' | 'dark'。dark 时：动态配色走 Monet 的暗色方案
-  // （SchemeTonalSpot isDark=true，主色自动换成暗底可读的高亮度色调），
-  // 静态主题再由 style.css 末尾的 body.dark 层把表面压暗（强调色仍归各主题）。
+  // 明暗模式（v2.4.0，v2.4.5 增加跟随系统）：'light' | 'dark' | 'auto'。
+  // auto = 跟随 Windows 的"应用模式"设置（nativeTheme.shouldUseDarkColors），
+  // 系统一改（含"日落到日出"这类自动切换）立刻跟着变，不用重开应用。
+  // dark 时：动态配色走 Monet 的暗色方案（SchemeTonalSpot isDark=true，主色自动换成
+  // 暗底可读的高亮度色调），静态主题再由 style.css 末尾的 body.dark 层把表面压暗。
   appearance: 'light',
   // 自定义背景图（v2.4.0）：替代壁纸当玻璃的底材。
   //   enabled  开关
@@ -444,9 +446,22 @@ function paletteCacheSet(key, value) {
 }
 
 /**
+ * 把配置里的明暗模式解析成真正生效的一档（v2.4.5）。
+ * 'auto' 不落盘成具体值 —— 跟随系统是个"持续生效的选择"，
+ * 一旦写死成 light/dark，系统之后切换就再也跟不上了（旧版本正是这么退化的）。
+ * @param {object} cfg 配置
+ * @returns {'light'|'dark'}
+ */
+function resolvedAppearance(cfg) {
+  const want = cfg && cfg.appearance;
+  if (want === 'auto') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  return want === 'dark' ? 'dark' : 'light';
+}
+
+/**
  * 产出当前配置对应的整套 MD3 配色。
  * @param {object} cfg    配置（colorMode: 'auto'|'manual'，accentColor: '#rrggbb'，
- *                        appearance: 'light'|'dark'，background: {enabled,path}）
+ *                        appearance: 'light'|'dark'|'auto'，background: {enabled,path}）
  * @param {?string} file  壁纸文件（auto 模式用）；传 null 时内部自行去读
  * @param {?string} sig   壁纸指纹（缓存 key 的一部分）
  */
@@ -454,7 +469,7 @@ async function buildPalette(cfg, file, sig) {
   if (!monet) return null;
   const mode = cfg && cfg.colorMode === 'manual' ? 'manual' : 'auto';
   const color = cfg && cfg.accentColor ? String(cfg.accentColor) : '';
-  const isDark = !!(cfg && cfg.appearance === 'dark');
+  const isDark = resolvedAppearance(cfg) === 'dark';
 
   if (mode === 'manual') {
     const key = 'manual|' + color.toLowerCase() + '|' + (isDark ? 'dark' : 'light');
@@ -893,6 +908,13 @@ ipcMain.handle('get-env', () => ({
   release: os.release()
 }));
 
+/* 系统明暗（v2.4.5）：'auto' 档下渲染层要知道系统现在是亮是暗，并订阅后续变化 */
+ipcMain.handle('get-system-appearance', () => ({
+  isDark: !!nativeTheme.shouldUseDarkColors,
+  // 窗口"应用模式"是否被系统强制（如高对比度主题），仅供界面提示用
+  forced: !!nativeTheme.shouldUseHighContrastColors
+}));
+
 /* 壁纸基底：位置随窗口移动而变，所以每次都要按当前 bounds 重新算 */
 ipcMain.handle('get-wallpaper', () => getWallpaperInfo(mainWindow));
 
@@ -904,8 +926,9 @@ ipcMain.handle('get-palette', (event, patch) => {
     if (patch.colorMode === 'auto' || patch.colorMode === 'manual') cfg.colorMode = patch.colorMode;
     if (typeof patch.accentColor === 'string') cfg.accentColor = patch.accentColor;
     // v2.4.0：明暗模式与自定义背景都会改变"该用哪张图、走哪套方案"来派生配色
+    // v2.4.5：'auto' 原样落盘（跟随系统），不走"折成 light"的老退化路径
     if (patch.appearance === 'auto' || patch.appearance === 'light' || patch.appearance === 'dark') {
-      cfg.appearance = patch.appearance === 'auto' ? 'light' : patch.appearance;
+      cfg.appearance = patch.appearance;
     }
     if (patch.background && typeof patch.background === 'object') {
       cfg.background = { ...cfg.background, ...patch.background };
@@ -950,6 +973,33 @@ function startWallpaperWatcher() {
 function stopWallpaperWatcher() {
   if (wallpaperTimer) { clearInterval(wallpaperTimer); wallpaperTimer = null; }
 }
+
+/* ---------- 系统明暗变更监听（v2.4.5） ----------
+ * nativeTheme 的 'updated' 在系统"应用模式"变化时触发：设置里手动改、或
+ * "日落到日出 / 夜间自动切换"这类到点切换。跟随系统模式下必须立刻跟着变，
+ * 否则要等用户重开应用才生效（那就不叫跟随了）。
+ *   ① 广播明暗本身给渲染层 → 它换 body.dark 那一层（静态主题靠这层压暗表面）
+ *   ② 若配置是 'auto'，还要让主进程按新的明暗**重算配色**并推一份新的底材信息
+ *      （动态配色主题的亮/暗是两套 Monet 方案，光换 CSS 类不够）
+ * 写死 light/dark 的配置不理会系统变化，这里先查一下再决定要不要重取。 */
+function broadcastSystemAppearance() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('system-appearance-changed', {
+    isDark: !!nativeTheme.shouldUseDarkColors
+  });
+}
+
+nativeTheme.on('updated', async () => {
+  broadcastSystemAppearance();
+  try {
+    const cfg = loadConfig();
+    if (cfg.appearance !== 'auto') return;
+    const info = await getWallpaperInfo(mainWindow);
+    if (info && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('wallpaper-changed', info);
+    }
+  } catch (e) { /* 取色失败不影响明暗切换本身，渲染层那边已经先切了 */ }
+});
 
 /* ---------- 实时玻璃底材：把真实桌面采给渲染层 ----------
  * 为什么需要：Mica / Acrylic 都是 DWM 在窗口**外面**画的位图，浏览器进程里的

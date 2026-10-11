@@ -1,0 +1,101 @@
+/* ============================================================================
+ * FClassPal 安卓壳 · 手机布局覆盖（v2.4.5）
+ *
+ * 这份 CSS 在 renderer/style.css **之后**加载，只做"桌面窗口 -> 手机全屏"的适配，
+ * 不重画任何一套主题（十套主题的设计系统原样保留）。
+ *
+ * 作用域铁律：全部规则都挂在 html.mobile 之下。本项目有一条硬规矩 —— 任何加到
+ * <body> 上的状态类都不允许出现"裸 .类名"规则（v2.4.0 真事故：裸 .bg-custom 命中
+ * body，整棵子树 pointer-events:none，界面看着在却点不动）。mobile 这个标记类
+ * 因此挂在 <html> 上，从根上避开那类误伤。
+ * ==========================================================================*/
+
+html.mobile,
+html.mobile body {
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* ---------- 主界面：桌面是 480x420 的浮动窗口，手机是全屏面板 ---------- */
+html.mobile #widget {
+  position: fixed !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  cursor: default;
+}
+
+/* 状态栏 / 手势条：用安全区留白，别让标题和列表被系统栏压住 */
+html.mobile .titlebar {
+  padding-top: calc(10px + env(safe-area-inset-top));
+  padding-left: calc(16px + env(safe-area-inset-left));
+  padding-right: calc(16px + env(safe-area-inset-right));
+  cursor: default;          /* 手机上没有"拖动窗口"这回事（拖动等于系统手势） */
+  touch-action: manipulation;
+}
+
+html.mobile .content {
+  padding: 12px calc(14px + env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;   /* 列表滑到底不要带动页面回弹 */
+}
+
+/* 触摸目标放大：桌面版是针对鼠标的紧凑尺寸，手指点会偏 */
+html.mobile .ctx-menu {
+  min-width: 208px;
+  padding: 8px;
+  max-height: calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  border-radius: 20px;
+}
+html.mobile .ctx-item {
+  min-height: 50px;
+  padding: 13px 14px;
+  font-size: 15px;
+  border-radius: 14px;
+}
+html.mobile .panel {
+  /* 桌面版是右上角浮出的窄面板；手机改成几乎整屏的侧滑面板 */
+  top: calc(8px + env(safe-area-inset-top)) !important;
+  left: calc(8px + env(safe-area-inset-left)) !important;
+  right: calc(8px + env(safe-area-inset-right)) !important;
+  bottom: calc(8px + env(safe-area-inset-bottom)) !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 22px;
+}
+html.mobile .panel-body {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+html.mobile .row { min-height: 46px; }
+html.mobile .row input[type="range"] { height: 30px; }   /* 滑块加粗，好按 */
+html.mobile .seg-btn { min-height: 38px; padding: 8px 14px; }
+html.mobile .modal { padding: calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); }
+html.mobile .modal-card { width: 100%; }
+
+/* 长按呼出菜单：把"触摸长按"这条路径的视觉反馈留着，但去掉桌面才有的光标暗示 */
+html.mobile .hint { padding-bottom: env(safe-area-inset-bottom); }
+html.mobile button,
+html.mobile .ctx-item,
+html.mobile .group-item {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 手机上没有鼠标，光斑层（.sheen 跟随鼠标）永远是死的 —— 关掉省一点合成开销。
+   注意：只在没有精确指针的设备上关，接鼠标/触控板的平板仍保留。 */
+@media (hover: none) and (pointer: coarse) {
+  html.mobile .sheen { display: none; }
+}
+
+/* ---------- 桌面专有元素：由 mobile-bridge.js 打标记后隐藏 ----------
+   打标记而不是直接用 :has(...) 选择器，是为了不依赖 WebView 的 :has 支持
+   （老设备的系统 WebView 可能停在 Chrome 90 一代）。 */
+html.mobile [data-mobile-hide] { display: none !important; }
+
+/* 编辑弹窗里被禁用的"文件 / 文件夹"类型：视觉上也弱化，别让人以为能点 */
+html.mobile select option:disabled { color: #9aa3b2; }

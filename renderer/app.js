@@ -172,10 +172,13 @@ const API = window.widgetAPI || (function () {
     getPalette: (patch) => {
       const manual = patch && patch.colorMode === 'manual';
       const src = manual && patch.accentColor ? patch.accentColor : PREVIEW_SOURCE;
-      const dark = !!(patch && patch.appearance === 'dark') ||
-        (!(patch && patch.appearance) && config.appearance === 'dark');
+      // 'auto' 在预览模式下没有系统设置可读，按"跟随系统 = 当前为明亮"解析
+      const dark = resolveDarkValue(patch && patch.appearance);
       return Promise.resolve(previewPalette(src, dark));
     },
+    // 系统明暗（v2.4.5）：预览模式读不到系统设置，固定当作明亮色、且不会有变化事件
+    getSystemAppearance: () => Promise.resolve({ isDark: false, forced: false }),
+    onSystemAppearanceChanged: () => () => {},
     // 自定义背景：预览模式读不到本地文件（没有主进程），返回 null 让渲染层停在壁纸底材
     pickBackground: () => Promise.resolve(null),
     loadBackground: () => Promise.resolve(null),
@@ -1535,7 +1538,8 @@ function syncAllRangeFills() {
 }
 document.addEventListener('input', (e) => syncRangeFill(e.target), true);
 
-/* ---------- 明暗模式（v2.4.0） ----------
+/* ---------- 明暗模式（v2.4.0，v2.4.5 增加「跟随系统」） ----------
+ * 三档：明亮 / 黑暗 / 跟随系统（系统"应用模式"一改就跟着改，含日落到日出）。
  * 对**所有**主题生效，两条腿：
  *   1) 动态配色主题（glass/md3/fluent，colorMode=auto）：让主进程用 Monet 的暗色
  *      方案重算整套角色色（SchemeTonalSpot 的 isDark=true —— 主色自动换成暗底可读
@@ -1547,20 +1551,44 @@ function applyAppearance(a) {
   document.body.classList.toggle('dark', a === 'dark');
 }
 
+/** 系统当前是否暗色（'auto' 档的唯一依据，主进程 nativeTheme 给的；
+ *  预览模式下恒为 false —— 没有系统设置可读） */
+let systemDark = false;
+
+/** 把一档明暗取值解析成"是否暗色"（v2.4.5）。
+ *  传空 = 看当前配置，这样预览模式的取色 mock 与界面走同一套判断。 */
+function resolveDarkValue(v) {
+  const want = v || (config ? config.appearance : 'light');
+  if (want === 'auto') return !!systemDark;
+  return want === 'dark';
+}
+
+/** 当前生效的一档（'auto' 解析后的结果） */
+function effectiveDark() {
+  return resolveDarkValue(config && config.appearance);
+}
+
+/** 所有"该换明暗了"的路径都走这里 —— 不然总有一处会忘了先解析 'auto' */
+function refreshAppearance() {
+  applyAppearance(effectiveDark() ? 'dark' : 'light');
+}
+
 /** 当前生效的背景图信息 { url, path, luminance }（主进程给的 file:// URL） */
 let bgInfo = null;
 
 function setAppearance(a) {
-  const next = a === 'dark' ? 'dark' : 'light';
+  const next = a === 'dark' || a === 'auto' ? a : 'light';
   if (config.appearance === next) return;
   config.appearance = next;
-  applyAppearance(next);
+  refreshAppearance();
   syncSettingsControls();
   persist();
   if (isDynamicTheme(currentTheme)) {
     applyPaletteChange({ appearance: next });
   }
-  toast(next === 'dark' ? '已切换到黑暗模式' : '已切换到明亮模式');
+  toast(next === 'auto'
+    ? '已跟随系统（系统当前是' + (systemDark ? '黑暗' : '明亮') + '模式）'
+    : next === 'dark' ? '已切换到黑暗模式' : '已切换到明亮模式');
 }
 
 /* ---------- 自定义背景图（v2.4.0） ----------
@@ -2005,10 +2033,11 @@ function syncSettingsControls() {
       b.setAttribute('aria-pressed', b.dataset.mode === mode ? 'true' : 'false');
     });
   }
-  // 明暗模式分段按钮（v2.4.0）：两组 seg 各自独立，靠 data-* 区分
+  // 明暗模式分段按钮（v2.4.0，v2.4.5 起三档）：三组 seg 各自独立，靠 data-* 区分
   const aSeg = $('appearanceSeg');
   if (aSeg) {
-    const ap = config.appearance === 'dark' ? 'dark' : 'light';
+    // 'auto' 要原样点亮"跟随系统"那枚，不能折成 light/dark —— 折了就看不出来在跟系统了
+    const ap = config.appearance === 'dark' || config.appearance === 'auto' ? config.appearance : 'light';
     aSeg.querySelectorAll('.seg-btn').forEach((b) => {
       b.setAttribute('aria-pressed', b.dataset.appearance === ap ? 'true' : 'false');
     });
@@ -2144,7 +2173,8 @@ function switchTheme(t) {
   // 配色是共用的，底材已经取过就直接用那一份，不必再算 —— 但有个前提：
   // 动态配色主题 + 手上这份配色的明暗方案得对得上。从固定配色主题（黑暗模式下
   // 不重算配色）切过来时，手上那份可能还是亮色方案，必须让主进程按暗色重算。
-  const wantDark = config.appearance === 'dark';
+  // 跟随系统档下，"该用亮色还是暗色方案"由 effectiveDark() 决定（v2.4.5）
+  const wantDark = effectiveDark();
   const have = wallInfo && wallInfo.palette;
   if (isDynamicTheme(currentTheme) && (!have || !!have.dark !== wantDark)) {
     applyPaletteChange({ appearance: config.appearance });
@@ -2281,6 +2311,18 @@ if (appearanceSeg) {
     const btn = e.target.closest('.seg-btn');
     if (!btn || !btn.dataset.appearance) return;
     setAppearance(btn.dataset.appearance);
+  });
+}
+
+/* 系统明暗变化（v2.4.5）：只有「跟随系统」档要理会 —— 明写 light/dark 的配置，
+ * 系统怎么切都与本应用无关（用户明确选了那一档，别去"帮忙"改）。
+ * 主进程另有 wallpaper-changed 推一份按新明暗重算好的底材/配色给动态主题，
+ * 所以这里只管把界面这一层切过去（静态主题靠的正是这一层）。 */
+if (API.onSystemAppearanceChanged) {
+  API.onSystemAppearanceChanged((info) => {
+    systemDark = !!(info && info.isDark);
+    if (!config || config.appearance !== 'auto') return;
+    refreshAppearance();
   });
 }
 
@@ -2942,8 +2984,13 @@ if (typeof API.onTrayAction === 'function') {
   }
   accentPicked = config.accentPicked === true;
   // 明暗模式要在第一帧就位（和主题同理，否则会看到"先亮后暗"的闪一下）
-  if (config.appearance !== 'dark') config.appearance = 'light';
-  applyAppearance(config.appearance);
+  if (['light', 'dark', 'auto'].indexOf(config.appearance) < 0) config.appearance = 'light';
+  // 「跟随系统」得先问主进程系统现在是亮是暗，否则第一帧会按明亮画（'auto' 解析不到值）
+  try {
+    const sys = API.getSystemAppearance ? await API.getSystemAppearance() : null;
+    systemDark = !!(sys && sys.isDark);
+  } catch (e) { systemDark = false; }
+  refreshAppearance();
   // 图标外观（v2.4.2 起）：老配置里没有这几个键，非法值一律收回默认
   if (config.iconFit !== 'contain') config.iconFit = 'cover';
   if (['glass', 'auto', 'theme', 'none'].indexOf(config.iconBorder) < 0) config.iconBorder = 'glass';

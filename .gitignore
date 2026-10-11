@@ -5,6 +5,12 @@ node_modules/
 dist/
 *.log
 
+# android shell（www/ 由 assemble-web.js 生成，android/ 由 cap add 生成；
+# 两者都能用 mobile/tools/ 下的脚本一键重建，所以不进版本库）
+mobile/www/
+mobile/android/
+mobile/node_modules/
+
 # scratch / probe workspace — only curated test & asset-pipeline scripts are kept
 _ep_m/
 _ep*/
@@ -17,6 +23,8 @@ _rt/*
 !_rt/_iconcheck.js
 !_rt/_iconshot.js
 !_rt/_monetcheck.js
+!_rt/_mobilecheck.js
+!_rt/_mkandroidicons.js
 !_rt/_palettecheck.js
 !_rt/probe.html
 !_rt/crop_chars.py

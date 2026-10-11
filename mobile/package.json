@@ -1,0 +1,19 @@
+{
+  "name": "fclasspal-mobile",
+  "version": "2.4.5",
+  "private": true,
+  "description": "FClassPal 安卓壳（Capacitor）：复用桌面的 renderer/，产出一个真 .apk",
+  "scripts": {
+    "web": "node tools/assemble-web.js",
+    "sync": "node tools/assemble-web.js && cap sync android",
+    "apk": "node tools/assemble-web.js && cap sync android && node tools/build-apk.js debug",
+    "apk:release": "node tools/assemble-web.js && cap sync android && node tools/build-apk.js release"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}

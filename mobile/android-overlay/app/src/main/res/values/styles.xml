@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ============================================================================
+     FClassPal 安卓壳 · 主题
+     关键点：窗口背景用 @color/window_bg（明亮/黑暗各一份，见 values-night/）。
+     WebView 加载首帧到壁纸底材就位之间会露出窗口背景，给一个和界面同族的颜色，
+     就不会有"白一下/黑一下"的闪屏。
+     ==========================================================================-->
+<resources>
+
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+    </style>
+
+    <!-- 实际使用的主题：无标题栏 + 状态栏/导航栏沉浸（内容画到系统栏底下，
+         网页里用 env(safe-area-inset-*) 让开刘海与手势条） -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/window_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <!-- 启动屏：不用模板自带的蓝色 splash 图，直接用 window_bg，
+         视觉上就是"界面从底色里淡入" -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@color/window_bg</item>
+        <item name="windowSplashScreenBackground">@color/window_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+</resources>

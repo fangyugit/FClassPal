@@ -166,7 +166,9 @@ app.whenReady().then(() => {
   // 主进程的 palette 缓存键必须带上暗色维度，否则切明暗会拿到上一种的缓存
   const mainSrc = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
   assert('main.js: palette 缓存键含 dark 维度（明暗不会互相串缓存）', /\('\|' \+ \(isDark \? 'dark' : 'light'\)\)|\|' \+ \(isDark \? 'dark' : 'light'\)/.test(mainSrc));
-  assert('main.js: buildPalette 从 cfg.appearance 读明暗', /cfg\.appearance\s*===\s*'dark'/.test(mainSrc));
+  assert('main.js: buildPalette 走 resolvedAppearance(cfg) 解析明暗（auto 也解析得开）',
+    /const isDark = resolvedAppearance\(cfg\) === 'dark'/.test(mainSrc) &&
+    /function resolvedAppearance\(cfg\)/.test(mainSrc));
 
   console.log('[手动指定主色]');
   const manualHct = mod.monetSourceFromHex('#F26100');

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 明亮模式窗口底色：和玻璃主题的浅色表面同族 -->
+    <color name="window_bg">#EEF1F7</color>
+    <!-- 注意 启动图标背景色不放这里：模板自带 values/ic_launcher_background.xml，
+         同名资源定义两份会让 mergeDebugResources 直接报 Duplicate resources，
+         所以用同名文件覆盖（见 values/ic_launcher_background.xml） -->
+    <color name="colorPrimary">#3A63F2</color>
+    <color name="colorPrimaryDark">#2B4BC8</color>
+    <color name="colorAccent">#3A63F2</color>
+</resources>

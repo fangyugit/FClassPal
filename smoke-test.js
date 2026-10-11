@@ -517,7 +517,8 @@ function themeTokens(theme) {
     /function monetSchemePalette\(hct, dynamic, isDark\)/.test(mainJs) &&
     /new monet\.SchemeTonalSpot\(hct, !!isDark, 0\)/.test(mainJs) &&
     /p\.dark = !!isDark;/.test(mainJs) &&
-    /appearance === 'dark'/.test(mainJs));
+    // v2.4.5：明暗不再直接读 cfg.appearance，统一过 resolvedAppearance（要解析 'auto'）
+    /const isDark = resolvedAppearance\(cfg\) === 'dark'/.test(mainJs));
   check('main.js: 默认配置含 appearance / background 两组新配置（含裁剪/蒙版/模糊参数）',
     /appearance: 'light'/.test(mainJs) &&
     /background: \{[\s\S]{0,220}?enabled: false/.test(mainJs) &&
@@ -527,6 +528,48 @@ function themeTokens(theme) {
     /id="setBgOn"/.test(html) && /id="btnBgPick"/.test(html) && /id="btnBgClear"/.test(html) &&
     /id="setBgBlur"/.test(html) && /id="setBgMask"/.test(html) && /id="setBgScale"/.test(html) &&
     /id="setBgX"/.test(html) && /id="setBgY"/.test(html) && /id="bgFitSelect"/.test(html));
+
+  /* ---------- v2.4.5：明暗模式「跟随系统」 ---------- */
+  check('v2.4.5: main.js 引入 nativeTheme，明暗统一过 resolvedAppearance 解析（auto 不落盘成具体值）',
+    /desktopCapturer, session, nativeTheme/.test(mainJs) &&
+    /function resolvedAppearance\(cfg\)/.test(mainJs) &&
+    /want === 'auto'\) return nativeTheme\.shouldUseDarkColors \? 'dark' : 'light'/.test(mainJs) &&
+    /const isDark = resolvedAppearance\(cfg\) === 'dark'/.test(mainJs));
+  check('v2.4.5: get-palette 原样保留 \'auto\'（"折成 light" 的老退化路径已废除）',
+    /cfg\.appearance = patch\.appearance;/.test(mainJs) &&
+    !/patch\.appearance === 'auto' \? 'light'/.test(mainJs));
+  check('v2.4.5: 系统明暗变化广播（nativeTheme updated → 渲染层 + auto 档重算配色）',
+    /nativeTheme\.on\('updated'/.test(mainJs) &&
+    /webContents\.send\('system-appearance-changed', \{[\s\S]{0,90}?isDark: !!nativeTheme\.shouldUseDarkColors/.test(mainJs) &&
+    /if \(cfg\.appearance !== 'auto'\) return;/.test(mainJs));
+  check('v2.4.5: IPC get-system-appearance + preload 订阅面',
+    /ipcMain\.handle\('get-system-appearance'/.test(mainJs) &&
+    /getSystemAppearance: \(\) => ipcRenderer\.invoke\('get-system-appearance'\)/.test(preloadJs) &&
+    /onSystemAppearanceChanged: \(callback\)/.test(preloadJs) &&
+    /ipcRenderer\.on\('system-appearance-changed'/.test(preloadJs));
+  check('v2.4.5: 渲染层明暗解析收在一处（systemDark / resolveDarkValue / effectiveDark / refreshAppearance）',
+    /let systemDark = false;/.test(js) &&
+    /function resolveDarkValue\(v\)/.test(js) &&
+    /if \(want === 'auto'\) return !!systemDark;/.test(js) &&
+    /function effectiveDark\(\)/.test(js) &&
+    /function refreshAppearance\(\)/.test(js) &&
+    /applyAppearance\(effectiveDark\(\) \? 'dark' : 'light'\)/.test(js));
+  check('v2.4.5: setAppearance 接受三档，切到跟随系统时提示当前系统状态',
+    /const next = a === 'dark' \|\| a === 'auto' \? a : 'light';/.test(js) &&
+    /已跟随系统（系统当前是/.test(js));
+  check('v2.4.5: init 先取系统明暗再落第一帧（防"先亮后暗"闪一下）',
+    /const sys = API\.getSystemAppearance \? await API\.getSystemAppearance\(\) : null;/.test(js) &&
+    /systemDark = !!\(sys && sys\.isDark\);/.test(js) &&
+    /\['light', 'dark', 'auto'\]\.indexOf\(config\.appearance\) < 0\) config\.appearance = 'light';/.test(js));
+  check('v2.4.5: 系统变化只在「跟随系统」档生效（明写的 light/dark 不理会系统）',
+    /API\.onSystemAppearanceChanged\(\(info\) => \{[\s\S]{0,220}?if \(!config \|\| config\.appearance !== 'auto'\) return;/.test(js));
+  check('v2.4.5: 分段控件第三档「跟随系统」+ 说明文案',
+    /<button type="button" class="seg-btn" data-appearance="auto" aria-pressed="false">跟随系统<\/button>/.test(html) &&
+    /跟着 Windows 的"应用模式"走/.test(html));
+  check('v2.4.5: 预览 mock 补齐系统明暗两项（否则预览下 auto 解析不出值）',
+    /getSystemAppearance: \(\) => Promise\.resolve\(\{ isDark: false, forced: false \}\)/.test(js) &&
+    /onSystemAppearanceChanged: \(\) => \(\) => \{\}/.test(js) &&
+    /const dark = resolveDarkValue\(patch && patch\.appearance\);/.test(js));
   check('app.js: 自定义背景接线（applyCustomBackground 三层背景 + 蒙版渐变 + 模糊补偿缩放）',
     /function applyCustomBackground\(\)/.test(js) &&
     /function bgConfig\(\)/.test(js) && /function bgIsOn\(\)/.test(js) &&

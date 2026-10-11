@@ -1,11 +1,13 @@
 {
   "name": "FClassPal",
-  "version": "2.4.4",
+  "version": "2.4.5",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --win dir",
-    "build:portable": "electron-builder --win portable"
+    "build:portable": "electron-builder --win portable",
+    "build:linux": "electron-builder --linux",
+    "build:mac": "electron-builder --mac"
   },
   "author": "YU",
   "license": "MIT",
@@ -28,6 +30,51 @@
       ],
       "compression": "normal",
       "icon": "build/icon.ico"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "Utility",
+      "icon": "build/icon.png",
+      "maintainer": "YU",
+      "synopsis": "轻量桌面快捷面板（液态玻璃 / 十套主题）",
+      "description": "FClassPal：无边框桌面小部件，右键 / 长按呼出菜单，支持触摸屏、透明度与尺寸调节、自定义快捷键、U 盘弹出。",
+      "artifactName": "FClassPal-${version}-linux-${arch}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.utilities",
+      "icon": "build/icon-512.png",
+      "artifactName": "FClassPal-${version}-mac-${arch}.${ext}"
     },
     "directories": {
       "output": "dist"

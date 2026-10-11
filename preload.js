@@ -27,6 +27,13 @@ contextBridge.exposeInMainWorld('widgetAPI', {
     ipcRenderer.on('wallpaper-changed', handler);
     return () => ipcRenderer.removeListener('wallpaper-changed', handler);
   },
+  // 系统明暗（v2.4.5）：「跟随系统」档下渲染层要先取一次当前值，再订阅后续变化
+  getSystemAppearance: () => ipcRenderer.invoke('get-system-appearance'),
+  onSystemAppearanceChanged: (callback) => {
+    const handler = (_e, info) => callback(info);
+    ipcRenderer.on('system-appearance-changed', handler);
+    return () => ipcRenderer.removeListener('system-appearance-changed', handler);
+  },
 
   // 实时玻璃底材：让主进程放行屏幕采集并把本窗口从采集中排除，
   // 返回窗口所在显示器的几何信息 { x, y, w, h, scaleFactor, id }（失败返回 null）。

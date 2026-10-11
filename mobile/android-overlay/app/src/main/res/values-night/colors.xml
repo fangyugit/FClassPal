@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 黑暗模式窗口底色：近黑的石板色，配合系统深色主题 -->
+    <color name="window_bg">#0E1116</color>
+</resources>

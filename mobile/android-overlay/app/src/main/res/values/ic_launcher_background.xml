@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动图标（自适应图标）的背景层颜色：取应用图标自己的蓝紫主色。
+     用与模板同名的文件覆盖，而不是在 colors.xml 里再定义一份——
+     同名资源定义两处会报 Duplicate resources。 -->
+<resources>
+    <color name="ic_launcher_background">#4C5BF0</color>
+</resources>
