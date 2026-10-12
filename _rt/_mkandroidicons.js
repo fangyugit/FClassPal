@@ -1,7 +1,15 @@
 /* 生成安卓启动图标（全套 mipmap + 自适应前景层）。
  * 跑法：./node_modules/electron/dist/electron.exe _rt/_mkandroidicons.js
  * 产物写进 mobile/android-overlay/app/src/main/res/（装配脚本再复制进 android 工程）。
- * 源图用 build/icon.png（256 的蓝紫渐变方块）。 */
+ *
+ * v2.4.6：图标重绘为"加号卡片"（build/icon.png，_rt/gen_icon.py 生成），并且
+ * 修掉用户报的"安卓图标圆角不对劲"——旧版把带圆角的方块图标缩到 72% 贴在纯色
+ * 背景层上，启动器的圆形蒙版一裁，四角露出背景色，看着像方块上贴方块。现在：
+ *   普通图标 ic_launcher.png      圆角版图标原样（API<26 的启动器不裁剪）
+ *   圆形图标 ic_launcher_round.png 满幅版裁圆（蒙版由我们出，没有色差角）
+ *   前景层 ic_launcher_foreground  满幅版铺满 108dp —— 自适应图标由启动器蒙版
+ *                                  裁形状，渐变铺到边，什么形状都严丝合缝
+ * 满幅版 = build/icon_fullsquare.png（无圆角遮罩，同 _rt/gen_icon.py）。 */
 const { app, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -14,25 +22,19 @@ const DENSITIES = [
 ];
 const LAUNCHER_BASE = 48;        // mipmap/ic_launcher.png 的 mdpi 基准
 const FOREGROUND_BASE = 108;     // 自适应图标前景层的 mdpi 基准
-const FG_CONTENT_RATIO = 0.72;   // 前景层内容占比（自适应图标安全区是 66/108，留点余量）
 
 app.whenReady().then(() => {
-  const src = nativeImage.createFromPath(path.join(ROOT, 'build', 'icon.png'));
-  if (src.isEmpty()) { console.error('读不到 build/icon.png'); app.exit(1); return; }
-  const sw = src.getSize().width;
+  const rounded = nativeImage.createFromPath(path.join(ROOT, 'build', 'icon.png'));
+  const full = nativeImage.createFromPath(path.join(ROOT, 'build', 'icon_fullsquare.png'));
+  if (rounded.isEmpty() || full.isEmpty()) {
+    console.error('读不到 build/icon.png / build/icon_fullsquare.png（先跑 _rt/gen_icon.py）');
+    app.exit(1);
+    return;
+  }
 
-  /** 把 src 缩放后贴进 size×size 的透明画布，返回 nativeImage */
-  function compose(size, contentSize) {
-    const inner = src.resize({ width: contentSize, height: contentSize, quality: 'best' });
-    const ib = inner.toBitmap();           // BGRA
-    const buf = Buffer.alloc(size * size * 4, 0);
-    const off = Math.round((size - contentSize) / 2);
-    for (let y = 0; y < contentSize; y++) {
-      const sRow = y * contentSize * 4;
-      const dRow = ((y + off) * size + off) * 4;
-      ib.copy(buf, dRow, sRow, sRow + contentSize * 4);
-    }
-    return nativeImage.createFromBuffer(buf, { width: size, height: size });
+  /** 满幅缩放到 size×size（铺满，不留透明边） */
+  function fill(size, src) {
+    return src.resize({ width: size, height: size, quality: 'best' });
   }
 
   /** 圆形蒙版（ic_launcher_round 用） */
@@ -54,17 +56,18 @@ app.whenReady().then(() => {
     const dir = path.join(OUT, 'mipmap-' + name);
     fs.mkdirSync(dir, { recursive: true });
 
-    // 1) 普通启动图标（API < 26 用）
     const s1 = Math.round(LAUNCHER_BASE * scale);
-    fs.writeFileSync(path.join(dir, 'ic_launcher.png'), compose(s1, s1).toPNG());
+    // 1) 普通启动图标（API < 26 用）：带圆角的成品
+    fs.writeFileSync(path.join(dir, 'ic_launcher.png'), fill(s1, rounded).toPNG());
 
-    // 2) 圆形启动图标（API < 26 的 roundIcon）
-    fs.writeFileSync(path.join(dir, 'ic_launcher_round.png'), circleMask(compose(s1, s1)).toPNG());
+    // 2) 圆形启动图标（API < 26 的 roundIcon）：满幅裁圆，角上没有第二层颜色
+    fs.writeFileSync(path.join(dir, 'ic_launcher_round.png'),
+      circleMask(fill(s1, full)).toPNG());
 
-    // 3) 自适应图标前景层：内容缩到 72%，四周留安全区透明边
+    // 3) 自适应图标前景层：满幅铺满 108dp，形状交给启动器蒙版
     const s2 = Math.round(FOREGROUND_BASE * scale);
     fs.writeFileSync(path.join(dir, 'ic_launcher_foreground.png'),
-      compose(s2, Math.round(s2 * FG_CONTENT_RATIO)).toPNG());
+      fill(s2, full).toPNG());
 
     n += 3;
     console.log('mipmap-' + name, 'launcher=' + s1 + ' foreground=' + s2);

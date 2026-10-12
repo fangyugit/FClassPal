@@ -61,6 +61,41 @@ function main() {
   if (g !== before) fs.writeFileSync(gradlePath, g);
   log('版本号：versionCode=' + code + ' versionName=' + pkg.version);
 
+  // ②b release 签名（v2.4.6）：../../_signing/signing.properties 存在才注入。
+  //    密钥和密码都在 gitignore 的 _signing/ 里，公开仓库永远看不到；
+  //    文件不存在（CI / 别的机器）就跳过，build 出未签名 release，不影响构建。
+  const signMarker = 'fclasspal-signing';
+  const signPropsPath = path.join(ROOT, '..', '_signing', 'signing.properties');
+  if (fs.existsSync(signPropsPath) && !g.includes(signMarker)) {
+    let g2 = fs.readFileSync(gradlePath, 'utf8');
+    g2 += `\n// >>> ${signMarker}（apply-android-overlay.js 注入，勿手改）\n` +
+      `// 密钥信息在 _signing/signing.properties（gitignore），没有这个文件就保持未签名。\n` +
+      `def fcpSignFile = rootProject.file('../../_signing/signing.properties')\n` +
+      `if (fcpSignFile.exists()) {\n` +
+      `    def fcpSignProps = new Properties()\n` +
+      `    fcpSignProps.load(new FileInputStream(fcpSignFile))\n` +
+      `    android {\n` +
+      `        signingConfigs {\n` +
+      `            release {\n` +
+      `                storeFile new File(fcpSignFile.getParentFile(), fcpSignProps['storeFile'])\n` +
+      `                storePassword fcpSignProps['storePassword']\n` +
+      `                keyAlias fcpSignProps['keyAlias']\n` +
+      `                keyPassword fcpSignProps['keyPassword']\n` +
+      `            }\n` +
+      `        }\n` +
+      `        buildTypes {\n` +
+      `            release {\n` +
+      `                signingConfig signingConfigs.release\n` +
+      `            }\n` +
+      `        }\n` +
+      `    }\n` +
+      `}\n`;
+    fs.writeFileSync(gradlePath, g2);
+    log('release 签名：已注入（' + path.relative(ROOT, signPropsPath) + '）');
+  } else if (!fs.existsSync(signPropsPath)) {
+    log('release 签名：未配置（找不到 _signing/signing.properties），release 包将未签名');
+  }
+
   // ③ 删模板示例测试（断言的是 Capacitor 自己的包名，留着必红）
   const junk = [
     path.join(DST, 'app', 'src', 'test', 'java', 'com', 'getcapacitor', 'myapp'),

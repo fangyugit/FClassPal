@@ -234,9 +234,10 @@ function themeTokens(theme) {
   check('app.js: 缺用户手势被拒时首次交互重试一次（有界，不会重试风暴）',
     /function armRealtimeRetry/.test(js) && /rtRetryArmed/.test(js) &&
     /addEventListener\('pointerdown', once, true\)/.test(js));
-  check('设置面板有实时模糊开关 + 状态行 + 截图副作用说明',
-    html.includes('id="setRealtime"') && html.includes('id="realtimeInfo"') &&
-    /系统截图/.test(html));
+  /* v2.4.6：设置面板的成段描述文字按用户要求全部移除（说明收进 README / CHANGELOG），
+   * 只断言控件还在 */
+  check('设置面板有实时模糊开关 + 状态行（描述文字已按 v2.4.6 移除）',
+    html.includes('id="setRealtime"') && html.includes('id="realtimeInfo"'));
   /* 默认"只模糊壁纸"：实时采集是可选增强，不是默认行为 */
   check('默认配置 realtime:false（只模糊壁纸，不逐帧采屏）',
     /realtime:\s*false/.test(mainJs));
@@ -563,9 +564,9 @@ function themeTokens(theme) {
     /\['light', 'dark', 'auto'\]\.indexOf\(config\.appearance\) < 0\) config\.appearance = 'light';/.test(js));
   check('v2.4.5: 系统变化只在「跟随系统」档生效（明写的 light/dark 不理会系统）',
     /API\.onSystemAppearanceChanged\(\(info\) => \{[\s\S]{0,220}?if \(!config \|\| config\.appearance !== 'auto'\) return;/.test(js));
-  check('v2.4.5: 分段控件第三档「跟随系统」+ 说明文案',
-    /<button type="button" class="seg-btn" data-appearance="auto" aria-pressed="false">跟随系统<\/button>/.test(html) &&
-    /跟着 Windows 的"应用模式"走/.test(html));
+  /* v2.4.6：描述文案移除，只断言第三档按钮还在 */
+  check('v2.4.5: 分段控件第三档「跟随系统」（说明文案已按 v2.4.6 移除）',
+    /<button type="button" class="seg-btn" data-appearance="auto" aria-pressed="false">跟随系统<\/button>/.test(html));
   check('v2.4.5: 预览 mock 补齐系统明暗两项（否则预览下 auto 解析不出值）',
     /getSystemAppearance: \(\) => Promise\.resolve\(\{ isDark: false, forced: false \}\)/.test(js) &&
     /onSystemAppearanceChanged: \(\) => \(\) => \{\}/.test(js) &&
@@ -814,8 +815,9 @@ function themeTokens(theme) {
   check('html: 统一图标风格 = 开关行（iconMonoRow 默认藏，iconMono 复选框）',
     /id="iconMonoRow"/.test(html) && /class="row toggle hidden" id="iconMonoRow"/.test(html) &&
     /type="checkbox" id="iconMono"/.test(html));
-  check('html: 行为说明里写清了统一风格的语义（取哪个色 / 只在内部下出现 / 图片保细节）',
-    /统一图标风格/.test(html) && /只在「内部」下出现/.test(html) && /明暗细节留着/.test(html));
+  /* v2.4.6：描述文案移除，语义说明收进 README「图标外观」一节 */
+  check('html: 统一图标风格开关行还在（行为语义收进 README，不在面板写长文）',
+    /统一图标风格/.test(html));
 
   /* ---------- v2.4.1 补丁：文字按钮不得复用方形图标按钮的容器 ---------- */
   check('★ 回归守卫：.size-controls 里不许再出现文字按钮（它写死 30×30，会把字挤到框外）',

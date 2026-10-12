@@ -34,6 +34,11 @@ _rt/*
 !_rt/gen_palettes.js
 !_rt/palettes.json
 
+# 签名密钥 —— 绝不入库（公开仓库！）
+_signing/
+*.keystore
+*.jks
+
 # packaging output
 _pkg_out.txt
 _src_out.txt

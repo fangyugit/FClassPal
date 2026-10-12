@@ -168,7 +168,9 @@ body.lg-ready .glass-warp {
     inset 1px 0 0 rgba(255, 255, 255, 0.28),
     inset -1px 0 0 rgba(255, 255, 255, 0.28),
     inset 0 -1px 0.5px rgba(255, 255, 255, 0.4),
-    inset 0 -22px 34px -26px rgba(31, 62, 138, 0.35),
+    /* v2.4.6：-22px/34px 的辉光会被折射位移在弧线处推出白色"液滴"（左下角破相
+     * 的元凶），收敛到 -10px/16px 后厚度感还在、角上干净 */
+    inset 0 -10px 16px -14px rgba(31, 62, 138, 0.28),
     0 24px 48px -18px rgba(14, 28, 68, 0.35),
     0 6px 14px -6px rgba(14, 28, 68, 0.10);
 }
@@ -722,8 +724,11 @@ body.ic-mono .icon-preview:has(img)::after {
 .resize-handle::after {
   content: "";
   position: absolute;
-  right: 5px;
-  bottom: 5px;
+  /* glyph 必须待在圆角弧线**内侧**，否则折线压在弧上、窗口下角像破了相
+   * （v2.4.6 修复：内缩量随 --radius 走——r=8 时 5.4px、r=40 时 15px，
+   * 按弧线 45° 方向最深 0.414*r 算，任何半径档都碰不到弧线） */
+  right: calc(3px + var(--radius, 22px) * 0.3);
+  bottom: calc(3px + var(--radius, 22px) * 0.3);
   width: 12px;
   height: 12px;
   border-right: 2.5px solid rgba(43, 66, 130, 0.45);
@@ -783,6 +788,9 @@ input[type="range"] {
   background: transparent;
   cursor: pointer;
   outline: none;
+  /* 触摸屏拖珠子必须禁掉手势竞争（v2.4.6）：默认 auto 时拖动会被当成滚动意图，
+   * 珠子跟手不稳 */
+  touch-action: none;
 }
 input[type="range"]::-webkit-slider-runnable-track {
   height: 8px;
@@ -960,7 +968,9 @@ body.theme-glass.over-light .glass-veil {
     inset 1px 0 0 rgba(255, 255, 255, 0.28),
     inset -1px 0 0 rgba(255, 255, 255, 0.28),
     inset 0 -1px 0.5px rgba(255, 255, 255, 0.4),
-    inset 0 -22px 34px -26px rgba(31, 62, 138, 0.35),
+    /* v2.4.6：-22px/34px 的辉光会被折射位移在弧线处推出白色"液滴"（左下角破相
+     * 的元凶），收敛到 -10px/16px 后厚度感还在、角上干净 */
+    inset 0 -10px 16px -14px rgba(31, 62, 138, 0.28),
     0 18px 60px -14px rgba(6, 12, 32, 0.62),
     0 6px 14px -6px rgba(6, 12, 32, 0.3);
 }
@@ -2872,7 +2882,7 @@ body.theme-kitty .titlebar::after {
 /* 主区右下角的 Kitty 挥手贴纸：盖在玻璃层上（z-index 1 = veil 同层、树序在后），
  * 内容卡片(z-index 2)之下；空区可见、被卡片压住时不挡内容。 */
 body.theme-kitty .widget::after {
-  content: ""; position: absolute; right: 10px; bottom: 42px; width: 74px; height: 76px;
+  content: ""; position: absolute; right: 10px; bottom: 42px; width: 74px; height: 88px;
   background: url("theme/kitty/kitty-full.png") no-repeat center / contain;
   opacity: 0.65; pointer-events: none; z-index: 1;
 }
@@ -2994,7 +3004,7 @@ body.theme-kitty .icon-preview { border-radius: var(--t-r-ctl); background: #FFF
 body.theme-kitty .group-list li { border-bottom: 2px dotted #FBC7DC; }
 /* 设置面板右下角：站姿 Kitty 水印（不挡内容，随面板圆角裁切） */
 body.theme-kitty .panel::after {
-  content: ""; position: absolute; right: 10px; bottom: 8px; width: 44px; height: 45px;
+  content: ""; position: absolute; right: 10px; bottom: 8px; width: 44px; height: 52px;
   background: url('theme/kitty/kitty-full.png') no-repeat bottom right / contain;
   pointer-events: none; opacity: 0.9;
   filter: drop-shadow(0 2px 5px rgb(232 84 138 / 0.25));
@@ -4492,3 +4502,144 @@ body.dark .about-line,
 body.dark .about-ver {
   color: var(--text-soft);
 }
+
+/* ====== 编辑模式：拖拽排序 / 聚合文件夹（v2.4.6） ====== */
+/* 编辑模式下卡片呈"可抓取"手感；触摸拖拽必须禁掉手势竞争 */
+.edit-mode .item {
+  cursor: grab;
+  touch-action: none;
+}
+.edit-mode .item:active { cursor: grabbing; }
+/* 拖动中：原位半透明虚框，别抢动画 */
+.edit-mode .item.drag-src {
+  opacity: 0.35;
+  filter: saturate(0.6);
+}
+/* 跟手幽灵：贴在 body 上，脱离网格流 */
+.drag-ghost {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  margin: 0;
+  opacity: 0.92;
+  box-shadow: 0 14px 34px -10px rgba(14, 28, 68, 0.45);
+  transition: none;
+}
+.drag-ghost.t-enter { animation: none; }
+body.item-dragging .item { transition: none; }
+/* 落点提示：边缘插入=一侧亮边；中心聚合=整体发亮 */
+.item.drop-before { outline: 2px solid var(--accent); outline-offset: -2px; border-start-start-radius: 0; }
+.item.drop-after { outline: 2px solid var(--accent); outline-offset: -2px; }
+.item.drop-merge {
+  outline: 2px dashed var(--accent);
+  outline-offset: -3px;
+  transform: scale(1.05);
+}
+/* 文件夹角标：右下角小圆牌显示子项数 */
+.item-icon { position: relative; }
+.folder-badge {
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.62rem;
+  line-height: 18px;
+  text-align: center;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(14, 28, 68, 0.35);
+  pointer-events: none;
+}
+/* 文件夹二级菜单：复用 .ctx-menu 玻璃观感，宽一点容纳行内容 */
+.folder-menu {
+  position: fixed;
+  z-index: 70;
+  min-width: 210px;
+  max-width: 280px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.folder-head {
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid rgba(120, 140, 190, 0.25);
+}
+.folder-name {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  padding: 2px 0;
+}
+.folder-name:not([readonly]) {
+  border-bottom: 1px dashed var(--accent-border, var(--accent));
+}
+.folder-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+.folder-row-ic {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.folder-row-ic img { width: 100%; height: 100%; object-fit: contain; }
+.folder-row .ctx-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-row-del {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  opacity: 0.55;
+}
+.folder-row-del:hover { opacity: 1; background: rgba(255, 77, 106, 0.15); }
+/* 排序菜单项：只在编辑模式露出 */
+.ctx-menu .ctx-sort { display: none; }
+body.edit-mode .ctx-menu .ctx-sort { display: flex; }
+
+/* ====== U 盘占用弹窗（v2.4.6） ====== */
+.occupied-menu {
+  position: fixed;
+  z-index: 70;
+  min-width: 240px;
+  max-width: 320px;
+  padding-bottom: 10px;
+}
+.occupied-title {
+  padding: 10px 14px 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(120, 140, 190, 0.25);
+}
+.occupied-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  font-size: 0.78rem;
+}
+.occupied-row .ic { flex: 0 0 18px; width: 18px; height: 18px; }
+.occupied-row .ctx-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.occupied-acts {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px 0;
+  flex-wrap: wrap;
+}
+.occupied-acts .usb-btn { font-size: 0.72rem; padding: 6px 10px; }

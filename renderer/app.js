@@ -195,6 +195,11 @@ const API = window.widgetAPI || (function () {
     ]),
     openDrive: (l) => { alert('预览模式：将打开 ' + l + ':\\'); return Promise.resolve({ success: true }); },
     ejectDrive: (l) => { alert('预览模式：将安全弹出 ' + l + ':'); return Promise.resolve({ success: true }); },
+    closeDriveOccupants: () => Promise.resolve({ success: true, closed: 0 }),
+    exportConfig: () => { alert('预览模式：导出配置包 .fcpc'); return Promise.resolve({ success: false }); },
+    importConfig: () => { alert('预览模式：导入配置包 .fcpc'); return Promise.resolve({ success: false }); },
+    exportTheme: () => { alert('预览模式：导出主题方案 .fcpt'); return Promise.resolve({ success: false }); },
+    importTheme: () => { alert('预览模式：导入主题方案 .fcpt'); return Promise.resolve({ success: false }); },
     ejectDriveElevated: (l) => { alert('预览模式：将以管理员身份弹出 ' + l + ':'); return Promise.resolve({ success: true }); },
     onUsbChange: () => () => {},
     onBoundsChanged: () => () => {},
@@ -781,6 +786,8 @@ function render() {
     g.items.forEach((it, ii) => {
       const itemEl = document.createElement('div');
       itemEl.className = 'item';
+      itemEl.dataset.gi = gi;    // 拖拽/二级菜单都靠这两个锚点回查数据
+      itemEl.dataset.ii = ii;
       const del = document.createElement('button');
       del.className = 'del-btn';
       del.title = '删除';
@@ -793,6 +800,14 @@ function render() {
       });
       const icon = document.createElement('div');
       icon.className = 'item-icon';
+      if (isFolder(it)) {
+        // 聚合文件夹：内置文件夹图标 + 子项数角标
+        icon.innerHTML = svgIcon('i-folder');
+        const badge = document.createElement('span');
+        badge.className = 'folder-badge';
+        badge.textContent = String(it.children.length);
+        icon.appendChild(badge);
+      } else {
       const ic = resolveIcon(it);
       if (ic.type === 'img') {
         const img = document.createElement('img');
@@ -806,6 +821,7 @@ function render() {
       } else {
         icon.textContent = ic.value;
       }
+      }
       const name = document.createElement('div');
       name.className = 'item-name';
       name.textContent = it.name;
@@ -813,6 +829,8 @@ function render() {
       staggerIndex(itemEl, ii);   // 错峰入场（glass 风格下 CSS 不认这个 class）
       itemEl.classList.add('t-enter');
       itemEl.addEventListener('click', () => {
+        if (itemDragSuppressed) return;          // 刚拖完，这次 click 是拖拽的收尾
+        if (isFolder(it)) { showFolderMenu(gi, ii); return; }  // 文件夹：二级菜单
         if (editMode) { openItemModal(gi, ii); return; }  // 编辑模式：点按即编辑
         openItem(it);
       });
@@ -837,6 +855,326 @@ async function openItem(it) {
   toast('正在打开：' + it.name);
   const res = await API.openTarget(it);
   if (!res.success) toast('打开失败：' + res.error);
+}
+
+/* ---------- 聚合文件夹（v2.4.6）----------
+ * 数据形态：{ name, kind 不用, children: [item...] } —— 用 **children 数组**判定，
+ * 不能用 type:'folder'（它已经是"打开目录的快捷方式"）。openItem 前 isFolder 先拦。 */
+function isFolder(it) { return !!(it && Array.isArray(it.children)); }
+
+/* ---------- 编辑模式：图标拖拽（排序 / 跨组移动 / 拖到一起聚合成文件夹） ----------
+ * 交互设计：
+ *   · 仅编辑模式生效；按住移动 >6px 才算拖（否则仍是"点按编辑"）；
+ *   · 拖动中：本体半透明，跟随指针的是克隆幽灵（pointer-events:none，
+ *     elementFromPoint 才能穿过去命中底下的卡片）；
+ *   · 松手落点：压在另一张卡片**中心区**（距中心 < 42% 边长）→ 聚合成文件夹
+ *     （目标已是文件夹则并入）；压在卡片边缘 → 排到它前/后；跨组也支持；
+ *   · 触摸与鼠标同一套 Pointer Events；touch-action:none 交给 CSS。
+ */
+let itemDragSuppressed = false;   // 拖拽结束后吞掉紧跟的 click（否则误开编辑弹窗）
+let itemDrag = null;              // { gi, ii, pointerId, ghost, fromX, fromY, started }
+
+groupsEl.addEventListener('pointerdown', (e) => {
+  if (!editMode || itemDrag) return;
+  if (e.button !== undefined && e.button !== 0) return;
+  const card = e.target.closest ? e.target.closest('.item') : null;
+  if (!card || card.classList.contains('add-card')) return;
+  if (e.target.closest('.del-btn')) return;              // 删除按钮照常点
+  itemDrag = {
+    gi: +card.dataset.gi, ii: +card.dataset.ii,
+    pointerId: e.pointerId,
+    startX: e.clientX, startY: e.clientY,
+    started: false, ghost: null, home: card
+  };
+});
+
+groupsEl.addEventListener('pointermove', (e) => {
+  if (!itemDrag || e.pointerId !== itemDrag.pointerId) return;
+  if (!itemDrag.started) {
+    if (Math.abs(e.clientX - itemDrag.startX) < 6 && Math.abs(e.clientY - itemDrag.startY) < 6) return;
+    startItemDrag(e);
+  }
+  moveItemDrag(e);
+});
+
+function endItemDrag(e, cancelled) {
+  if (!itemDrag || (e.pointerId !== undefined && e.pointerId !== itemDrag.pointerId)) return;
+  const d = itemDrag;
+  itemDrag = null;
+  if (!d.started) return;
+  document.removeEventListener('pointermove', onGhostMove, true);
+  if (d.ghost && d.ghost.parentNode) d.ghost.parentNode.removeChild(d.ghost);
+  if (d.home) d.home.classList.remove('drag-src');
+  document.body.classList.remove('item-dragging');
+  hideDropHint();
+  if (cancelled) { itemDragSuppressed = false; return; }
+
+  const hit = dropTargetAt(e.clientX, e.clientY, d);
+  if (hit && hit.mode !== 'none') {
+    applyItemDrop(d, hit);
+    itemDragSuppressed = true;
+    setTimeout(() => { itemDragSuppressed = false; }, 120);
+    persist();
+    render();
+  } else {
+    itemDragSuppressed = true;   // 没落 anywhere 有效位置也吞 click，别弹编辑
+    setTimeout(() => { itemDragSuppressed = false; }, 120);
+  }
+}
+groupsEl.addEventListener('pointerup', (e) => endItemDrag(e, false));
+groupsEl.addEventListener('pointercancel', (e) => endItemDrag(e, true));
+
+function startItemDrag(e) {
+  const d = itemDrag;
+  d.started = true;
+  try { groupsEl.setPointerCapture(d.pointerId); } catch (err) { /* 老内核没有就算了 */ }
+  const rect = d.home.getBoundingClientRect();
+  const ghost = d.home.cloneNode(true);
+  ghost.className = d.home.className + ' drag-ghost';
+  ghost.style.width = rect.width + 'px';
+  ghost.style.height = rect.height + 'px';
+  ghost.style.left = (e.clientX - rect.width / 2) + 'px';
+  ghost.style.top = (e.clientY - rect.height / 2) + 'px';
+  document.body.appendChild(ghost);
+  d.ghost = ghost;
+  d.home.classList.add('drag-src');
+  document.body.classList.add('item-dragging');   // 网格里其它卡片让出过渡动画
+  // 捕获到 groupsEl 后 pointermove 只发给它；幽灵跟随用 document 级兜底
+  document.addEventListener('pointermove', onGhostMove, true);
+}
+
+function onGhostMove(e) {
+  if (itemDrag && itemDrag.ghost) {
+    itemDrag.ghost.style.left = (e.clientX - itemDrag.ghost.offsetWidth / 2) + 'px';
+    itemDrag.ghost.style.top = (e.clientY - itemDrag.ghost.offsetHeight / 2) + 'px';
+    highlightDrop(e.clientX, e.clientY, itemDrag);
+  }
+}
+
+/** 落点判定：返回 { gi, ii, mode: before|after|merge|grid-end } 或 null */
+function dropTargetAt(x, y, d) {
+  const under = document.elementFromPoint(x, y);
+  if (!under) return null;
+  const card = under.closest ? under.closest('.item') : null;
+  if (card && !card.classList.contains('drag-ghost') && !card.classList.contains('add-card')) {
+    const gi = +card.dataset.gi, ii = +card.dataset.ii;
+    if (gi === d.gi && ii === d.ii) return null;   // 压回自己 = 取消
+    const r = card.getBoundingClientRect();
+    const dx = (x - r.left) / r.width - 0.5;
+    const dy = (y - r.top) / r.height - 0.5;
+    const fromCenter = Math.max(Math.abs(dx), Math.abs(dy));
+    if (fromCenter < 0.42) return { gi, ii, mode: 'merge' };
+    const before = (dx + dy) < 0;                  // 左上=前面，右下=后面
+    return { gi, ii, mode: before ? 'before' : 'after' };
+  }
+  const grid = under.closest ? under.closest('.item-grid') : null;
+  if (grid) {
+    const groupEl = grid.closest('.group');
+    const idx = Array.prototype.indexOf.call(groupsEl.children, groupEl);
+    if (idx >= 0) return { gi: idx, mode: 'grid-end' };
+  }
+  return null;
+}
+
+function highlightDrop(x, y, d) {
+  const hit = dropTargetAt(x, y, d);
+  document.querySelectorAll('.drop-before, .drop-after, .drop-merge')
+    .forEach((el) => el.classList.remove('drop-before', 'drop-after', 'drop-merge'));
+  if (!hit || hit.mode === 'none') { hideDropHint(); return; }
+  if (hit.mode === 'grid-end') return;
+  const card = groupsEl.querySelector('.item[data-gi="' + hit.gi + '"][data-ii="' + hit.ii + '"]');
+  if (card) card.classList.add('drop-' + hit.mode);
+}
+function hideDropHint() {
+  document.querySelectorAll('.drop-before, .drop-after, .drop-merge')
+    .forEach((el) => el.classList.remove('drop-before', 'drop-after', 'drop-merge'));
+}
+
+function applyItemDrop(d, hit) {
+  const srcGroup = config.groups[d.gi];
+  const moved = srcGroup.items[d.ii];
+  if (!moved) return;
+  if (hit.mode === 'merge') {
+    const dstGroup = config.groups[hit.gi];
+    const dst = dstGroup.items[hit.ii];
+    if (!dst || dst === moved) return;
+    if (isFolder(dst)) {
+      dst.children.push(moved);            // 并入现成文件夹
+      srcGroup.items.splice(d.ii, 1);      // 源卡片必须摘掉，否则会"复制"一份
+      toast('已放进「' + dst.name + '」');
+    } else if (isFolder(moved)) {
+      // 拖文件夹压到普通卡片：整夹并入，文件夹用目标卡片的名字
+      const merged = { name: dst.name, type: 'folder', target: '', children: moved.children.concat([dst]) };
+      dstGroup.items.splice(hit.ii, 1, merged);
+      srcGroup.items.splice(d.ii, 1);
+      toast('已合并进「' + dst.name + '」');
+    } else {
+      // 新建文件夹：名字取两张卡片名字的共同前缀或"A+B"，取更短的语义化方案：
+      const fname = moved.name + ' + ' + dst.name;
+      const folder = { name: fname, type: 'folder', target: '', children: [moved, dst] };
+      dstGroup.items.splice(hit.ii, 1, folder);   // dst 原位变成文件夹
+      srcGroup.items.splice(d.ii, 1);
+      toast('已聚合成文件夹「' + fname + '」');
+    }
+    // 同组内删除时索引已位移，上面 splice 顺序保证了安全：先替换 dst 再删 src。
+    return;
+  }
+  // before / after / grid-end：先把 src 摘出来，再按目标索引插入
+  srcGroup.items.splice(d.ii, 1);
+  let gi = hit.gi, insertAt;
+  if (hit.mode === 'grid-end') {
+    insertAt = config.groups[gi].items.length;
+  } else {
+    let ii = hit.ii;
+    // 摘出原项后，同组里目标索引要回退一格
+    if (gi === d.gi && ii > d.ii) ii -= 1;
+    insertAt = hit.mode === 'before' ? ii : ii + 1;
+  }
+  config.groups[gi].items.splice(insertAt, 0, moved);
+}
+
+/* ---------- 文件夹二级菜单 ----------
+ * 复用 .ctx-menu 的玻璃观感，内容动态搭：
+ *   · 标题行：文件夹名（编辑模式可直接改，回车/失焦生效）；
+ *   · 每个子项一行，点按=打开（编辑模式=打开该项的编辑弹窗）；
+ *   · 编辑模式另有：每行删除、解散文件夹。 */
+let folderMenuEl = null;
+function showFolderMenu(gi, ii) {
+  closeFolderMenu();
+  const g = config.groups[gi];
+  const folder = g && g.items[ii];
+  if (!isFolder(folder)) return;
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu folder-menu';
+  const head = document.createElement('div');
+  head.className = 'folder-head';
+  const nameInput = document.createElement('input');
+  nameInput.className = 'folder-name';
+  nameInput.value = folder.name;
+  nameInput.maxLength = 24;
+  if (!editMode) nameInput.readOnly = true;
+  const commitName = () => {
+    const v = nameInput.value.trim();
+    if (v && v !== folder.name) { folder.name = v; persist(); render(); toast('文件夹已重命名'); }
+  };
+  nameInput.addEventListener('change', commitName);
+  nameInput.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') nameInput.blur(); });
+  head.appendChild(nameInput);
+  menu.appendChild(head);
+
+  folder.children.forEach((child, ci) => {
+    const row = document.createElement('button');
+    row.className = 'ctx-item folder-row';
+    const ric = resolveIcon(child);
+    const icEl = document.createElement('span');
+    icEl.className = 'ic folder-row-ic';
+    if (ric.type === 'img') {
+      const im = document.createElement('img');
+      im.src = ric.value; im.alt = '';
+      icEl.appendChild(im);
+    } else if (ric.type === 'svg') {
+      icEl.innerHTML = svgIcon(ric.value);
+    } else {
+      icEl.textContent = ric.value;
+    }
+    const label = document.createElement('span');
+    label.className = 'ctx-label';
+    label.textContent = child.name;
+    row.append(icEl, label);
+    if (editMode) {
+      const rm = document.createElement('span');
+      rm.className = 'folder-row-del';
+      rm.innerHTML = svgIcon('i-x');
+      rm.title = '从文件夹删除';
+      rm.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        folder.children.splice(ci, 1);
+        if (!folder.children.length) g.items.splice(ii, 1);   // 空了就连壳一起删
+        persist(); render(); closeFolderMenu();
+      });
+      row.appendChild(rm);
+    }
+    row.addEventListener('click', () => {
+      closeFolderMenu();
+      if (editMode) {
+        // 编辑模式：把子项临时借调出来编辑（folder 内索引编码成 gi/ii 不行，
+        // openItemModal 只认组内索引——这里直接弹一个"查看"级编辑即可）
+        openChildModal(gi, ii, ci);
+        return;
+      }
+      openItem(child);
+    });
+    menu.appendChild(row);
+  });
+
+  if (editMode) {
+    const sep = document.createElement('div');
+    sep.className = 'ctx-sep';
+    menu.appendChild(sep);
+    const dissolve = document.createElement('button');
+    dissolve.className = 'ctx-item';
+    dissolve.innerHTML = svgIcon('i-folder') + '<span class="ctx-label">解散文件夹</span>';
+    dissolve.addEventListener('click', () => {
+      const restored = folder.children.slice();
+      g.items.splice(ii, 1, ...restored);
+      persist(); render(); closeFolderMenu();
+      toast('已解散「' + folder.name + '」');
+    });
+    menu.appendChild(dissolve);
+  }
+
+  document.body.appendChild(menu);
+  // 摆到卡片附近，防出屏
+  const card = groupsEl.querySelector('.item[data-gi="' + gi + '"][data-ii="' + ii + '"]');
+  const r = card ? card.getBoundingClientRect() : { left: 40, bottom: 40, width: 0 };
+  menu.style.left = r.left + 'px';
+  menu.style.top = Math.min(r.bottom + 6, window.innerHeight - 60) + 'px';
+  requestAnimationFrame(() => {
+    const mr = menu.getBoundingClientRect();
+    if (mr.right > window.innerWidth) menu.style.left = Math.max(4, window.innerWidth - mr.width - 6) + 'px';
+  });
+  folderMenuEl = menu;
+  setTimeout(() => {
+    const mr = menu.getBoundingClientRect();
+    if (mr.right > window.innerWidth) menu.style.left = Math.max(4, window.innerWidth - mr.width - 6) + 'px';
+    if (mr.bottom > window.innerHeight) menu.style.top = Math.max(4, window.innerHeight - mr.height - 6) + 'px';
+  }, 0);
+}
+function closeFolderMenu() {
+  if (folderMenuEl && folderMenuEl.parentNode) folderMenuEl.parentNode.removeChild(folderMenuEl);
+  folderMenuEl = null;
+}
+document.addEventListener('pointerdown', (e) => {
+  if (folderMenuEl && !e.target.closest('.folder-menu')) closeFolderMenu();
+}, true);
+
+/* 子项编辑：openItemModal 只认组内索引，这里给文件夹里的孩子开个通道——
+ * 复用同一个弹窗，保存/删除时走 folder 分支（见 btnItemSave 的 saveItemFromModal）。 */
+let childEdit = null;   // { gi, ii, ci }
+function openChildModal(gi, ii, ci) {
+  openItemModal(gi, null);           // 先摆好弹窗骨架（新建态）
+  childEdit = { gi, ii, ci };
+  const folder = config.groups[gi].items[ii];
+  const it = folder.children[ci];
+  $('itemModalTitle').textContent = '编辑（文件夹内）';
+  $('itemName').value = it.name;
+  $('itemType').value = it.type || 'app';
+  $('itemTarget').value = it.target || '';
+  setIconState(it.icon, it.iconChar, it.iconPath);
+  iconUserPicked = !!it.iconPath;
+  syncTargetUI();
+  $('btnItemDelete').classList.remove('hidden');
+}
+
+/* ---------- 名称排序（编辑模式菜单项） ---------- */
+function sortGroupsByName(desc) {
+  const coll = (a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true });
+  config.groups.forEach((g) => {
+    g.items.sort((a, b) => (desc ? -coll(a, b) : coll(a, b)));
+  });
+  persist();
+  render();
+  toast(desc ? '已按名称倒序' : '已按名称正序');
 }
 
 /* ---------- 窗口移动（鼠标 / 触摸 / 手写笔 统一支持） ----------
@@ -1308,6 +1646,7 @@ function armRealtimeRetry() {
 function stopRealtimeBackdrop() {
   rt.on = false;
   if (rt.raf) { cancelAnimationFrame(rt.raf); rt.raf = 0; }
+  teardownExternalRt();
   if (rt.video) { try { rt.video.pause(); } catch (e) { /* 忽略 */ } rt.video.srcObject = null; rt.video = null; }
   if (rt.stream) {
     try { rt.stream.getTracks().forEach((t) => t.stop()); } catch (e) { /* 忽略 */ }
@@ -1321,10 +1660,70 @@ function stopRealtimeBackdrop() {
   updateRealtimeInfo('已关闭（静态壁纸）', 'no');
 }
 
+/* 外部帧模式（安卓 MediaProjection）的收尾：退订帧事件、丢掉解码器。
+ * 原生侧的采集/前台服务由 API.stopRealtime() 负责（stopRealtimeBackdrop 统一调）。 */
+function teardownExternalRt() {
+  rt.external = false;
+  if (rt.unsubFrame) { try { rt.unsubFrame(); } catch (e) { /* 忽略 */ } rt.unsubFrame = null; }
+  if (rt.unsubEnd) { try { rt.unsubEnd(); } catch (e) { /* 忽略 */ } rt.unsubEnd = null; }
+  if (rt.extImg) { rt.extImg.onload = null; rt.extImg.onerror = null; rt.extImg = null; }
+}
+
+/* 外部帧模式启动：原生（安卓 MediaProjection）推"裁好的底材帧"过来，渲染层只管
+ * 解码画进 #deskCanvas —— 没有 getDisplayMedia，也没有 rAF 循环，帧到了才画。
+ * 返回 {ok:false, reason:'consent'} 表示系统授权对话框还挂着：通道先接好，
+ * 帧到了自动点亮，用户拒绝时原生会推 realtimeEnded，这里退回静态壁纸。 */
+async function startExternalRealtime(canvas) {
+  let res = null;
+  try {
+    res = await API.startRealtime();
+  } catch (e) {
+    res = null;
+  }
+  if (!res || (!res.ok && res.reason !== 'consent')) {
+    const reason = res && res.reason;
+    updateRealtimeInfo(reason === 'fullscreen' ? '全屏模式（壁纸底材）' : '不可用（静态壁纸）', 'no');
+    return false;
+  }
+  rt.external = true;
+  rt.on = true;
+  rt.ctx = canvas.getContext('2d');
+  const img = new Image();
+  rt.extImg = img;
+  img.onload = () => {
+    if (!rt.on || !rt.ctx) return;
+    const c = rt.ctx.canvas;
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h) return;
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    rt.ctx.drawImage(img, 0, 0);
+    sampleRealtimeLuminance();   // 底材明暗分档跟桌面同一条链路
+  };
+  img.onerror = () => { /* 一帧解不了就等下一帧 */ };
+  let lit = false;
+  rt.unsubFrame = API.onRealtimeFrame((f) => {
+    if (!rt.on || !f || !f.dataUrl) return;
+    if (!lit) {
+      lit = true;
+      document.body.classList.add('realtime');
+      updateRealtimeInfo('实时屏幕', 'ok');
+    }
+    img.src = f.dataUrl;         // 连续赋值会取消上一次解码，天然只留最新帧
+  });
+  if (typeof API.onRealtimeEnded === 'function') {
+    rt.unsubEnd = API.onRealtimeEnded(() => stopRealtimeBackdrop());
+  }
+  if (!res.ok) updateRealtimeInfo('等待录屏授权…', 'no');
+  return true;
+}
+
 async function startRealtimeBackdrop() {
   const canvas = document.getElementById('deskCanvas');
   if (!canvas) return false;
   if (typeof API.startRealtime !== 'function') return false;
+  // ⓪ 外部帧模式（安卓 MediaProjection）：原生推裁好的帧，不走 getDisplayMedia
+  if (typeof API.onRealtimeFrame === 'function') return startExternalRealtime(canvas);
   if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') return false;
   try {
     // ① 主进程放行采集 + 自拍排除 + 回传显示器几何
@@ -1369,6 +1768,7 @@ async function startRealtimeBackdrop() {
 function stopRealtimeBackdropQuiet() {
   rt.on = false;
   if (rt.raf) { cancelAnimationFrame(rt.raf); rt.raf = 0; }
+  teardownExternalRt();
   if (rt.video) { try { rt.video.pause(); } catch (e) { /* 忽略 */ } rt.video.srcObject = null; rt.video = null; }
   if (rt.stream) {
     try { rt.stream.getTracks().forEach((t) => t.stop()); } catch (e) { /* 忽略 */ }
@@ -1935,7 +2335,12 @@ function applyRadius(px, persist) {
   }
   if (persist !== false) API.saveConfig(config);
 }
-$('setRadius').addEventListener('input', (e) => applyRadius(parseInt(e.target.value, 10)));
+/* 拖动中只改观感不写盘（每 tick 一次同步 IPC 会卡滑块），松手（change）才落盘 */
+$('setRadius').addEventListener('input', (e) => {
+  applyRadius(parseInt(e.target.value, 10), false);
+  syncRangeFill(e.target);
+});
+$('setRadius').addEventListener('change', () => API.saveConfig(config));
 
 /* ---------- 编辑模式 ---------- */
 function toggleEditMode() {
@@ -2452,6 +2857,57 @@ if (typeof API.getAppVersion === 'function') {
 }
 $('aboutGithub').addEventListener('click', () => { API.openExternal(GITHUB_URL); });
 
+/* ---------- 配置包 .fcpc / 主题方案 .fcpt（v2.4.6，设置面板最下面） ---------- */
+function bindPackButton(btnId, fn) {
+  const b = $(btnId);
+  if (!b) return;
+  b.addEventListener('click', async () => {
+    b.disabled = true;
+    const old = b.textContent;
+    b.textContent = '处理中…';
+    try {
+      const r = await fn();
+      if (r && r.canceled) { /* 用户点了取消，安静返回 */ }
+      else if (r && r.success) return r;          // 由各分支自己 toast + reload
+      else toast((r && r.error) || '操作失败');
+    } catch (e) {
+      toast('操作失败：' + (e && e.message || e));
+    } finally {
+      b.disabled = false;
+      b.textContent = old;
+    }
+    return null;
+  });
+}
+
+bindPackButton('btnCfgExport', async () => {
+  const r = await API.exportConfig();
+  if (r && r.success) toast('已导出 ' + r.items + ' 个快捷方式（' + r.path.split(/[\\/]/).pop() + '）');
+  return r;
+});
+bindPackButton('btnCfgImport', async () => {
+  const r = await API.importConfig();
+  if (r && r.success) {
+    toast('配置已导入（' + r.items + ' 个快捷方式），正在应用…');
+    if (r.misses && r.misses.length) toast('有资产缺失：' + r.misses.join('、'));
+    setTimeout(() => location.reload(), 900);
+  }
+  return r;
+});
+bindPackButton('btnThemeExport', async () => {
+  const r = await API.exportTheme();
+  if (r && r.success) toast('主题方案已导出（' + r.path.split(/[\\/]/).pop() + '）');
+  return r;
+});
+bindPackButton('btnThemeImport', async () => {
+  const r = await API.importTheme();
+  if (r && r.success) {
+    toast('主题方案已导入，正在应用…');
+    setTimeout(() => location.reload(), 900);
+  }
+  return r;
+});
+
 /* ---------- 添加/编辑快捷方式 ---------- */
 const itemModal = $('itemModal');
 function openItemModalFromMenu() {
@@ -2624,8 +3080,8 @@ function openItemModal(groupIndex, itemIndex) {
   $('itemName').focus();
 }
 
-$('btnItemClose').addEventListener('click', () => itemModal.classList.add('hidden'));
-$('btnItemCancel').addEventListener('click', () => itemModal.classList.add('hidden'));
+$('btnItemClose').addEventListener('click', () => { itemModal.classList.add('hidden'); childEdit = null; });
+$('btnItemCancel').addEventListener('click', () => { itemModal.classList.add('hidden'); childEdit = null; });
 
 $('itemType').addEventListener('change', () => syncTargetUI());
 
@@ -2686,6 +3142,23 @@ $('btnItemSave').addEventListener('click', () => {
   if (iconState.char) item.iconChar = iconState.char;
   if (iconState.path) item.iconPath = iconState.path;
 
+  if (childEdit) {
+    // 文件夹内子项：不参与换组（分组选择框在子项模式下无意义）
+    const folder = config.groups[childEdit.gi].items[childEdit.ii];
+    if (isFolder(folder) && folder.children[childEdit.ci]) {
+      folder.children[childEdit.ci] = item;
+      persist();
+      itemModal.classList.add('hidden');
+      childEdit = null;
+      render();
+      toast('已保存');
+      if (config.iconBorder === 'auto') {
+        ensureIconColors().then((added) => { if (added) refreshIconLook(); });
+      }
+    }
+    return;
+  }
+
   if (currentEdit.itemIndex !== null) {
     const oldGroup = config.groups[currentEdit.groupIndex];
     const newGroup = config.groups[gi];
@@ -2710,6 +3183,19 @@ $('btnItemSave').addEventListener('click', () => {
 });
 
 $('btnItemDelete').addEventListener('click', () => {
+  if (childEdit) {
+    const folder = config.groups[childEdit.gi].items[childEdit.ii];
+    if (isFolder(folder)) {
+      folder.children.splice(childEdit.ci, 1);
+      if (!folder.children.length) config.groups[childEdit.gi].items.splice(childEdit.ii, 1);
+    }
+    childEdit = null;
+    persist();
+    itemModal.classList.add('hidden');
+    render();
+    toast('已删除');
+    return;
+  }
   if (currentEdit.itemIndex !== null) {
     config.groups[currentEdit.groupIndex].items.splice(currentEdit.itemIndex, 1);
     persist();
@@ -2783,6 +3269,8 @@ ctxMenu.addEventListener('click', (e) => {
   hideCtxMenu();
   if (act === 'add') openItemModalFromMenu();
   else if (act === 'edit') toggleEditMode();
+  else if (act === 'sortAsc') sortGroupsByName(false);
+  else if (act === 'sortDesc') sortGroupsByName(true);
   else if (act === 'settings') openSettings();
   else if (act === 'lock') toggleLocked();
   else if (act === 'hide') API.hideWindow();
@@ -2804,6 +3292,11 @@ widget.addEventListener('pointerdown', (e) => {
   lpFired = false;
   // 正在拖动/缩放时不武装长按（标题栏也在这个 widget 里，pointerdown 会冒泡上来）
   if (dragging || dragPointerDown || resizing || rsPointerDown) return;
+  // 表单控件与浮层不武装长按（v2.4.6）：否则触摸拖滑块 550ms 后会被右键菜单
+  // 打断——用户的表现就是"圆角/透明度滑块拖不动"。
+  // 编辑模式下 .item 也不武装：长按拖拽排序会被菜单打断。
+  if (e.target.closest && e.target.closest('input, select, button, textarea, .panel, .ctx-menu, .usb-section')) return;
+  if (editMode && e.target.closest && e.target.closest('.item')) return;
   if (e.pointerType === 'touch') {
     lpX = e.clientX; lpY = e.clientY;
     if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }   // 防多次 pointerdown 叠定时器
@@ -2913,6 +3406,10 @@ function renderUsb() {
         ejectBtn.textContent = '弹出';
         ejectBtn.dataset.admin = '0';
         toast('已弹出 ' + d.letter + ':，可以安全拔出了');
+      } else if (r && Array.isArray(r.occupied) && r.occupied.length) {
+        /* v2.4.6：有占用方 → 弹窗问"要不要关掉它们再试"，不再让用户自己猜 */
+        ejectBtn.textContent = '弹出';
+        showOccupiedDialog(d.letter, r.occupied, ejectBtn);
       } else {
         // detail 是各层策略的真实输出，打到控制台方便定位（界面上太长放不下）
         if (r && r.detail) console.warn('[eject] ' + d.letter + ': ' + r.detail);
@@ -2931,6 +3428,77 @@ function renderUsb() {
     usbList.appendChild(row);
   });
 }
+
+/* ---------- 占用弹窗（v2.4.6）----------
+ * 玻璃小卡片：列出占用 U 盘的窗口/进程，三个动作：
+ *   关闭占用并重试 / 不关闭直接重试 / 取消。 */
+function showOccupiedDialog(letter, occupied, ejectBtn) {
+  closeOccupiedDialog();
+  const dlg = document.createElement('div');
+  dlg.className = 'ctx-menu occupied-menu';
+  const title = document.createElement('div');
+  title.className = 'occupied-title';
+  title.textContent = letter + ': 正被这些窗口/程序占用：';
+  dlg.appendChild(title);
+  occupied.forEach((o) => {
+    const row = document.createElement('div');
+    row.className = 'occupied-row';
+    row.innerHTML = svgIcon(o.kind === 'window' ? 'i-eye-off' : 'i-board') +
+      '<span class="ctx-label"></span>';
+    row.querySelector('.ctx-label').textContent =
+      (o.kind === 'window' ? '窗口：' : '程序：') + o.name;
+    dlg.appendChild(row);
+  });
+  const acts = document.createElement('div');
+  acts.className = 'occupied-acts';
+  const mk = (label, cls, fn) => {
+    const b = document.createElement('button');
+    b.className = 'usb-btn ' + cls;
+    b.textContent = label;
+    b.addEventListener('click', () => { closeOccupiedDialog(); fn(); });
+    return b;
+  };
+  const retry = () => { if (ejectBtn) ejectBtn.click(); };
+  acts.appendChild(mk('关闭占用并重试', 'primary', async () => {
+    if (typeof API.closeDriveOccupants === 'function') {
+      const r = await API.closeDriveOccupants(occupied);
+      if (r && r.success) toast('已关闭 ' + r.closed + ' 个占用项');
+      else toast((r && r.error) ? '关闭失败：' + r.error : '关闭失败');
+    }
+    retry();
+  }));
+  // 直接重试 / 取消
+  const bRetry = document.createElement('button');
+  bRetry.className = 'usb-btn';
+  bRetry.textContent = '不关闭，直接重试';
+  bRetry.addEventListener('click', () => { closeOccupiedDialog(); retry(); });
+  const bCancel = document.createElement('button');
+  bCancel.className = 'usb-btn';
+  bCancel.textContent = '取消';
+  bCancel.addEventListener('click', closeOccupiedDialog);
+  acts.appendChild(bRetry);
+  acts.appendChild(bCancel);
+  dlg.appendChild(acts);
+  document.body.appendChild(dlg);
+  // 摆到弹出按钮附近，防出屏
+  const r = ejectBtn ? ejectBtn.getBoundingClientRect() : { left: 40, top: 40, width: 0, height: 0 };
+  dlg.style.left = Math.max(8, r.left - 40) + 'px';
+  dlg.style.top = (r.bottom + 8) + 'px';
+  setTimeout(() => {
+    const mr = dlg.getBoundingClientRect();
+    if (mr.right > window.innerWidth) dlg.style.left = Math.max(4, window.innerWidth - mr.width - 6) + 'px';
+    if (mr.bottom > window.innerHeight) dlg.style.top = Math.max(4, window.innerHeight - mr.height - 8) + 'px';
+  }, 0);
+  occupiedDlg = dlg;
+}
+let occupiedDlg = null;
+function closeOccupiedDialog() {
+  if (occupiedDlg && occupiedDlg.parentNode) occupiedDlg.parentNode.removeChild(occupiedDlg);
+  occupiedDlg = null;
+}
+document.addEventListener('pointerdown', (e) => {
+  if (occupiedDlg && !e.target.closest('.occupied-menu')) closeOccupiedDialog();
+}, true);
 
 async function refreshUsb() {
   if (typeof API.getUsbDrives !== 'function') return;

@@ -1,6 +1,6 @@
 {
   "name": "FClassPal",
-  "version": "2.4.5",
+  "version": "2.4.6",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -28,7 +28,7 @@
         "dir",
         "portable"
       ],
-      "compression": "normal",
+      "compression": "maximum",
       "icon": "build/icon.ico"
     },
     "linux": {
@@ -78,7 +78,12 @@
     },
     "directories": {
       "output": "dist"
-    }
+    },
+    "compression": "maximum",
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ]
   },
   "devDependencies": {
     "electron": "^31.0.0",

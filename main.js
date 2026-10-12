@@ -1562,6 +1562,309 @@ function buildVolumeEjectScript(l) {
   ].join('\n');
 }
 
+/* --- 占用方快查（v2.4.6）：谁抓着这个卷不放？ ---
+ * 免管理员能查到的两 camping 大头：
+ *   ① 资源管理器开在该盘的窗口（Shell.Application.Windows，LocationURL 解码后匹配盘符）
+ *   ② exe 本体躺在这块盘上的进程（Get-Process 的 Path 前缀匹配）
+ * 输出行格式：WIN|<hwnd>|<窗口标题>  /  PROC|<pid>|<进程名>
+ * 刻意不用 Add-Type（省掉 C# 编译的 1~2 秒），整条脚本 1 秒内出结果。 */
+function buildOccupantsScript(l) {
+  return [
+    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+    "$ErrorActionPreference = 'Continue'",
+    "$root = '" + l + ":\\'",
+    "$sa = New-Object -ComObject Shell.Application",
+    "foreach ($w in @($sa.Windows())) {",
+    "  try {",
+    "    $u = [uri]::UnescapeDataString($w.LocationURL)",
+    "    if ($u -and $u.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {",
+    "      Write-Output ('WIN|' + $w.HWND + '|' + $w.LocationName)",
+    "    }",
+    "  } catch {}",
+    "}",
+    "Get-Process | ForEach-Object {",
+    "  $p = $null",
+    "  try { $p = $_.Path } catch {}",
+    "  if ($p -and $p.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {",
+    "    Write-Output ('PROC|' + $_.Id + '|' + $_.ProcessName)",
+    "  }",
+    "}"
+  ].join('\n');
+}
+
+/* --- 关闭占用方（v2.4.6）：Explorer 窗口 Quit、进程 Stop-Process --- */
+function buildCloseOccupantsScript(hwnds, pids) {
+  return [
+    "$ErrorActionPreference = 'Continue'",
+    "$hwnds = @(" + hwnds.join(',') + ')',
+    "$pids = @(" + pids.join(',') + ')',
+    "$closed = 0",
+    "if ($hwnds.Count -gt 0) {",
+    "  $sa = New-Object -ComObject Shell.Application",
+    "  foreach ($w in @($sa.Windows())) {",
+    "    try { if ($hwnds -contains [int]$w.HWND) { $w.Quit(); $closed++ } } catch {}",
+    "  }",
+    "}",
+    "foreach ($p in $pids) {",
+    "  try { Stop-Process -Id $p -Force -ErrorAction Stop; $closed++ } catch {}",
+    "}",
+    "Write-Output ('CLOSED ' + $closed)"
+  ].join('\n');
+}
+
+/* 解析占用探针输出 → [{ kind:'window'|'process', id, name }] */
+function parseOccupants(text) {
+  const out = [];
+  String(text || '').split(/\r?\n/).forEach((line) => {
+    const m = /^(WIN|PROC)\|([^|]*)\|?(.*)$/.exec(line.trim());
+    if (!m) return;
+    if (m[1] === 'WIN') out.push({ kind: 'window', id: m[2], name: m[3] || '资源管理器窗口' });
+    else out.push({ kind: 'process', id: m[2], name: m[3] || '进程' });
+  });
+  return out;
+}
+
+/* ---------- 配置包 .fcpc / 主题包 .fcpt 导入导出（v2.4.6） ----------
+ * 都是 zip（pack.js 零依赖实现），内部 JSON + 图标/背景资产，导入导出双向可读。
+ *   .fcpc：整套配置（设置 + 分组/快捷方式 + 图标文件 + 自定义背景）
+ *   .fcpt：主题观感方案（主题/明暗/圆角/透明度 + 背景图方案 + 图标外观）+ 人读的 README */
+const { createZip, readZip } = require('./pack');
+
+function packStamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
+}
+
+/* 递归收集/回写条目里的图标路径；mode='pack' 把 file:// 换成包内键，mode='unpack' 反向 */
+function walkPackIcons(items, mode, bag, misses) {
+  items.forEach((it) => {
+    if (Array.isArray(it.children)) { walkPackIcons(it.children, mode, bag, misses); return; }
+    if (!it.iconPath) return;
+    if (mode === 'pack') {
+      let p = null;
+      try { p = fileURLToPath(it.iconPath); } catch (e) { p = null; }
+      if (p && fs.existsSync(p)) {
+        const key = 'icons/' + path.basename(p);
+        if (!bag[key]) { try { bag[key] = fs.readFileSync(p); } catch (e) { misses.push(p); return; } }
+        it.iconPath = key;
+      } else { misses.push(it.iconPath); delete it.iconPath; }
+    } else {
+      const m = /^icons\/(.+)$/.exec(it.iconPath);
+      if (m) {
+        if (!fs.existsSync(ICONS_DIR)) fs.mkdirSync(ICONS_DIR, { recursive: true });
+        // 重名直接覆盖：同名即同图（内容有 CRC 校验兜底）
+        const dest = path.join(ICONS_DIR, m[1]);
+        const data = bag['icons/' + m[1]];
+        if (data) { try { fs.writeFileSync(dest, data); } catch (e) { misses.push(m[1]); return; } }
+        it.iconPath = pathToFileURL(dest).href;
+      } else { misses.push(it.iconPath); delete it.iconPath; }
+    }
+  });
+}
+
+function countItems(cfg) {
+  let n = 0;
+  (cfg.groups || []).forEach((g) => (g.items || []).forEach((it) => { n += Array.isArray(it.children) ? it.children.length + 1 : 1; }));
+  return n;
+}
+
+ipcMain.handle('export-config', async () => {
+  try {
+    const cfg = loadConfig();
+    const r = await dialog.showSaveDialog(mainWindow, {
+      title: '导出配置包（.fcpc）',
+      defaultPath: 'FClassPal-配置-' + packStamp() + '.fcpc',
+      filters: [{ name: 'FClassPal 配置包', extensions: ['fcpc'] }]
+    });
+    if (r.canceled || !r.filePath) return { success: false, canceled: true };
+    const out = JSON.parse(JSON.stringify(cfg));
+    ['x', 'y', 'width', 'height', 'themeMigratedToTransparent', 'autoLaunch'].forEach((k) => delete out[k]);
+    const bag = {}; const misses = [];
+    (out.groups || []).forEach((g) => walkPackIcons(g.items || [], 'pack', bag, misses));
+    if (out.background && out.background.path) {
+      if (fs.existsSync(out.background.path)) {
+        const key = 'assets/background' + (path.extname(out.background.path) || '.jpg');
+        try { bag[key] = fs.readFileSync(out.background.path); out.background.path = key; }
+        catch (e) { out.background.enabled = false; out.background.path = ''; misses.push('背景图'); }
+      } else { out.background.enabled = false; out.background.path = ''; misses.push('背景图（源文件已不在）'); }
+    }
+    const entries = [
+      { name: 'manifest.json', data: JSON.stringify({ kind: 'fcpc', app: 'FClassPal', version: 1, appVersion: app.getVersion(), exportedAt: new Date().toISOString() }, null, 2) },
+      { name: 'config.json', data: JSON.stringify(out, null, 2) }
+    ];
+    for (const k of Object.keys(bag)) entries.push({ name: k, data: bag[k] });
+    entries.push({
+      name: '说明.txt',
+      data: [
+        'FClassPal 配置包（.fcpc）',
+        '',
+        'manifest.json  包信息',
+        'config.json    全部设置与分组/快捷方式（JSON，可直接读）',
+        'icons/         各快捷方式的自定义图标图片',
+        'assets/        自定义背景图（如有）',
+        '',
+        '快捷方式数：' + countItems(out),
+        (misses.length ? '未能打包（文件缺失）：' + misses.join('、') : '全部资产完整'),
+        '',
+        '导入：设置面板最下面「配置备份 → 导入」，选择本文件即可。'
+      ].join('\r\n')
+    });
+    fs.writeFileSync(r.filePath, createZip(entries));
+    return { success: true, path: r.filePath, items: countItems(out), misses };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('import-config', async () => {
+  try {
+    const r = await dialog.showOpenDialog(mainWindow, {
+      title: '导入配置包（.fcpc）',
+      filters: [{ name: 'FClassPal 配置包', extensions: ['fcpc'] }],
+      properties: ['openFile']
+    });
+    if (r.canceled || !r.filePaths || !r.filePaths[0]) return { success: false, canceled: true };
+    const zip = readZip(fs.readFileSync(r.filePaths[0]));
+    const byName = {};
+    zip.forEach((e) => { byName[e.name] = e.data; });
+    let manifest = {};
+    try { manifest = JSON.parse(byName['manifest.json'].toString('utf8')); } catch (e) { /* 无清单也能试 */ }
+    if (manifest.kind && manifest.kind !== 'fcpc') return { success: false, error: '这不是配置包（是 ' + manifest.kind + '），请在「主题方案」处导入' };
+    if (!byName['config.json']) return { success: false, error: '包里没有 config.json，文件可能不完整' };
+    const incoming = JSON.parse(byName['config.json'].toString('utf8'));
+    const bag = {};
+    zip.forEach((e) => { if (e.name !== 'manifest.json' && e.name !== 'config.json' && e.name !== '说明.txt') bag[e.name] = e.data; });
+    const misses = [];
+    (incoming.groups || []).forEach((g) => walkPackIcons(g.items || [], 'unpack', bag, misses));
+    if (incoming.background && /^assets\//.test(incoming.background.path || '')) {
+      const data = bag[incoming.background.path];
+      if (data) {
+        if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
+        const dest = path.join(CONFIG_DIR, 'imported-background-' + packStamp() + path.extname(incoming.background.path || '.jpg'));
+        fs.writeFileSync(dest, data);
+        incoming.background.path = dest;
+      } else { incoming.background.enabled = false; incoming.background.path = ''; misses.push('背景图'); }
+    }
+    // 机器相关的字段以本机为准，不吃包里的
+    const cur = loadConfig();
+    ['x', 'y', 'width', 'height', 'autoLaunch'].forEach((k) => { incoming[k] = cur[k]; });
+    incoming.themeMigratedToTransparent = true;
+    saveConfig(incoming);
+    return { success: true, items: countItems(incoming), misses, theme: incoming.theme };
+  } catch (e) {
+    return { success: false, error: '导入失败：' + e.message };
+  }
+});
+
+const THEME_KEYS = ['theme', 'appearance', 'cornerRadius', 'opacity', 'title',
+  'background', 'iconFit', 'iconBorder', 'iconShape', 'iconRadius', 'iconRingColor', 'iconMono', 'colorMode', 'accentColor', 'accentPicked'];
+
+ipcMain.handle('export-theme', async () => {
+  try {
+    const cfg = loadConfig();
+    const r = await dialog.showSaveDialog(mainWindow, {
+      title: '导出主题方案（.fcpt）',
+      defaultPath: 'FClassPal-主题-' + (cfg.theme || 'glass') + '-' + packStamp() + '.fcpt',
+      filters: [{ name: 'FClassPal 主题方案', extensions: ['fcpt'] }]
+    });
+    if (r.canceled || !r.filePath) return { success: false, canceled: true };
+    const scheme = {};
+    THEME_KEYS.forEach((k) => { if (cfg[k] !== undefined) scheme[k] = cfg[k]; });
+    const bag = {};
+    const bgNote = ['未使用自定义背景图'];
+    if (scheme.background && scheme.background.path && fs.existsSync(scheme.background.path)) {
+      const key = 'assets/background' + (path.extname(scheme.background.path) || '.jpg');
+      try {
+        bag[key] = fs.readFileSync(scheme.background.path);
+        scheme.background.path = key;
+        bgNote[0] = '自定义背景图放在 assets/ 里（背景模糊 ' + (scheme.background.blur || 0) +
+          'px、白色蒙版 ' + (scheme.background.mask || 0) + '%、缩放 ' + (scheme.background.scale || 100) + '%）';
+      } catch (e) { scheme.background.enabled = false; scheme.background.path = ''; }
+    }
+    const THEME_NAMES = {
+      glass: '液态玻璃', md3: 'Material You 3', fluent: 'Fluent', miuix: 'MIUIX',
+      harmony: '鸿蒙', kitty: 'Hello Kitty', dog: '玉桂狗', kuromi: '库洛米',
+      melody: '美乐蒂', sanrio: '三丽鸥'
+    };
+    const lines = [];
+    lines.push('FClassPal 主题方案（.fcpt）');
+    lines.push('');
+    lines.push('界面风格　' + (THEME_NAMES[scheme.theme] || scheme.theme));
+    lines.push('明暗模式　' + (scheme.appearance === 'auto' ? '跟随系统' : (scheme.appearance === 'dark' ? '黑暗' : '明亮')));
+    if (scheme.cornerRadius) lines.push('窗口圆角　' + scheme.cornerRadius + 'px');
+    if (scheme.opacity !== undefined) lines.push('玻璃透明度　' + Math.round(scheme.opacity * 100) + '%');
+    lines.push('毛玻璃底材　' + (scheme.background && scheme.background.enabled ? '自定义背景图' : '桌面壁纸（实时/静态跟随系统设置）'));
+    if (scheme.background && scheme.background.enabled) lines.push(bgNote[0]);
+    lines.push('图标外观　填充=' + (scheme.iconFit || 'contain') + '，边框=' + (scheme.iconBorder || 'auto') +
+      '，形状=' + (scheme.iconShape || 'theme') + (scheme.iconRadius ? '，圆角=' + scheme.iconRadius + '%' : '') +
+      (scheme.iconMono ? '，统一风格=开' : ''));
+    lines.push('');
+    lines.push('包内文件：manifest.json（包信息）、theme.json（方案参数，JSON 可直接读）、');
+    lines.push('assets/（背景图，如有）、本说明。');
+    lines.push('导入：设置面板最下面「主题方案 → 导入」，选择本文件即可（只改观感，不动快捷方式）。');
+    const entries = [
+      { name: 'manifest.json', data: JSON.stringify({ kind: 'fcpt', app: 'FClassPal', version: 1, appVersion: app.getVersion(), theme: scheme.theme, exportedAt: new Date().toISOString() }, null, 2) },
+      { name: 'theme.json', data: JSON.stringify(scheme, null, 2) }
+    ];
+    for (const k of Object.keys(bag)) entries.push({ name: k, data: bag[k] });
+    entries.push({ name: 'README.txt', data: lines.join('\r\n') });
+    fs.writeFileSync(r.filePath, createZip(entries));
+    return { success: true, path: r.filePath };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('import-theme', async () => {
+  try {
+    const r = await dialog.showOpenDialog(mainWindow, {
+      title: '导入主题方案（.fcpt）',
+      filters: [{ name: 'FClassPal 主题方案', extensions: ['fcpt'] }],
+      properties: ['openFile']
+    });
+    if (r.canceled || !r.filePaths || !r.filePaths[0]) return { success: false, canceled: true };
+    const zip = readZip(fs.readFileSync(r.filePaths[0]));
+    const byName = {};
+    zip.forEach((e) => { byName[e.name] = e.data; });
+    let manifest = {};
+    try { manifest = JSON.parse(byName['manifest.json'].toString('utf8')); } catch (e) { }
+    if (manifest.kind && manifest.kind !== 'fcpt') return { success: false, error: '这不是主题方案（是 ' + manifest.kind + '），请在「配置备份」处导入' };
+    if (!byName['theme.json']) return { success: false, error: '包里没有 theme.json，文件可能不完整' };
+    const scheme = JSON.parse(byName['theme.json'].toString('utf8'));
+    const cfg = loadConfig();
+    THEME_KEYS.forEach((k) => { if (scheme[k] !== undefined) cfg[k] = scheme[k]; });
+    if (cfg.background && /^assets\//.test(cfg.background.path || '')) {
+      const data = byName[cfg.background.path];
+      if (data) {
+        const dest = path.join(CONFIG_DIR, 'imported-background-' + packStamp() + path.extname(cfg.background.path || '.jpg'));
+        fs.writeFileSync(dest, data);
+        cfg.background.path = dest;
+      } else { cfg.background.enabled = false; cfg.background.path = ''; }
+    }
+    saveConfig(cfg);
+    return { success: true, theme: cfg.theme };
+  } catch (e) {
+    return { success: false, error: '导入失败：' + e.message };
+  }
+});
+
+ipcMain.handle('close-drive-occupants', async (event, occ) => {
+  const list = Array.isArray(occ) ? occ : [];
+  const hwnds = list.filter((o) => o.kind === 'window').map((o) => parseInt(o.id, 10)).filter((n) => n > 0);
+  const pids = list.filter((o) => o.kind === 'process').map((o) => parseInt(o.id, 10)).filter((n) => n > 0);
+  if (!hwnds.length && !pids.length) return { success: true, closed: 0 };
+  const ps = ['-NoProfile', '-NonInteractive', '-Command',
+    buildCloseOccupantsScript(hwnds, pids)];
+  return new Promise((resolve) => {
+    execFile('powershell.exe', ps, { windowsHide: true, timeout: 15000 },
+      (err, stdout) => {
+        const m = /CLOSED\s+(\d+)/.exec(String(stdout || ''));
+        resolve({ success: !err, closed: m ? parseInt(m[1], 10) : 0, error: err ? String(err.message).slice(0, 120) : '' });
+      });
+  });
+});
+
 ipcMain.handle('eject-drive', async (event, letter) => {
   const l = String(letter || '').replace(/[^A-Za-z]/g, '').toUpperCase();
   if (!/^[A-Z]$/.test(l)) return { success: false, error: '盘符无效' };
@@ -1620,6 +1923,15 @@ ipcMain.handle('eject-drive', async (event, letter) => {
     if (rc === 51) { needAdmin = true; lastError = CM_HINTS[51]; }
     const vetoName = (p[1] || '').trim();
     if (vetoName && (vt === 3 || vt === 4 || vt === 11)) lastError += '（占用方：' + vetoName + '）';
+    /* v2.4.6：明确是"被占用"就别再往后跑 5 层兜底了（每层 PS 冷启动要好几秒，
+     * 而占用状态关掉占用方才能解）。查一下谁占着，直接把名单交给界面弹窗。 */
+    if (vt === 3 || vt === 4 || vt === 11) {
+      const ro = await run('powershell.exe', PS_HEAD.concat(buildOccupantsScript(l)), 15000);
+      const occupied = parseOccupants(ro.stdout);
+      if (occupied.length) {
+        return { success: false, error: lastError, occupied, detail: detail.join(' | ').slice(0, 400) };
+      }
+    }
   } else if (out1.indexOf('LOCATE') === 0) {
     const rc = parseInt(out1.slice(6).trim(), 10) || 0;
     lastError = '定位设备节点失败：' + (CM_HINTS[rc] || ('配置管理器返回码 ' + rc));
@@ -1640,8 +1952,14 @@ ipcMain.handle('eject-drive', async (event, letter) => {
   const volBody = out15.replace(/^VOL\s*/, '');
   // 170 = ERROR_BUSY（卷被占用）、5 = ERROR_ACCESS_DENIED
   if (/OPEN0=err5/.test(volBody)) needAdmin = true;
-  if (!lastError && /0\/170/.test(volBody)) {
-    lastError = '该 U 盘上还有正在使用的文件（卷被占用），请先关掉打开该盘的窗口或程序';
+  if (/0\/170|OPEN0=err5/.test(volBody)) {
+    if (!lastError) lastError = '该 U 盘上还有正在使用的文件（卷被占用），请先关掉打开该盘的窗口或程序';
+    /* 卷被占用：同样快查占用方并提前返回（跳过第 3~5 层，省十几秒） */
+    const ro2 = await run('powershell.exe', PS_HEAD.concat(buildOccupantsScript(l)), 15000);
+    const occupied2 = parseOccupants(ro2.stdout);
+    if (occupied2.length) {
+      return { success: false, error: lastError, occupied: occupied2, detail: detail.join(' | ').slice(0, 400) };
+    }
   }
   flagAdmin(out15 + ' ' + (r15.stderr || ''));
 

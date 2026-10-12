@@ -10,7 +10,7 @@ mobile/
   web/mobile-bridge.js    安卓版 window.widgetAPI（34 个方法 + 手机端适配）
   web/mobile.css          手机布局覆盖（全屏、安全区、隐藏桌面专有行）
   tools/assemble-web.js   renderer/ + web/ -> www/（含注入与自检）
-  tools/apply-android-overlay.js   原生工程定制（图标/主题/插件/版本号）
+  tools/apply-android-overlay.js   原生工程定制（图标/主题/插件/版本号/签名注入）
   tools/build-apk.js      出 APK（自动找 JDK/SDK、自动换 gradle 镜像）
   android-overlay/        对 android/ 模板的覆盖层（Java 插件、清单、主题、图标）
   android/                `npx cap add android` 生成（不进版本库，可随时重建）
@@ -30,7 +30,8 @@ mobile/
 | 主题 / 圆角 / 透明度 / 图标外观 | 十套主题全量 | 十套主题全量（圆角弧度除外：全屏没有可调空间） |
 | 自定义背景图 | 本地文件 | 本机选图（转 data URL 存 WebView 存储，单图上限 1.5MB） |
 | U 盘弹出 | 全套 | 无（安卓无此概念） |
-| 实时桌面模糊 | desktopCapturer | 无（安卓无屏幕采集授权路径） |
+| 实时屏幕模糊 | desktopCapturer | **v2.4.6 悬浮窗模式可用**（MediaProjection 录屏授权，原生采集推帧） |
+| 窗口模式 | 无边框小窗 | **v2.4.6 全屏 / 悬浮窗两档**（设置面板「窗口模式」；悬浮窗拖标题栏移动、＋/− 调大小，窗外触摸穿透） |
 | 托盘 / 置底 / 开机自启 / 锁定 | 有 | 无（隐藏对应设置行） |
 
 桌面与安卓的配置不互通（键名、路径、壁纸本来就不可移植），各自独立保存。
@@ -50,7 +51,17 @@ node tools/build-apk.js debug
 ```
 
 产物：`dist/FClassPal-<version>-android-debug.apk`（debug 签名，装上就能跑）。
-`release` 模式产出未签名包，需要自配 `signingConfig` 后再安装。
+
+v2.4.6 起支持正式签名 release：把密钥信息放进 `_signing/signing.properties`
+（`storeFile` / `storePassword` / `keyAlias` / `keyPassword`，密钥文件同目录；
+该目录已 gitignore，绝不入库），`apply-android-overlay.js` 会自动把
+`signingConfig` 注入 `app/build.gradle`，然后：
+
+```bash
+node tools/build-apk.js release   # 产物 dist/FClassPal-<version>-android.apk（已签名）
+```
+
+没有 `_signing/signing.properties` 时 release 照常构建，只是产物未签名。
 
 本机 hosts 把 `services.gradle.org` 钉在 127.0.0.1 时，`build-apk.js` 会自动改用
 腾讯镜像（`mirrors.cloud.tencent.com/gradle/`）下载 Gradle 发行包，无需手动处理。
@@ -66,5 +77,24 @@ node tools/build-apk.js debug
 - 桌面专有设置行（置底/自启/锁定/实时模糊/圆角）由桥接层打 `data-mobile-hide`
   标记后用一条 CSS 隐藏，不依赖 `:has()`，老 WebView 也能用。
 - 原生能力收在 `PalBridgePlugin`（`android-overlay/.../PalBridgePlugin.java`）：
-  壁纸、系统动态色、深色开关、应用列表/图标/启动、Toast、退后台。
+  壁纸、系统动态色、深色开关、应用列表/图标/启动、Toast、退后台、
+  窗口模式（`setWindowMode`/`moveWindow`/`setBounds`）、
+  录屏实时模糊（`startRealtime`/`stopRealtime` + `RealtimeCapture` +
+  `ScreenCaptureService` 前台服务）。
   每个方法失败都 `resolve` 而不是 `reject`，界面层按"拿不到就走兜底"处理。
+
+## 实时屏幕模糊（v2.4.6）的工作方式
+
+- 渲染层 `startRealtimeBackdrop()` 发现桥上有 `onRealtimeFrame` 就走**外部帧模式**：
+  原生 `MediaProjection` 采集 → `ImageReader` 取帧 → 裁出采样矩形 → JPEG（长边 360、
+  q70，~10fps）→ Base64 → `realtimeFrame` 事件 → 渲染层解码画进 `#deskCanvas`。
+- **采样矩形不是本窗口自己**：安卓没有桌面版 `setContentProtection` 的等价物——
+  不排除自己会形成"玻璃套玻璃"的递归，用 `FLAG_SECURE` 排除自己采到的又是纯黑。
+  所以取**与本窗口同尺寸、不与自己相交的邻域矩形**（优先正上/正下/正左/正右）：
+  玻璃折射的是身旁正在动的真实画面，视觉上与"透出壁纸"高度一致，且永不递归。
+- 悬浮窗已大到找不到这种矩形（≈全屏）时，原生返回 `reason=fullscreen`，
+  渲染层自动退回静态壁纸底材（与采集失败的降级同一条路径）。
+- Android 14+ 硬性要求：采集前必须有 `foregroundServiceType="mediaProjection"`
+  的前台服务在跑（`ScreenCaptureService`），且 `createVirtualDisplay` 前先注册
+  `MediaProjection.Callback`。状态栏会有一条"正在采集"的常驻通知，属系统行为。
+- 授权令牌是一次性的：每次开启实时模糊都会弹一次系统授权框；拒绝则安静退回壁纸。

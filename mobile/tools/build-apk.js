@@ -136,13 +136,17 @@ async function main() {
 
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   fs.mkdirSync(DIST, { recursive: true });
-  const out = path.join(DIST, 'FClassPal-' + pkg.version + '-android-' + MODE + '.apk');
+  // v2.4.6 起 release 走 FYAPP 签名（_signing/signing.properties），产物名不再带 debug
+  const outName = MODE === 'release'
+    ? 'FClassPal-' + pkg.version + '-android.apk'
+    : 'FClassPal-' + pkg.version + '-android-debug.apk';
+  const out = path.join(DIST, outName);
   fs.copyFileSync(built, out);
   const sec = Math.round((Date.now() - t0) / 1000);
   log('完成（' + sec + 's）：' + out + '  ' + fs.statSync(out).size + ' B');
-  if (MODE === 'release') {
-    log('注意：release 包未签名（app-release-unsigned 的产物），直接安装会被系统拒绝。');
-    log('日常使用/分发请用 debug 包，或自己配 signingConfig 后再跑 release。');
+  if (MODE === 'release' && /unsigned/.test(apks[0])) {
+    log('注意：release 包未签名（app-release-unsigned），直接安装会被系统拒绝。');
+    log('配置 _signing/signing.properties 后重跑，或先用 debug 包。');
   }
 }
 

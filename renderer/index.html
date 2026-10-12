@@ -27,6 +27,8 @@
     <symbol id="i-board" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
     <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-sort-asc" viewBox="0 0 24 24"><path d="M11 5h10M11 9h7M11 13h4M7 3v18M7 21l-4-4M7 21l4-4"/></symbol>
+    <symbol id="i-sort-desc" viewBox="0 0 24 24"><path d="M11 5h10M11 9h7M11 13h4M7 21V3M7 3L3 7M7 3l4 4"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
 
@@ -179,6 +181,8 @@
   <div id="ctxMenu" class="ctx-menu hidden">
     <button class="ctx-item" data-act="add"><svg class="ic"><use href="#i-plus"/></svg><span class="ctx-label">添加快捷方式</span></button>
     <button class="ctx-item" data-act="edit"><svg class="ic"><use href="#i-pencil"/></svg><span class="ctx-label">编辑模式</span></button>
+    <button class="ctx-item ctx-sort" data-act="sortAsc"><svg class="ic"><use href="#i-sort-asc"/></svg><span class="ctx-label">按名称排序（正序）</span></button>
+    <button class="ctx-item ctx-sort" data-act="sortDesc"><svg class="ic"><use href="#i-sort-desc"/></svg><span class="ctx-label">按名称排序（倒序）</span></button>
     <button class="ctx-item" data-act="settings"><svg class="ic"><use href="#i-sliders"/></svg><span class="ctx-label">设置</span></button>
     <button class="ctx-item" data-act="lock"><svg class="ic"><use href="#i-lock"/></svg><span class="ctx-label">锁定位置</span></button>
     <button class="ctx-item" data-act="hide"><svg class="ic"><use href="#i-eye-off"/></svg><span class="ctx-label">隐藏到托盘</span></button>
@@ -231,17 +235,7 @@
           <button type="button" class="seg-btn" data-appearance="auto" aria-pressed="false">跟随系统</button>
         </div>
       </div>
-      <p class="row-hint">「跟随系统」跟着 Windows 的"应用模式"走：系统在暗色/亮色之间切换
-        （含设置里的定时切换、日落到日出）时本应用立刻跟着变，不用重开。选明亮或黑暗就是
-        固定那一档，系统怎么切都不理会。</p>
-      <p class="row-hint">黑暗模式对十套风格都生效：液态玻璃 / MD3 / Fluent 走 Monet 暗色
-        方案（主色自动换成暗底可读的色调），固定配色主题只压暗表面、保留各自的强调色。</p>
-      <p class="row-hint">十套风格彼此独立：每套都有自己的形状、表面、按钮与动效语言，
-        不是同一套壳换色。液态玻璃 / MD3 / Fluent 三套跟随壁纸取色；
-        MIUIX 与鸿蒙使用官方规范固定配色，
-        Kitty / 玉桂狗 / 库洛米 / 美乐蒂 / 三丽鸥是角色扮演配色，均不跟壁纸走。</p>
-
-      <div id="md3ColorBox">
+                        <div id="md3ColorBox">
         <div class="row">
           <span>主色来源</span>
           <div class="seg" id="colorModeSeg" role="group" aria-label="主色来源">
@@ -271,10 +265,7 @@
           <button type="button" class="swatch" data-color="#7D5260" style="--c:#7D5260" aria-label="藕荷粉"></button>
           <button type="button" class="swatch" data-color="#4A6572" style="--c:#4A6572" aria-label="石板灰"></button>
         </div>
-        <p class="row-hint">「壁纸取色」走 Material You 官方算法：先把壁纸在 Lab 空间聚类，
-          再按色相占比 × 接近目标彩度打分挑出主色，最后由该色派生整套 tonal palette。
-          「手动指定」用你选的颜色走同一条派生链路，拖动取色器即时生效。</p>
-      </div>
+              </div>
       <p class="row-hint hidden" id="fixedPaletteHint"></p>
       <div class="row">
         <span>毛玻璃</span>
@@ -288,11 +279,7 @@
         <span>玻璃底材</span>
         <span id="realtimeInfo" class="val blur-info">未开启</span>
       </div>
-      <p class="row-hint">默认"只模糊壁纸"：玻璃里显示的就是你的桌面壁纸本身，
-        换壁纸会自动同步。开启"实时桌面模糊"后改为逐帧采集窗口背后的桌面，
-        但代价是系统截图 / 录屏将看不到本窗口（Windows 的采集排除机制所致）。</p>
-
-      <!-- 自定义背景图（v2.4.0）：选图 + 模糊 / 白色蒙版 / 裁剪 -->
+            <!-- 自定义背景图（v2.4.0）：选图 + 模糊 / 白色蒙版 / 裁剪 -->
       <label class="row toggle">
         <span>自定义背景</span>
         <input type="checkbox" id="setBgOn" />
@@ -346,11 +333,7 @@
           <option value="tile">平铺</option>
         </select>
       </div>
-      <p class="row-hint">自定义背景会顶替壁纸当玻璃的底材（换壁纸不再影响玻璃），
-        取色也改从这张图派生。模糊 0-40px、白色蒙版 0-100%（压亮图片做磨砂底），
-        缩放 + 位置就是裁剪：放大后用两个位置滑块把想看的部分挪到中间。
-        图片被移动或删除后会自动回退壁纸。</p>
-      <!-- 图标外观（v2.4.2 起）：填充方式只影响图片图标；边框与形状对预设/字符图标也生效 -->
+            <!-- 图标外观（v2.4.2 起）：填充方式只影响图片图标；边框与形状对预设/字符图标也生效 -->
       <div class="row">
         <span>图标填充</span>
         <div class="seg" id="iconFitSeg" role="group" aria-label="图标填充">
@@ -395,21 +378,7 @@
           <button type="button" class="text-btn" id="btnIconRingClear">恢复默认</button>
         </div>
       </div>
-      <p class="row-hint">「裁剪」把图片填满整块、超出边框形状的部分切掉；「内部」让图片
-        <b>完整落在边框形状之内</b>（按内切解留白，第三方异形图标不会被圆边切掉一角）。
-        <b>填充只管图片图标</b>，预设图标与自定义字符是矢量和文字，不受影响。
-        「图标形状」默认跟随主题（十套主题各自的形状语言不动），也可以强制成圆形 / 圆角 / 方形。
-        「图标边框」四选一：玻璃白边、从图标图里取主色（自动取色）、用当前主题的强调色
-        （跟随主题，换风格 / 换壁纸会跟着变）、透明。取色会同时染描边、外发光和底色；
-        预设图标、字符以及读不出颜色的图片自动退回主题强调色。
-        「边框颜色」一旦指定就优先于上面的取色策略（只有「透明」能盖过它），
-        「恢复默认」则交还给上面的策略。
-        「统一图标风格」只在「内部」下出现（裁剪模式图标已填满整块，再上单色没有意义）：
-        打开后所有图标收敛到<b>同一个颜色</b>——图片按自己的形状染成单色（明暗细节留着，
-        认得出是哪个应用），预设线条图标与字符图标直接换色，像 Pixel 的主题图标那样
-        一整套图标统一取色。统一色取当前主题的强调色，设了「边框颜色」就用它；
-        再配上「图标形状 = 圆形」和「图标边框 = 跟随主题」，就是 Pixel 那种同色底的成套图标。</p>
-      <div class="row">
+            <div class="row">
         <span>窗口大小</span>
         <div class="size-controls">
           <button id="btnSizeDown">−</button>
@@ -424,6 +393,22 @@
       <div class="row">
         <span></span>
         <button id="btnResetPos" class="text-btn">重置窗口位置</button>
+      </div>
+
+      <!-- 配置备份 / 主题方案（v2.4.6）：放设置面板最下面 -->
+      <div class="row" id="rowBackup">
+        <span>配置备份</span>
+        <div class="size-controls">
+          <button id="btnCfgExport">导出 .fcpc</button>
+          <button id="btnCfgImport">导入 .fcpc</button>
+        </div>
+      </div>
+      <div class="row" id="rowThemePack">
+        <span>主题方案</span>
+        <div class="size-controls">
+          <button id="btnThemeExport">导出 .fcpt</button>
+          <button id="btnThemeImport">导入 .fcpt</button>
+        </div>
       </div>
 
       <!-- 关于：只放作者 / 版本号 / GitHub 链接 -->

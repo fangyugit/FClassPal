@@ -45,9 +45,15 @@ contextBridge.exposeInMainWorld('widgetAPI', {
   // U 盘
   getUsbDrives: () => ipcRenderer.invoke('get-usb-drives'),
   openDrive: (letter) => ipcRenderer.invoke('open-drive', letter),
-  ejectDrive: (letter) => ipcRenderer.invoke('eject-drive', letter),
-  // 普通用户态弹不出来时的一次性提权重试（会弹 UAC）
+  ejectDrive: (letter) => ipcRenderer.invoke('eject-drive', letter),  // 普通用户态弹不出来时的一次性提权重试（会弹 UAC）
   ejectDriveElevated: (letter) => ipcRenderer.invoke('eject-drive-elevated', letter),
+  // v2.4.6：关掉占用 U 盘的窗口/进程（占用弹窗里"关闭占用并重试"用）
+  closeDriveOccupants: (list) => ipcRenderer.invoke('close-drive-occupants', list),
+  // v2.4.6：配置包 .fcpc / 主题方案 .fcpt 导入导出
+  exportConfig: () => ipcRenderer.invoke('export-config'),
+  importConfig: () => ipcRenderer.invoke('import-config'),
+  exportTheme: () => ipcRenderer.invoke('export-theme'),
+  importTheme: () => ipcRenderer.invoke('import-theme'),
   // U 盘列表变化（插入/拔出）时回调，参数为驱动数组
   onUsbChange: (callback) => {
     const handler = (_e, drives) => callback(drives);

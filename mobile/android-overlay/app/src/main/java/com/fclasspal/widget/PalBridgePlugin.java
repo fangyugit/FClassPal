@@ -1,5 +1,6 @@
 package com.fclasspal.widget;
 
+import android.app.Activity;
 import android.app.WallpaperManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -10,12 +11,20 @@ import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Point;
+import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
+import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Base64;
 import android.util.DisplayMetrics;
+import android.view.Gravity;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
@@ -57,6 +66,24 @@ import java.util.List;
 
 @CapacitorPlugin(name = "PalBridge", permissions = {})
 public class PalBridgePlugin extends Plugin {
+
+    /* --------------------------------------------------- 悬浮窗 / 实时采集状态 */
+
+    /** 系统录屏授权对话框的 requestCode（ActivityResult 回调里认这个号）。 */
+    private static final int REQ_CAPTURE = 51517;
+
+    /** 当前窗口模式：fullscreen（铺满）| float（悬浮小窗，对应桌面版）。 */
+    private volatile String windowMode = "fullscreen";
+
+    /** 本窗口当前矩形（物理像素）。悬浮窗模式随 lp 同步；全屏模式即整屏。 */
+    private final Rect winRectPx = new Rect();
+
+    /** 录屏授权令牌（一次性；停止采集/被拒后清空，下次重新弹授权）。 */
+    private Intent consentData;
+    private int consentCode;
+    /** 授权对话框还挂着时的补跑标记：结果回来接着 start。 */
+    private boolean pendingStart;
+    private RealtimeCapture capture;
 
     /* --------------------------------------------------------------- 基本信息 */
 
@@ -172,6 +199,334 @@ public class PalBridgePlugin extends Plugin {
                 call.resolve(out);
             }
         }).start();
+    }
+
+    /* ------------------------------------------------- 窗口模式（全屏 / 悬浮窗）
+     * 桌面版是一个无边框小窗浮在桌面上；安卓默认全屏 Activity。悬浮窗模式的做法
+     * 是把 Activity 窗口本身缩小（WindowManager.LayoutParams 设 width/height/x/y），
+     * 加 FLAG_NOT_TOUCH_MODAL 让窗口外的触摸穿透到底下的桌面 —— 视觉与操作都
+     * 和桌面版一致。窗口外能看见什么就显示什么（壁纸 / 其他应用），正好喂给
+     * 玻璃当底材。 */
+
+    /** 查询当前模式与窗口矩形（诊断/回显用）。 */
+    @PluginMethod
+    public void getWindowMode(PluginCall call) {
+        JSObject out = new JSObject();
+        out.put("mode", windowMode);
+        out.put("x", dp(winRectPx.left));
+        out.put("y", dp(winRectPx.top));
+        out.put("width", dp(winRectPx.width()));
+        out.put("height", dp(winRectPx.height()));
+        out.put("realtime", capture != null && capture.isRunning());
+        call.resolve(out);
+    }
+
+    @PluginMethod
+    public void setWindowMode(final PluginCall call) {
+        JSObject data = new JSObject();
+        data.put("mode", call.getString("mode"));
+        data.put("x", call.getInt("x"));
+        data.put("y", call.getInt("y"));
+        data.put("width", call.getInt("width"));
+        data.put("height", call.getInt("height"));
+        setWindowModeData(data, call);
+    }
+
+    /** setWindowMode 的实际入口（供 setBounds 复用；data 里必须带 mode）。 */
+    private void setWindowModeData(final JSObject data, final PluginCall call) {
+        final String mode = "float".equals(data.optString("mode", "")) ? "float" : "fullscreen";
+        final Integer xDp = boxedInt(data, "x"), yDp = boxedInt(data, "y");
+        final Integer wDp = boxedInt(data, "width"), hDp = boxedInt(data, "height");
+        final Activity act = getActivity();
+        JSObject out = new JSObject();
+        if (act == null) {
+            out.put("applied", false);
+            out.put("error", "no-activity");
+            call.resolve(out);
+            return;
+        }
+        act.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                JSObject o = new JSObject();
+                try {
+                    Window w = act.getWindow();
+                    WindowManager.LayoutParams lp = w.getAttributes();
+                    DisplayMetrics dm = act.getResources().getDisplayMetrics();
+                    Point size = realDisplaySize(act);
+                    if ("float".equals(mode)) {
+                        int dw = size.x, dh = size.y;
+                        int ww = dpPx(wDp != null && wDp > 0 ? wDp : 360, dm);
+                        int hh = dpPx(hDp != null && hDp > 0 ? hDp : 560, dm);
+                        ww = Math.max(dpPx(220, dm), Math.min(ww, (int) (dw * 0.85f)));
+                        hh = Math.max(dpPx(320, dm), Math.min(hh, (int) (dh * 0.85f)));
+                        int m = dpPx(16, dm);
+                        int xpx = (xDp != null && xDp >= 0) ? dpPx(xDp, dm)
+                                : Math.max(m, dw - ww - m);                 // 默认右下角
+                        int ypx = (yDp != null && yDp >= 0) ? dpPx(yDp, dm)
+                                : Math.max(m, Math.round((dh - hh) * 0.62f));
+                        lp.width = ww;
+                        lp.height = hh;
+                        lp.gravity = Gravity.TOP | Gravity.START;
+                        lp.x = Math.max(0, Math.min(xpx, dw - ww));
+                        lp.y = Math.max(0, Math.min(ypx, dh - hh));
+                        lp.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+                        lp.dimAmount = 0f;
+                        w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                    } else {
+                        lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+                        lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+                        lp.gravity = Gravity.CENTER;
+                        lp.x = 0;
+                        lp.y = 0;
+                        lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+                    }
+                    w.setAttributes(lp);
+                    windowMode = mode;
+                    if ("float".equals(mode)) {
+                        winRectPx.set(lp.x, lp.y, lp.x + lp.width, lp.y + lp.height);
+                    } else {
+                        winRectPx.set(0, 0, size.x, size.y);
+                    }
+                    if (capture != null) capture.setWindowRect(new Rect(winRectPx));
+                    o.put("applied", true);
+                } catch (Throwable t) {
+                    o.put("applied", false);
+                    o.put("error", String.valueOf(t.getMessage()));
+                }
+                o.put("mode", windowMode);
+                call.resolve(o);
+            }
+        });
+    }
+
+    /** 拖动标题栏 → 移动悬浮窗（渲染层高频调用，只改 lp.x/y）。 */
+    @PluginMethod
+    public void moveWindow(final PluginCall call) {
+        final Double xD = call.getDouble("x"), yD = call.getDouble("y");
+        JSObject out = new JSObject();
+        if (!"float".equals(windowMode) || xD == null || yD == null) {
+            out.put("applied", false);
+            call.resolve(out);
+            return;
+        }
+        final Activity act = getActivity();
+        if (act == null) {
+            out.put("applied", false);
+            call.resolve(out);
+            return;
+        }
+        act.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Activity a = getActivity();
+                    if (a == null) return;
+                    Window w = a.getWindow();
+                    WindowManager.LayoutParams lp = w.getAttributes();
+                    Point size = realDisplaySize(a);
+                    lp.x = Math.max(0, Math.min(dpPx(xD.floatValue(),
+                            a.getResources().getDisplayMetrics()), size.x - lp.width));
+                    lp.y = Math.max(0, Math.min(dpPx(yD.floatValue(),
+                            a.getResources().getDisplayMetrics()), size.y - lp.height));
+                    w.setAttributes(lp);
+                    winRectPx.set(lp.x, lp.y, lp.x + lp.width, lp.y + lp.height);
+                    if (capture != null) capture.setWindowRect(new Rect(winRectPx));
+                } catch (Throwable ignored) {
+                }
+            }
+        });
+        out.put("applied", true);
+        call.resolve(out);
+    }
+
+    /** 渲染层的窗口尺寸/位置同步（桌面 set-bounds 的对应物；悬浮窗模式生效）。
+     *  注意必须保持当前模式 —— 渲染层传的 bounds 里没有 mode 字段，直接转给
+     *  setWindowMode 会被默认值"fullscreen"打回全屏。 */
+    @PluginMethod
+    public void setBounds(PluginCall call) {
+        JSObject data = new JSObject();
+        data.put("mode", windowMode);   // 保持现状
+        data.put("x", call.getInt("x"));
+        data.put("y", call.getInt("y"));
+        data.put("width", call.getInt("width"));
+        data.put("height", call.getInt("height"));
+        setWindowModeData(data, call);
+    }
+
+    /* ---------------------------------------------- 实时屏幕采集（录屏权限模糊）
+     * 对应桌面版 getDisplayMedia 实时底材。安卓 WebView 没有这东西，采集在原生
+     * RealtimeCapture 里做，帧通过 realtimeFrame 事件推给渲染层。
+     * 交互：首次调用弹系统授权对话框 → handleOnActivityResult 接结果自动续跑。 */
+
+    @PluginMethod
+    public void startRealtime(final PluginCall call) {
+        JSObject out = new JSObject();
+        out.put("ok", false);
+        final Activity act = getActivity();
+        if (act == null) {
+            out.put("reason", "no-activity");
+            call.resolve(out);
+            return;
+        }
+        if (capture != null && capture.isRunning()) {
+            out.put("ok", true);
+            call.resolve(out);
+            return;
+        }
+        if (capture == null) {
+            capture = new RealtimeCapture(getContext().getApplicationContext());
+            capture.setListener(new RealtimeCapture.Listener() {
+                @Override
+                public void onFrame(JSObject frame) {
+                    notifyListeners("realtimeFrame", frame);
+                }
+
+                @Override
+                public void onEnded(String reason) {
+                    JSObject o = new JSObject();
+                    o.put("ended", true);
+                    o.put("reason", reason);
+                    notifyListeners("realtimeEnded", o);
+                }
+            });
+        }
+        capture.setPaused(false);
+        if (consentData != null) {
+            // 有有效令牌：后台线程直接起采集（start 里要等前台服务，别占调用线程）
+            final RealtimeCapture c = capture;
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    Rect r = new Rect(winRectPx);
+                    String err = c.start(consentData, consentCode, r, 100);
+                    if (err != null) consentData = null;   // 令牌失效，下次重新授权
+                }
+            }).start();
+            out.put("ok", true);   // 采集中/即将采集，帧随后推
+            call.resolve(out);
+            return;
+        }
+        // 没有令牌：弹系统授权对话框，结果回来在 handleOnActivityResult 续跑
+        pendingStart = true;
+        try {
+            MediaProjectionManager mpm = (MediaProjectionManager)
+                    getContext().getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+            act.startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
+            out.put("reason", "consent");   // 渲染层收到它就挂起等帧，不算失败
+        } catch (Throwable t) {
+            pendingStart = false;
+            out.put("reason", "error");
+        }
+        call.resolve(out);
+    }
+
+    @Override
+    protected void handleOnActivityResult(int requestCode, int resultCode, Intent data) {
+        super.handleOnActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_CAPTURE) return;
+        if (resultCode != Activity.RESULT_OK || data == null) {
+            pendingStart = false;
+            consentData = null;
+            JSObject o = new JSObject();
+            o.put("ended", true);
+            o.put("reason", "未授予录屏权限");
+            notifyListeners("realtimeEnded", o);
+            return;
+        }
+        consentData = data;
+        consentCode = resultCode;
+        if (pendingStart && capture != null) {
+            pendingStart = false;
+            final RealtimeCapture c = capture;
+            final Intent token = data;
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    Rect r = new Rect(winRectPx);
+                    String err = c.start(token, consentCode, r, 100);
+                    if (err != null) {
+                        consentData = null;
+                        JSObject o = new JSObject();
+                        o.put("ended", true);
+                        o.put("reason", "fullscreen".equals(err)
+                                ? "窗口太大，退回壁纸底材" : "采集启动失败");
+                        notifyListeners("realtimeEnded", o);
+                    }
+                }
+            }).start();
+        }
+    }
+
+    @PluginMethod
+    public void stopRealtime(PluginCall call) {
+        if (capture != null) capture.stop();
+        consentData = null;      // 录屏令牌是一次性的，下次开启重新弹授权
+        JSObject out = new JSObject();
+        out.put("stopped", true);
+        call.resolve(out);
+    }
+
+    /* -------------------------------------------------------- 生命周期钩子 */
+
+    @Override
+    protected void handleOnPause() {
+        super.handleOnPause();
+        if (capture != null) capture.setPaused(true);   // 退后台暂停推帧（省电）
+    }
+
+    @Override
+    protected void handleOnResume() {
+        super.handleOnResume();
+        if (capture != null) capture.setPaused(false);
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (capture != null) capture.stop();
+        super.handleOnDestroy();
+    }
+
+    /* -------------------------------------------------- 几何/单位小工具 */
+
+    /** 屏幕物理尺寸（像素）。 */
+    private Point realDisplaySize(Activity act) {
+        Point p = new Point(1080, 1920);
+        try {
+            WindowManager wm = (WindowManager) act.getSystemService(Context.WINDOW_SERVICE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Rect b = wm.getCurrentWindowMetrics().getBounds();
+                p.set(b.width(), b.height());
+            } else {
+                wm.getDefaultDisplay().getRealSize(p);
+            }
+        } catch (Throwable ignored) {
+        }
+        return p;
+    }
+
+    /** 桌面逻辑像素 -> 物理像素（渲染层 config 的 x/y/width/height 都是逻辑像素）。 */
+    private int dpPx(float dp, DisplayMetrics dm) {
+        return Math.max(1, Math.round(dp * dm.density));
+    }
+
+    /** 物理像素 -> 桌面逻辑像素。 */
+    private int dp(int px) {
+        try {
+            return Math.round(px / getActivity().getResources().getDisplayMetrics().density);
+        } catch (Throwable t) {
+            return px;
+        }
+    }
+
+    /** JSONObject.getInt 是检查异常接口，包一层：缺键/类型不对都返回 null。 */
+    private static Integer boxedInt(com.getcapacitor.JSObject o, String key) {
+        if (o == null || !o.has(key)) return null;
+        try {
+            return o.getInt(key);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /* --------------------------------------------------------------- 外链 */

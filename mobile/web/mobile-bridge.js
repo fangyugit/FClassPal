@@ -12,7 +12,9 @@
  *   保留：主题 / 明暗（含跟随系统）/ 圆角 / 玻璃透明度 / 图标五项外观 / 分组与快捷方式
  *   新增：读安卓真实壁纸当玻璃底材（对应桌面的"只模糊壁纸"）、Android 12+ 系统取色、
  *         已安装应用列表 + 应用图标 + 按名称启动、原生 Toast、返回键退到后台
- *   退化：U 盘（无）、实时桌面采集（无）、窗口拖动/缩放/置底/自启/锁定（无窗口系统可操作）
+ *   v2.4.6：窗口模式（全屏 / 悬浮窗，像桌面版的小玻璃）+ 录屏权限实时模糊
+ *         （MediaProjection，原生裁帧推 realtimeFrame 事件，悬浮窗模式默认开）
+ *   退化：U 盘（无）、窗口拖动/缩放/置底/自启/锁定（全屏模式下无窗口系统可操作）
  *
  * 原生能力走 PalBridge 插件（mobile/android/app/src/main/java/.../PalBridgePlugin.java）；
  * 插件缺失时每个方法都有纯 Web 兜底，界面仍可用（只是少了原生那部分）。
@@ -25,7 +27,7 @@
 
   var MOBILE_KEY = 'fclasspal-mobile-config';
   var FALLBACK_ACCENT = '#6750A4';   // 与桌面版 DEFAULT_CONFIG.accentColor 一致
-  var APP_VERSION = '2.4.5';
+  var APP_VERSION = '2.4.6';
 
   /* ---------------------------------------------------------------- 原生插件 */
   function plugin() {
@@ -138,7 +140,8 @@
     keepBottom: false,          // 安卓没有"窗口置底"这回事，统一 false
     autoLaunch: false,
     locked: false,
-    realtime: false,
+    realtime: true,             // 实时模糊默认开（悬浮窗模式走录屏采集；全屏自动退壁纸）
+    androidMode: 'fullscreen',  // fullscreen=铺满 | float=悬浮小窗（像桌面版）
     theme: 'glass',
     // 安卓首启默认"跟随系统"：手机几乎都开着深色定时切换，这一档最省心
     appearance: 'auto',
@@ -175,7 +178,6 @@
     });
     if (!Array.isArray(base.groups) || !base.groups.length) base.groups = cloneDef().groups;
     base.keepBottom = false;
-    base.realtime = false;
     return base;
   }
 
@@ -490,7 +492,7 @@
           platform: 'android',         // 千万别给 'browser'，那会让渲染层切到预览样式
           isMobile: true,
           touch: true,
-          realtime: false,             // 没有屏幕采集
+          realtime: true,              // 录屏实时模糊可用（悬浮窗模式；全屏自动退壁纸）
           release: String(i.androidRelease || ''),
           sdk: i.sdkInt || 0,
           version: i.versionName || APP_VERSION,
@@ -543,9 +545,15 @@
       };
     },
 
-    /* ---- 窗口：安卓是全屏 Activity，没有可拖/可缩的窗口，一律安全空实现 ---- */
-    setBounds: function () { return Promise.resolve(true); },
-    moveWindow: function () { },
+    /* ---- 窗口：全屏模式下没有可操作的窗口系统，一律安全空实现；
+     * 悬浮窗模式（config.androidMode='float'）走原生 setWindowMode/moveWindow，
+     * 把 Activity 窗口缩小成桌面版那样的小玻璃，标题栏拖动即移动 OS 窗口 ---- */
+    setBounds: function (b) {
+      return soft('setBounds', {
+        x: b && b.x, y: b && b.y, width: b && b.width, height: b && b.height
+      }, { applied: false });
+    },
+    moveWindow: function (x, y) { soft('moveWindow', { x: x, y: y }, null); },
     setDragging: function () { },
     setKeepBottom: function () { },
     setAutoLaunch: function () { return Promise.resolve({ success: false, error: '安卓版不支持开机自启' }); },
@@ -554,9 +562,45 @@
     close: function () { soft('exitApp', {}, null); },
     onBoundsChanged: function () { return function () { }; },
 
-    /* ---- 实时桌面底材：安卓没有 ---- */
-    startRealtime: function () { return Promise.resolve(null); },
-    stopRealtime: function () { return Promise.resolve(true); },
+    /* ---- 实时屏幕模糊：MediaProjection 录屏采集（悬浮窗模式）。
+     * 原生裁好帧推 realtimeFrame 事件（JPEG dataUrl），渲染层画进 #deskCanvas；
+     * 'consent' 表示系统授权对话框还挂着，渲染层挂起等帧，不算失败。---- */
+    startRealtime: function () {
+      return soft('startRealtime', {}, { ok: false, reason: 'no-plugin' });
+    },
+    stopRealtime: function () {
+      return soft('stopRealtime', {}, { stopped: true });
+    },
+    onRealtimeFrame: function (cb) {
+      var p = plugin();
+      if (!p || typeof p.addListener !== 'function') return function () { };
+      var unsub = function () { };
+      try {
+        Promise.resolve(p.addListener('realtimeFrame', function (f) {
+          if (cb) { try { cb(f); } catch (e) { } }
+        })).then(function (h) {
+          if (h && typeof h.remove === 'function') {
+            unsub = function () { try { h.remove(); } catch (e) { } };
+          }
+        });
+      } catch (e) { }
+      return function () { unsub(); };
+    },
+    onRealtimeEnded: function (cb) {
+      var p = plugin();
+      if (!p || typeof p.addListener !== 'function') return function () { };
+      var unsub = function () { };
+      try {
+        Promise.resolve(p.addListener('realtimeEnded', function (r) {
+          if (cb) { try { cb(r); } catch (e) { } }
+        })).then(function (h) {
+          if (h && typeof h.remove === 'function') {
+            unsub = function () { try { h.remove(); } catch (e) { } };
+          }
+        });
+      } catch (e) { }
+      return function () { unsub(); };
+    },
 
     /* ---- U 盘：安卓没有（手机接 OTG 也不会出现在这个维度上） ---- */
     getUsbDrives: function () { return Promise.resolve([]); },
@@ -591,10 +635,11 @@
    *   ② 隐藏 U 盘区、缩放手柄、透明度浮条（手机上没意义）
    *   ③ 改写几处"专有名词"文案：Windows -> 安卓、壁纸取色 -> 系统取色
    * 全部按"找不到就跳过"写，renderer 以后改文案最多是少改几句，不会报错。 */
-  /* setRadius 也藏掉：手机上是全屏面板，圆角只会把四个角削出 Activity 底色，
-   * 没有可调空间（mobile.css 里已把 #widget 的 border-radius 钉成 0）。 */
-  var HIDE_ROWS = ['setBottom', 'setAutoLaunch', 'setLock', 'setRealtime', 'setRadius'];
-  var HIDE_ROW_WITH = ['blurInfo', 'realtimeInfo'];
+  /* setRadius 也藏掉：全屏时圆角只会把四个角削出 Activity 底色，没有可调空间。
+   * setRealtime **不再藏**（v2.4.6 起悬浮窗模式走录屏实时模糊，默认打开）。 */
+  var HIDE_ROWS = ['setBottom', 'setAutoLaunch', 'setLock', 'setRadius',
+    'rowBackup', 'rowThemePack'];   // .fcpc/.fcpt 走桌面文件对话框，安卓没有 → 整行藏掉
+  var HIDE_ROW_WITH = ['blurInfo'];
 
   function hideRowById(id) {
     var el = document.getElementById(id);
@@ -637,6 +682,8 @@
     });
     // 提示条：手机上是长按，没有右键
     textReplace('.hint', '右键 / 长按 打开菜单', '长按打开菜单');
+    // 实时模糊：安卓录屏的是"屏幕"不是"桌面"
+    textReplace('.row span', '实时桌面模糊', '实时屏幕模糊');
     var sel = document.getElementById('itemType');
     if (sel) {
       Array.prototype.forEach.call(sel.options, function (o) {
@@ -646,6 +693,59 @@
         }
       });
     }
+  }
+
+  /* ------------------------------------------------ 窗口模式（全屏 / 悬浮窗）
+   * 桌面版是无边框小窗；安卓默认全屏 Activity。悬浮窗模式由原生把窗口缩小，
+   * 这里只负责：① 启动时把存的模式告诉原生 + 给 html 挂 float 标记类；
+   * ② 在设置面板注入切换行（桌面不需要这行，所以不在 index.html 里写死）。 */
+  function applyWindowMode() {
+    var isFloat = !!(cfg && cfg.androidMode === 'float');
+    document.documentElement.classList.toggle('float', isFloat);
+    if (!isFloat) return;
+    soft('setWindowMode', {
+      mode: 'float', x: cfg.x, y: cfg.y, width: cfg.width, height: cfg.height
+    }, null);
+  }
+
+  function injectWindowModeRow() {
+    var anchor = document.getElementById('setRealtime');
+    if (!anchor) return;
+    var row = anchor.closest ? anchor.closest('.row') : null;
+    if (!row || document.getElementById('setWinMode')) return;
+    var div = document.createElement('div');
+    div.className = 'row';
+    div.innerHTML = '<span>窗口模式</span>' +
+      '<div class="seg" id="setWinMode" role="group" aria-label="窗口模式">' +
+      '<button type="button" class="seg-btn" data-win="fullscreen">全屏</button>' +
+      '<button type="button" class="seg-btn" data-win="float">悬浮窗</button>' +
+      '</div>';
+    row.parentNode.insertBefore(div, row);
+    var seg = div.querySelector('#setWinMode');
+    var cur = (cfg && cfg.androidMode) === 'float' ? 'float' : 'fullscreen';
+    var sync = function () {
+      Array.prototype.forEach.call(seg.querySelectorAll('.seg-btn'), function (b) {
+        b.setAttribute('aria-pressed', b.getAttribute('data-win') === cur ? 'true' : 'false');
+      });
+    };
+    sync();
+    Array.prototype.forEach.call(seg.querySelectorAll('.seg-btn'), function (b) {
+      b.addEventListener('click', function () {
+        var want = b.getAttribute('data-win');
+        if (!want || want === cur) return;
+        cur = want;
+        sync();
+        if (cfg) { cfg.androidMode = want; persist(); }
+        document.documentElement.classList.toggle('float', want === 'float');
+        soft('setWindowMode', {
+          mode: want, x: cfg && cfg.x, y: cfg && cfg.y,
+          width: cfg && cfg.width, height: cfg && cfg.height
+        }, null);
+        soft('toast', { text: want === 'float' ? '已切换为悬浮窗' : '已切换为全屏' }, null);
+        // 采集链路和布局都按新窗口重启，延迟重载一次最干净
+        setTimeout(function () { try { location.reload(); } catch (e) { } }, 600);
+      });
+    });
   }
 
   function adaptChrome() {
@@ -663,6 +763,8 @@
       if (act === 'hide' || act === 'lock') b.setAttribute('data-mobile-hide', '1');
     });
     rewriteCopy();
+    injectWindowModeRow();
+    applyWindowMode();
     clampContextMenu();
   }
 

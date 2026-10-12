@@ -99,3 +99,18 @@ html.mobile [data-mobile-hide] { display: none !important; }
 
 /* 编辑弹窗里被禁用的"文件 / 文件夹"类型：视觉上也弱化，别让人以为能点 */
 html.mobile select option:disabled { color: #9aa3b2; }
+
+/* ==========================================================================
+ * 悬浮窗模式（v2.4.6）：html.float 由 mobile-bridge 按存储的模式挂。
+ * 原生侧已把 Activity 窗口缩成一块小玻璃（setWindowMode mode=float），CSS 这边
+ * 只需把全屏钉死的圆角还回来 —— OS 窗口本身是矩形透明底，玻璃自己的圆角就是
+ * 视觉边界。inset:0 保留：小窗口里 #widget 仍然铺满整个窗口。
+ * （放在文件末尾：同特异性规则后者胜，要压住上面的 cursor:default。）
+ * ==========================================================================*/
+html.mobile.float #widget {
+  border-radius: 22px !important;
+}
+
+html.mobile.float .titlebar {
+  cursor: grab;   /* 悬浮窗模式标题栏真的能拖窗口 */
+}

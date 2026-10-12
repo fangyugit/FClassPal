@@ -36,6 +36,12 @@
 
         </activity>
 
+        <!-- 悬浮窗实时模糊的采集前台服务（Android 14+ 硬性要求，见类注释） -->
+        <service
+            android:name=".ScreenCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -48,6 +54,14 @@
     </application>
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 悬浮窗实时模糊（v2.4.6）：MediaProjection 录屏采集。Android 14 起采集期间
+         必须有一个 foregroundServiceType="mediaProjection" 的前台服务在跑
+         （ScreenCaptureService），所以连着 FOREGROUND_SERVICE 一起声明。
+         POST_NOTIFICATIONS 只是让"正在采集"的常驻通知可见，不授权也能采。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Android 11+ 包可见性：只声明"桌面类应用"这一种 Intent，
          覆盖所有有入口的 App，不需要 QUERY_ALL_PACKAGES 这个敏感权限 -->

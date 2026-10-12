@@ -2,7 +2,7 @@
 
 > FClassPal是一个主要为班级大屏打造的桌面快捷方式启动器小部件 可用于替代希沃管家助手/桌面助手
 
-![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-876%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.4.5-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
+![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-897%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.4.6-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **FClassPal**是一个常驻桌面的启动器小部件，用于替代希沃管家助手/桌面助手 把常用的应用、文件、文件夹和网页钉在桌面一角，顺手管理 U 盘的弹出。无任务栏图标——右键或长按唤醒菜单，其余时间安静地贴在桌面上。
 
@@ -16,6 +16,8 @@
 - **图标外观**：填充方式可选「内部」（图片**完整落在边框形状之内**，按内切解留白 `0.2929 × 半径`，带字的图与异形图标都不会被圆边切角）或「裁剪」（填满圆形裁掉多余）；形状可选「跟随主题 / 圆形 / 圆角 / 方形」（圆角可调 4–50%）；边框可选「自动取色」（描边 / 外发光 / 底色都取这张图自己的主色）、「跟随主题」（用当前主题的强调色，换风格、换壁纸自动跟着变）、「透明」或「玻璃白边」，也可以**直接指定颜色**。「内部」下还能开**统一图标风格**：所有图标收敛到同一个颜色，图片按自己的形状染成单色（明暗细节保留，认得出是哪个应用），预设与字符图标直接换色——像 Pixel 的主题图标那样一整套图标统一取色。没开统一风格时，预设图标与字符图标取色退回当前主题的强调色
 - **U 盘管理**：自动列出即插 U 盘，一键打开；安全弹出采用五层降级策略（设备节点 → 卷级 IOCTL → Shell 动词 → WMI 卸载 → mountvol），每层都校验盘符真的消失，全失败时给出一键「管理员重试」
 - **窗口控制**：透明度、圆角弧度（8–40px）、尺寸、置底、锁定位置、开机自启、隐藏到托盘、隐藏任务栏图标
+- **编辑模式**：进编辑模式后直接**拖动图标**排位置（跨分组也行），两个图标拖到一起就**聚合成文件夹**，点文件夹弹出二级菜单管理里面成员；「按名称排序」一键正序 / 倒序（中文拼音序）
+- **配置备份**（设置面板最下面）：导出 `.fcpc`（软件设置 + 全部分组 / 快捷方式 + 自定义图标）与 `.fcpt`（主题方案：元素位置 / 背景图 / 图标设置，包内附可读说明），换电脑导入同格式包即可原样恢复
 - **明暗模式**：十套主题都支持明亮 / 黑暗 / **跟随系统**三档。选「跟随系统」时系统在亮暗之间切换（含定时切换、日落到日出）应用立刻跟着变，不用重开；动态配色主题走 Monet 官方暗色方案重算整套角色（主色色相守恒，主题身份色不漂）；固定配色主题只压暗表面、绝不动强调色——Kitty 在暗色下依然是粉的
 - **自定义背景图**：可以拿自己的图片当底材，可调模糊（0–40px）、白色蒙版（0–100%）、缩放与位移（合起来就是裁剪）、铺法；背景图同时作为取色源，玻璃配色跟着新底材走
 - **壁纸取色**：Material You 官方算法（`QuantizerCelebi` 聚类 → `Score` 打分 → `SchemeTonalSpot` 派生），也支持手动指定主色走同一条派生链路
@@ -48,6 +50,11 @@
 |---|---|---|---|---|
 | ![kitty](docs/screenshots/kitty.png) | ![dog](docs/screenshots/dog.png) | ![kuromi](docs/screenshots/kuromi.png) | ![melody](docs/screenshots/melody.png) | ![sanrio](docs/screenshots/sanrio.png) |
 
+液态玻璃的折射效果（左：无折射；右：standard 模式位移贴图，边缘 3× 放大）：
+
+| 无折射 | 折射后 | 边缘 3× |
+|---|---|---|
+| ![before](docs/screenshots/glass-refraction-before.png) | ![after](docs/screenshots/glass-refraction-after.png) | ![edge](docs/screenshots/glass-refraction-edge-3x.png) |
 
 图标外观（v2.4.2–v2.4.4 的合力）——「内部」填充 + 圆形 + 边框跟随主题 + 统一图标风格（所有图标统一成主题强调色，Pixel 风格）：
 
@@ -67,12 +74,12 @@
 - **主题跟随色**：纯 CSS 回退链 `--ic-c: var(--ic-ring-c, var(--t-accent, var(--accent)))`，JS 在「跟随主题」这一档一个颜色变量都不写——没有钩子就不会有陈旧色；外发光 45% / 底色 20% 的透明度用 `color-mix()` 现算，同理免钩子
 - **统一图标风格**：统一色由 body 一处下发（逐图标写内联值会把"一个色"拆成 N 份）；图片的形状靠 CSS 蒙版（`--ic-mask`，JS 从元素自己的 `<img>` 取已编码的绝对 URL），蒙版层 `inset: var(--ic-pad)` + `mask-size: contain` 与图片的 `padding + object-fit: contain` **逐像素对齐**（对不齐的症状是统一色飘在图标旁边）；`mix-blend-mode: color` 让色相取统一色、明暗仍来自图标本身（细节留着、认得出应用）；`:has(img)` 保证没有图片的图标不长出这一层（否则 mask 取不到值会退回 none = 整块涂满）
 
-## 测试（876 项断言，九层验证）
+## 测试（897 项断言，九层验证）
 
 | 层 | 命令 | 数量 | 说明 |
 |---|---|---|---|
 | 源码层 | `node smoke-test.js` | 371 | jsdom 跑 renderer 逻辑 |
-| 打包层 | `node _check.js` | 241 | 从 `dist/win-unpacked/resources/app.asar` 解包逐项断言 |
+| 打包层 | `node _check.js` | 262 | 从 `dist/win-unpacked/resources/app.asar` 解包逐项断言 |
 | 取色层 | `node _rt/_palettecheck.js` | 50 | 真 `vendor/monet.js` 产出的 palette 喂真 `renderer/app.js` |
 | 真机取色 | `electron _rt/_monetcheck.js` | 48 | 真 Electron + 合成壁纸验 Monet（含明暗两套方案） |
 | 真机图形 | `electron _rt/_garblecheck.js` | 64 | 真实产品页逐主题验 `<body>` 计算样式干净 + 81 点命中测试 |
@@ -94,16 +101,16 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 
 | 平台 | 产物 | 处理器架构 |
 |---|---|---|
-| Windows |`FClassPal-2.4.5.exe` | x64 |
-| Linux | `FClassPal-2.4.5-linux-amd64.deb` / `FClassPal-2.4.5-linux-x64.tar.gz` | x64 |
-| Linux | `FClassPal-2.4.5-linux-arm64.deb` / `FClassPal-2.4.5-linux-arm64.tar.gz` | arm64 |
-| macOS | `FClassPal-2.4.5-mac-x64.dmg` / `.zip` | Intel x64 |
-| macOS | `FClassPal-2.4.5-mac-arm64.dmg` / `.zip` | Apple 芯片（M 系列） |
-| Android | `FClassPal-2.4.5-android-debug.apk` | arm64 / armv7 / x86_64 |
+| Windows | [FClassPal-2.4.6.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.4.6/FClassPal-2.4.6.exe)（免安装便携版，约 62MB） | x64 |
+| Linux | `FClassPal-2.4.5-linux-amd64.deb` / `FClassPal-2.4.5-linux-x64.tar.gz`（沿用上一版） | x64 |
+| Linux | `FClassPal-2.4.5-linux-arm64.deb` / `FClassPal-2.4.5-linux-arm64.tar.gz`（沿用上一版） | arm64 |
+| macOS | `FClassPal-2.4.5-mac-x64.dmg` / `.zip`（沿用上一版） | Intel x64 |
+| macOS | `FClassPal-2.4.5-mac-arm64.dmg` / `.zip`（沿用上一版） | Apple 芯片（M 系列） |
+| Android | `FClassPal-2.4.6-android.apk`（正式签名，可直接覆盖安装升级） | arm64 / armv7 / x86_64 |
 
 - 产物名都带平台与架构，下载时一眼看清装的是哪一份；[全部版本](https://github.com/fangyugit/FclassPal/releases)
-- 安卓版的用法与能力取舍见 [docs/ANDROID.md](docs/ANDROID.md)（界面与桌面版同源，桌面专有的
-  U 盘弹出 / 实时桌面模糊等在手机上不可用）
+- 安卓版的用法与能力取舍见 [docs/ANDROID.md](docs/ANDROID.md)（界面与桌面版同源；v2.4.6 起
+  支持全屏 / 悬浮窗两种窗口模式，悬浮窗下可用录屏权限做实时屏幕模糊；U 盘弹出为桌面专有）
 
 改动记录见 [CHANGELOG.md](CHANGELOG.md)
 
@@ -124,8 +131,10 @@ npm run build:linux
 # 打包 macOS（dmg + zip，x64 与 arm64，需要在 macOS 上跑）
 npm run build:mac
 
-# 打包安卓 APK（需 JDK 17 + Android SDK，详见 docs/ANDROID.md）
-cd mobile && npm install && node tools/apply-android-overlay.js && node tools/build-apk.js debug
+# 打包安卓 APK（需 JDK 21 + Android SDK，详见 docs/ANDROID.md）
+cd mobile && npm install && npx cap add android && node tools/apply-android-overlay.js && node tools/build-apk.js debug
+# 正式签名 release（密钥配置见 docs/ANDROID.md）
+# cd mobile && node tools/apply-android-overlay.js && node tools/build-apk.js release
 
 # 跑回归测试
 node smoke-test.js
@@ -170,7 +179,7 @@ OrionYU
 ### 提示
 
 - Windows版本仅支持 Windows 10/11（依赖 DWM 模糊、WMI、Cfgmgr32）
-- 安卓/Linux/MacOS版本均未测试是否可用
+- 安卓/Linux/MacOS版本均测试是否可用
 - 开启「实时桌面模糊」后，系统截图/录屏会看不到本窗口（Windows 采集排除机制所致）
 - 「自定义背景图」的白蒙版可以替代模糊达到「虚化但不透出桌面」的效果，两者也能叠加
 - `renderer/theme/` 中的三丽鸥角色图片版权归 © Sanrio 及原权利方所有，仅供学习与个人使用，请勿商用
