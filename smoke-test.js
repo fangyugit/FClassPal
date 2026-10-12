@@ -820,8 +820,23 @@ function themeTokens(theme) {
     /统一图标风格/.test(html));
 
   /* ---------- v2.4.1 补丁：文字按钮不得复用方形图标按钮的容器 ---------- */
-  check('★ 回归守卫：.size-controls 里不许再出现文字按钮（它写死 30×30，会把字挤到框外）',
-    !/class="size-controls"[^>]*>\s*<button[^>]*class="text-btn"/.test(html));
+  /* ★ v2.4.6 真机事故（用户报「导入导出都用不了 + 文字超出按钮」）：
+   * `.size-controls button` 写死 30×30，文字按钮进去被压成 30px 宽、文字溢出到盒子外；
+   * 溢出的字**不在按钮的可点区域内**，点在文字上命中的是整行 <div> → 按钮完全没反应。
+   * 旧守卫只查 `class="text-btn"` 的显式写法，漏掉了这次没写 text-btn 的新按钮，
+   * 所以改成"扫所有 .size-controls 块，里面的按钮标签文字必须是空/纯符号"。 */
+  const sizeBlocks = [];
+  html.replace(/<div class="size-controls">([\s\S]*?)<\/div>/g, (m, body) => { sizeBlocks.push(body); return m; });
+  const textInSize = sizeBlocks.filter((b) => {
+    const btns = [];
+    b.replace(/<button[^>]*>([\s\S]*?)<\/button>/g, (m2, inner) => { btns.push(inner.replace(/<[^>]+>/g, '').trim()); return m2; });
+    return btns.some((t) => /[A-Za-z\u4e00-\u9fa5.]/.test(t));
+  });
+  check('★ 回归守卫：.size-controls 里只能放图标按钮（写死 30×30，文字按钮会被挤爆且点不到）',
+    sizeBlocks.length > 0 && textInSize.length === 0);
+  check('★ v2.4.7：配置包/主题包按钮放 .btn-row（压在 .size-controls 里会点不动）',
+    /id="rowBackup"[\s\S]{0,240}?class="btn-row"[\s\S]{0,240}?id="btnCfgImport"/.test(html) &&
+    /id="rowThemePack"[\s\S]{0,240}?class="btn-row"/.test(html));
   check('css: 文字按钮容器 .btn-row 存在、.text-btn 不换行、误用兜底也压不扁',
     /\.btn-row \{/.test(cssNoComment) &&
     /\.text-btn \{[\s\S]{0,320}?white-space:\s*nowrap/.test(cssNoComment) &&

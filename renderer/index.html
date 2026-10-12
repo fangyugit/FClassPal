@@ -395,19 +395,24 @@
         <button id="btnResetPos" class="text-btn">重置窗口位置</button>
       </div>
 
-      <!-- 配置备份 / 主题方案（v2.4.6）：放设置面板最下面 -->
+      <!-- 配置备份 / 主题方案（v2.4.6）：放设置面板最下面。
+           注意 别用 .size-controls 装文字按钮：那个类是给窗口尺寸的 30×30 方形图标
+           按钮用的，`.size-controls button` 写死 width/height 30px，文字按钮进去会被
+           压成 30px 宽、文字溢出到盒子外面（溢出的字不在按钮的可点区域内，点上去
+           命中的是整行 <div>，表现为"按钮完全没反应"）。文字按钮统一放 .btn-row。
+           smoke/_check 都有守卫，_rt/_packui.js 用真实鼠标事件复现过。 -->
       <div class="row" id="rowBackup">
         <span>配置备份</span>
-        <div class="size-controls">
-          <button id="btnCfgExport">导出 .fcpc</button>
-          <button id="btnCfgImport">导入 .fcpc</button>
+        <div class="btn-row">
+          <button id="btnCfgExport" class="text-btn">导出 .fcpc</button>
+          <button id="btnCfgImport" class="text-btn">导入 .fcpc</button>
         </div>
       </div>
       <div class="row" id="rowThemePack">
         <span>主题方案</span>
-        <div class="size-controls">
-          <button id="btnThemeExport">导出 .fcpt</button>
-          <button id="btnThemeImport">导入 .fcpt</button>
+        <div class="btn-row">
+          <button id="btnThemeExport" class="text-btn">导出 .fcpt</button>
+          <button id="btnThemeImport" class="text-btn">导入 .fcpt</button>
         </div>
       </div>
 

@@ -443,7 +443,14 @@ const checks = [
   ['main: BrowserWindow 挂 icon（开发模式/alt-tab 也有图标）',
     /icon:\s*fs\.existsSync\(path\.join\(__dirname, 'build', 'icon\.ico'\)\)/.test(main)],
   ['产物: 便携 exe 已生成（v2.4.6）', fs.existsSync('dist/FClassPal-2.4.6.exe')],
-  ['配置: 版本号 2.4.6', srcPkg.version === '2.4.6'],
+  /* 版本一致性（不再钉死某个号）：源码版本 = README 徽章 = CHANGELOG 有对应小节
+   * = dist 里真有这个版本的 exe。改版本只改 package.json 一处，其余不同步就判红。 */
+  ['配置: 版本号三处同源（package.json / README 徽章 / CHANGELOG 小节）',
+    /^\d+\.\d+\.\d+$/.test(srcPkg.version) &&
+    readme.includes('version-' + srcPkg.version + '-orange') &&
+    new RegExp('##\\s*v' + srcPkg.version.replace(/\./g, '\\.') + '\\s*—').test(changelog)],
+  ['配置: dist 里存在当前版本的便携 exe（防发版发了上一版产物）',
+    fs.existsSync('dist/FClassPal-' + srcPkg.version + '.exe')],
   ['配置: 已移除 package.json description（exe 属性不再带描述）',
     srcPkg.description === undefined],
   ['author = YU（用户在远端改的大写）', srcPkg.author === 'YU'],
@@ -818,6 +825,23 @@ const checks = [
     pre.includes('closeDriveOccupants') && css.includes('occupied-menu')],
   ['v2.4.6: 弹出被拒立即返回占用列表（不再五层兜底硬磨）',
     /occupied/.test(main) && main.includes('parseOccupants') && main.includes('buildOccupantsScript')],
+  ['★ v2.4.7: 配置/主题包按钮不在 .size-controls 里（30×30 会压爆文字且点不到，真机事故）',
+    (() => {
+      const m = html.match(/id="rowBackup"[\s\S]{0,300}?id="btnCfgImport"/);
+      const m2 = html.match(/id="rowThemePack"[\s\S]{0,300}?id="btnThemeImport"/);
+      return !!m && !!m2 && /class="btn-row"/.test(m[0]) && /class="btn-row"/.test(m2[0]) &&
+        !/class="size-controls"/.test(m[0]) && !/class="size-controls"/.test(m2[0]);
+    })()],
+  ['★ v2.4.7: .size-controls 块内没有任何带文字/字母的按钮（只能是图标按钮）',
+    (() => {
+      const blocks = [];
+      html.replace(/<div class="size-controls">([\s\S]*?)<\/div>/g, (mm, b) => { blocks.push(b); return mm; });
+      return blocks.length > 0 && blocks.every((b) => {
+        const t = [];
+        b.replace(/<button[^>]*>([\s\S]*?)<\/button>/g, (mm, inner) => { t.push(inner.replace(/<[^>]+>/g, '').trim()); return mm; });
+        return t.every((x) => !/[A-Za-z\u4e00-\u9fa5.]/.test(x));
+      });
+    })()],
   ['v2.4.6: 配置包 .fcpc / 主题包 .fcpt（零依赖 zip + 四个 IPC + 设置面板最下面两行）',
     fs.existsSync('pack.js') && main.includes("require('./pack')") &&
     main.includes("'export-config'") && main.includes("'import-config'") &&
@@ -837,9 +861,9 @@ const checks = [
     fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8').includes('onRealtimeFrame')],
   ['v2.4.6: 渲染层外部帧模式（onRealtimeFrame 在则走原生帧，不走 getDisplayMedia）',
     app.includes('startExternalRealtime') && app.includes('onRealtimeFrame')],
-  ['v2.4.6: 安卓版本号与桌面同步 2.4.6',
-    fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8').includes("APP_VERSION = '2.4.6'") &&
-    JSON.parse(fs.readFileSync('mobile/package.json', 'utf8')).version === '2.4.6'],
+  ['v2.4.6: 安卓版本号与桌面同源（package.json 是唯一版本源）',
+    fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8').includes("APP_VERSION = '" + srcPkg.version + "'") &&
+    JSON.parse(fs.readFileSync('mobile/package.json', 'utf8')).version === srcPkg.version],
   ['v2.4.6: 应用图标 = 加号卡片（重绘源 + 安卓满幅前景层修圆角）',
     fs.existsSync('build/icon_fullsquare.png') &&
     fs.readFileSync('_rt/_mkandroidicons.js', 'utf8').includes('icon_fullsquare.png') &&

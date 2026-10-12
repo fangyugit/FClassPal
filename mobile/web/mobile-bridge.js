@@ -27,7 +27,7 @@
 
   var MOBILE_KEY = 'fclasspal-mobile-config';
   var FALLBACK_ACCENT = '#6750A4';   // 与桌面版 DEFAULT_CONFIG.accentColor 一致
-  var APP_VERSION = '2.4.6';
+  var APP_VERSION = '2.4.7';
 
   /* ---------------------------------------------------------------- 原生插件 */
   function plugin() {

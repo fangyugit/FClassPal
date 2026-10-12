@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const { extractFile } = require('@electron/asar');
 const main = fs.readFileSync('main.js','utf-8').toString();
 const pre = fs.readFileSync('preload.js','utf-8').toString();
 const css = fs.readFileSync('renderer/style.css','utf-8').toString();
@@ -440,8 +441,15 @@ const checks = [
     fs.existsSync('build/icon.ico') && fs.existsSync('build/icon.png')],
   ['main: BrowserWindow 挂 icon（开发模式/alt-tab 也有图标）',
     /icon:\s*fs\.existsSync\(path\.join\(__dirname, 'build', 'icon\.ico'\)\)/.test(main)],
-  ['产物: 便携 exe 已生成（v2.4.5）', fs.existsSync('dist/FClassPal-2.4.5.exe')],
-  ['配置: 版本号 2.4.5', srcPkg.version === '2.4.5'],
+  ['产物: 便携 exe 已生成（v2.4.6）', fs.existsSync('dist/FClassPal-2.4.6.exe')],
+  /* 版本一致性（不再钉死某个号）：源码版本 = README 徽章 = CHANGELOG 有对应小节
+   * = dist 里真有这个版本的 exe。改版本只改 package.json 一处，其余不同步就判红。 */
+  ['配置: 版本号三处同源（package.json / README 徽章 / CHANGELOG 小节）',
+    /^\d+\.\d+\.\d+$/.test(srcPkg.version) &&
+    readme.includes('version-' + srcPkg.version + '-orange') &&
+    new RegExp('##\\s*v' + srcPkg.version.replace(/\./g, '\\.') + '\\s*—').test(changelog)],
+  ['配置: dist 里存在当前版本的便携 exe（防发版发了上一版产物）',
+    fs.existsSync('dist/FClassPal-' + srcPkg.version + '.exe')],
   ['配置: 已移除 package.json description（exe 属性不再带描述）',
     srcPkg.description === undefined],
   ['author = YU（用户在远端改的大写）', srcPkg.author === 'YU'],
@@ -743,7 +751,7 @@ const checks = [
     /function effectiveDark\(\)/.test(app) &&
     html.includes('data-appearance="auto"')],
   ['v2.4.5: get-palette 不再把 auto 折叠成 light（跟随系统要被记住）',
-    /get-palette', \(event, patch\) => \{[\s\S]{0,400}?cfg\.appearance = patch\.appearance/.test(main) &&
+    /get-palette', \(event, patch\) => \{[\s\S]{0,800}?cfg\.appearance = patch\.appearance/.test(main) &&
     /patch\.appearance === 'auto' \|\| patch\.appearance === 'light'/.test(main) &&
     !/patch\.appearance === 'auto' \? 'light' : patch\.appearance/.test(main)],
   ['v2.4.5: 安卓壳就位（装配脚本 / 桥接 / 原生插件 / 出包脚本）',
@@ -784,7 +792,85 @@ const checks = [
   ['v2.2.4: 标题栏默认 FClassPal（html + 全部 fallback）',
     html.includes('value="FClassPal"') && html.includes('<title>FClassPal</title>') &&
     !app.includes("'管家助手'")],
-  ['U盘弹出修复仍在', main.includes('CM_Request_Device_EjectW')]
+  ['U盘弹出修复仍在', main.includes('CM_Request_Device_EjectW')],
+
+  /* ---------------- v2.4.6 ---------------- */
+  ['v2.4.6: 圆角滑杆拖动实时预览（input 只预览，不许同步 saveConfig）',
+    /setRadius'\)\.addEventListener\('input',\s*\(e\)\s*=>\s*\{\s*applyRadius\(parseInt\(e\.target\.value,\s*10\),\s*false\);\s*syncRangeFill\(e\.target\);\s*\}\)/.test(app)],
+  ['v2.4.6: 圆角滑杆 change 才 saveConfig', /setRadius'\)\.addEventListener\('change'/.test(app)],
+  ['v2.4.6: veil 底部辉光改 -10px/16px（旧 -22px/34px 会被折射推出白液滴）',
+    cssNC.includes('inset 0 -10px 16px -14px') && !cssNC.includes('inset 0 -22px 34px -26px')],
+  ['v2.4.6: 长按菜单不抢表单控件（range 拖不动的根因）',
+    app.includes("closest('input, select, button, textarea, .panel, .ctx-menu, .usb-section')")],
+  ['v2.4.6: input[type=range] touch-action:none（触摸拖滑杆不被打断）',
+    /input\[type="range"\]\s*\{[^}]*touch-action:\s*none/.test(css)],
+  ['v2.4.6: 编辑模式拖动排序引擎（Pointer Events + ghost + 落点判定）',
+    app.includes('startItemDrag') && app.includes('applyItemDrop') &&
+    app.includes('dropTargetAt') && app.includes("drag-ghost")],
+  ['v2.4.6: 拖动聚合文件夹用 children 标记（type:folder 已被"目录快捷方式"占用）',
+    app.includes("function isFolder(it) { return !!(it && Array.isArray(it.children)); }")],
+  ['v2.4.6: 文件夹二级菜单（点击文件夹弹出 / 可删除 / 可编辑子项）',
+    app.includes('showFolderMenu') && app.includes('closeFolderMenu') &&
+    css.includes('folder-menu') && css.includes('folder-badge')],
+  ['v2.4.6: 按名称排序（正序/倒序，中文 localeCompare）',
+    app.includes('sortGroupsByName') &&
+    app.includes("localeCompare") && app.includes('zh-Hans-CN') &&
+    html.includes('data-act="sortAsc"') && html.includes('data-act="sortDesc"')],
+  ['v2.4.6: 编辑模式菜单项只在编辑态露出', css.includes('body.edit-mode .ctx-menu .ctx-sort')],
+  ['v2.4.6: 设置面板描述文字已清空（只留 JS 回填的 fixedPaletteHint 一处）',
+    (html.match(/class="row-hint/g) || []).length === 1],
+  ['v2.4.6: 占用程序弹窗（三键：关闭占用并重试 / 直接重试 / 取消）',
+    app.includes('showOccupiedDialog') && main.includes("'close-drive-occupants'") &&
+    pre.includes('closeDriveOccupants') && css.includes('occupied-menu')],
+  ['v2.4.6: 弹出被拒立即返回占用列表（不再五层兜底硬磨）',
+    /occupied/.test(main) && main.includes('parseOccupants') && main.includes('buildOccupantsScript')],
+  ['★ v2.4.7: 配置/主题包按钮不在 .size-controls 里（30×30 会压爆文字且点不到，真机事故）',
+    (() => {
+      const m = html.match(/id="rowBackup"[\s\S]{0,300}?id="btnCfgImport"/);
+      const m2 = html.match(/id="rowThemePack"[\s\S]{0,300}?id="btnThemeImport"/);
+      return !!m && !!m2 && /class="btn-row"/.test(m[0]) && /class="btn-row"/.test(m2[0]) &&
+        !/class="size-controls"/.test(m[0]) && !/class="size-controls"/.test(m2[0]);
+    })()],
+  ['★ v2.4.7: .size-controls 块内没有任何带文字/字母的按钮（只能是图标按钮）',
+    (() => {
+      const blocks = [];
+      html.replace(/<div class="size-controls">([\s\S]*?)<\/div>/g, (mm, b) => { blocks.push(b); return mm; });
+      return blocks.length > 0 && blocks.every((b) => {
+        const t = [];
+        b.replace(/<button[^>]*>([\s\S]*?)<\/button>/g, (mm, inner) => { t.push(inner.replace(/<[^>]+>/g, '').trim()); return mm; });
+        return t.every((x) => !/[A-Za-z\u4e00-\u9fa5.]/.test(x));
+      });
+    })()],
+  ['v2.4.6: 配置包 .fcpc / 主题包 .fcpt（零依赖 zip + 四个 IPC + 设置面板最下面两行）',
+    fs.existsSync('pack.js') && main.includes("require('./pack')") &&
+    main.includes("'export-config'") && main.includes("'import-config'") &&
+    main.includes("'export-theme'") && main.includes("'import-theme'") &&
+    html.includes('id="rowBackup"') && html.includes('id="rowThemePack"') &&
+    pre.includes('exportConfig') && pre.includes('importConfig') &&
+    pre.includes('exportTheme') && pre.includes('importTheme')],
+  ['v2.4.6: 签名密钥已 gitignore（_signing/ 与 *.keystore 绝不入公开仓库）',
+    fs.readFileSync('.gitignore', 'utf8').includes('_signing/')],
+  ['v2.4.6: 安卓 · 悬浮窗/全屏窗口模式（原生 setWindowMode + 面板切换行）',
+    fs.readFileSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/PalBridgePlugin.java', 'utf8').includes('setWindowMode') &&
+    fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8').includes('injectWindowModeRow')],
+  ['v2.4.6: 安卓 · 录屏实时模糊（MediaProjection + 前台服务 + 帧事件过桥）',
+    fs.existsSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/RealtimeCapture.java') &&
+    fs.existsSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/ScreenCaptureService.java') &&
+    fs.readFileSync('mobile/android-overlay/app/src/main/AndroidManifest.xml', 'utf8').includes('FOREGROUND_SERVICE_MEDIA_PROJECTION') &&
+    fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8').includes('onRealtimeFrame')],
+  ['v2.4.6: 渲染层外部帧模式（onRealtimeFrame 在则走原生帧，不走 getDisplayMedia）',
+    app.includes('startExternalRealtime') && app.includes('onRealtimeFrame')],
+  ['v2.4.6: 安卓版本号与桌面同源（package.json 是唯一版本源）',
+    fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8').includes("APP_VERSION = '" + srcPkg.version + "'") &&
+    JSON.parse(fs.readFileSync('mobile/package.json', 'utf8')).version === srcPkg.version],
+  ['v2.4.6: 应用图标 = 加号卡片（重绘源 + 安卓满幅前景层修圆角）',
+    fs.existsSync('build/icon_fullsquare.png') &&
+    fs.readFileSync('_rt/_mkandroidicons.js', 'utf8').includes('icon_fullsquare.png') &&
+    srcPkg.build.win.icon === 'build/icon.ico'],
+  ['v2.4.6: exe 体积优化（最大压缩 + 只留中英语言包）',
+    srcPkg.build.win.compression === 'maximum' &&
+    Array.isArray(srcPkg.build.electronLanguages) &&
+    srcPkg.build.electronLanguages.join(',') === 'zh-CN,en-US']
 ];
 let bad = 0;
 checks.forEach((c) => {

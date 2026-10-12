@@ -26,6 +26,8 @@ _rt/*
 !_rt/_mobilecheck.js
 !_rt/_mkandroidicons.js
 !_rt/_palettecheck.js
+!_rt/_packcheck.js
+!_rt/_packui.js
 !_rt/probe.html
 !_rt/crop_chars.py
 !_rt/fetch_chars.py
