@@ -104,8 +104,8 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 | Windows | [FClassPal-2.4.6.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.4.6/FClassPal-2.4.6.exe)（免安装便携版，约 62MB） | x64 |
 | Linux | `FClassPal-2.4.5-linux-amd64.deb` / `FClassPal-2.4.5-linux-x64.tar.gz`（沿用上一版） | x64 |
 | Linux | `FClassPal-2.4.5-linux-arm64.deb` / `FClassPal-2.4.5-linux-arm64.tar.gz`（沿用上一版） | arm64 |
-| macOS | `FClassPal-2.4.5-mac-x64.dmg` / `.zip`（沿用上一版） | Intel x64 |
-| macOS | `FClassPal-2.4.5-mac-arm64.dmg` / `.zip`（沿用上一版） | Apple 芯片（M 系列） |
+| macOS | `FClassPal-2.4.6-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
+| macOS | `FClassPal-2.4.6-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
 | Android | `FClassPal-2.4.6-android.apk`（正式签名，可直接覆盖安装升级） | arm64 / armv7 / x86_64 |
 
 - 产物名都带平台与架构，下载时一眼看清装的是哪一份；[全部版本](https://github.com/fangyugit/FclassPal/releases)
