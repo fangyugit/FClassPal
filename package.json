@@ -20,7 +20,10 @@
       "main.js",
       "preload.js",
       "pack.js",
+      "themes.js",
+      "themes/**/*",
       "renderer/**/*",
+      "!renderer/theme/**/*",
       "vendor/**/*",
       "package.json"
     ],

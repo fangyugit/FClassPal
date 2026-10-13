@@ -58,6 +58,11 @@ const DEFAULT_CONFIG = {
   // 系统截图/录屏看不到本窗口（setContentProtection 的副作用）。
   realtime: false,
   theme: 'glass',      // 界面风格：'glass'=液态玻璃，'md3'=Material Design 3（壁纸取色）
+  // v2.5.0 起本体只带五套内置皮肤（glass/md3/fluent/miuix/harmony），
+  // 角色主题全部拆成独立 .fcpt 主题包，落在 <配置目录>/themes/<id>/。
+  // themeOrder 是「主题管理」里拖动排序的结果，只存 id 数组：内置五套永远在前，
+  // 没登记的（新装的包）补在后面，所以老配置缺这个字段也不会乱。
+  themeOrder: [],
   // 明暗模式（v2.4.0，v2.4.5 增加跟随系统）：'light' | 'dark' | 'auto'。
   // auto = 跟随 Windows 的"应用模式"设置（nativeTheme.shouldUseDarkColors），
   // 系统一改（含"日落到日出"这类自动切换）立刻跟着变，不用重开应用。
@@ -882,6 +887,10 @@ function stopUsbWatcher() {
 }
 
 app.whenReady().then(() => {
+  /* 主题包要先于建窗装好：createWindow 里 loadConfig 之后渲染层就会按
+   * config.theme 上皮肤，主题不在磁盘上会被 applyTheme 退回基线，
+   * 用户看到的就是"升级完变了个样"。 */
+  autoInstallPreviousTheme();
   createWindow();
   createTray();
   startUsbWatcher();
@@ -1644,6 +1653,8 @@ function parseOccupants(text) {
  *   .fcpc：整套配置（设置 + 分组/快捷方式 + 图标文件 + 自定义背景）
  *   .fcpt：主题观感方案（主题/明暗/圆角/透明度 + 背景图方案 + 图标外观）+ 人读的 README */
 const { createZip, readZip } = require('./pack');
+/* v2.5.0：主题包引擎（扫描/安装/卸载/CSS 投喂），主进程这边的事都封装在 themes.js */
+const themes = require('./themes');
 
 function packStamp() {
   const d = new Date();
@@ -1792,18 +1803,24 @@ ipcMain.handle('import-config', async () => {
 const THEME_KEYS = ['theme', 'appearance', 'cornerRadius', 'opacity', 'title',
   'background', 'iconFit', 'iconBorder', 'iconShape', 'iconRadius', 'iconRingColor', 'iconMono', 'colorMode', 'accentColor', 'accentPicked'];
 
+/* ★ v2.5.0 扩展名语义澄清：
+ *   .fcpc = 完整配置包（快捷方式 + 分组 + 图标 + 观感）
+ *   .fcps = 主题方案（只存 THEME_KEYS 那份观感参数，v2.4.6 起叫 .fcpt）
+ *   .fcpt = 真·主题包（manifest.json + theme.css + assets/，v2.5.0 起的新语义）
+ * 旧的 .fcpt 是"方案快照"，新的 .fcpt 是"皮肤本体"，同名会让人装错，
+ * 所以旧的那个改名 .fcps —— 语义上它就是"settings preset"。 */
 ipcMain.handle('export-theme', async () => {
   try {
     const cfg = loadConfig();
     // v2.5.0：与配置包一致，导出走「选文件夹」
     const r = await dialog.showOpenDialog(mainWindow, {
-      title: '选择导出位置（主题包会保存到你选的文件夹里）',
+      title: '选择导出位置（主题方案会保存到你选的文件夹里）',
       buttonLabel: '导出到这里',
       properties: ['openDirectory', 'createDirectory']
     });
     if (r.canceled || !r.filePaths || !r.filePaths[0]) return { success: false, canceled: true };
     const outPath = uniquePath(path.join(r.filePaths[0],
-      'FClassPal-主题-' + (cfg.theme || 'glass') + '-' + packStamp() + '.fcpt'));
+      'FClassPal-主题方案-' + (cfg.theme || 'glass') + '-' + packStamp() + '.fcps'));
     const scheme = {};
     THEME_KEYS.forEach((k) => { if (cfg[k] !== undefined) scheme[k] = cfg[k]; });
     const bag = {};
@@ -1821,11 +1838,11 @@ ipcMain.handle('export-theme', async () => {
       glass: '液态玻璃', md3: 'Material You 3', fluent: 'Fluent', miuix: 'MIUIX',
       harmony: '鸿蒙', kitty: 'Hello Kitty', dog: '玉桂狗', kuromi: '库洛米',
       melody: '美乐蒂', sanrio: '三丽鸥',
-      pochacco: '帕恰狗', purin: '布丁狗', milk: '奶娃', tianyi: '洛天依',
+      pochacco: '帕恰狗', purin: '布丁狗', milk: '奶蛙', tianyi: '洛天依',
       ling: '乐正绫', miku: '初音未来', teto: '重音Teto', whale: 'DS鲸鱼娘'
     };
     const lines = [];
-    lines.push('FClassPal 主题方案（.fcpt）');
+    lines.push('FClassPal 主题方案（.fcps）');
     lines.push('');
     lines.push('界面风格　' + (THEME_NAMES[scheme.theme] || scheme.theme));
     lines.push('明暗模式　' + (scheme.appearance === 'auto' ? '跟随系统' : (scheme.appearance === 'dark' ? '黑暗' : '明亮')));
@@ -1839,9 +1856,12 @@ ipcMain.handle('export-theme', async () => {
     lines.push('');
     lines.push('包内文件：manifest.json（包信息）、theme.json（方案参数，JSON 可直接读）、');
     lines.push('assets/（背景图，如有）、本说明。');
-    lines.push('导入：设置面板最下面「主题方案 → 导入」，选择本文件即可（只改观感，不动快捷方式）。');
+    lines.push('导入：设置面板最下面「主题方案 → 导入」选择本文件即可（只改观感，不动快捷方式）。');
+    lines.push('');
+    lines.push('★ 注意区分：本文件 .fcps 是「主题方案」（一组参数），不是「主题包」。');
+    lines.push('  主题包是 .fcpt（内含 theme.css + 素材），要在「主题 → 导入主题包」里装。');
     const entries = [
-      { name: 'manifest.json', data: JSON.stringify({ kind: 'fcpt', app: 'FClassPal', version: 1, appVersion: app.getVersion(), theme: scheme.theme, exportedAt: new Date().toISOString() }, null, 2) },
+      { name: 'manifest.json', data: JSON.stringify({ kind: 'fcps', app: 'FClassPal', version: 1, appVersion: app.getVersion(), theme: scheme.theme, exportedAt: new Date().toISOString() }, null, 2) },
       { name: 'theme.json', data: JSON.stringify(scheme, null, 2) }
     ];
     for (const k of Object.keys(bag)) entries.push({ name: k, data: bag[k] });
@@ -1856,8 +1876,8 @@ ipcMain.handle('export-theme', async () => {
 ipcMain.handle('import-theme', async () => {
   try {
     const r = await dialog.showOpenDialog(mainWindow, {
-      title: '导入主题方案（.fcpt）',
-      filters: [{ name: 'FClassPal 主题方案', extensions: ['fcpt'] }],
+      title: '导入主题方案（.fcps）',
+      filters: [{ name: 'FClassPal 主题方案', extensions: ['fcps'] }],
       properties: ['openFile']
     });
     if (r.canceled || !r.filePaths || !r.filePaths[0]) return { success: false, canceled: true };
@@ -1866,7 +1886,10 @@ ipcMain.handle('import-theme', async () => {
     zip.forEach((e) => { byName[e.name] = e.data; });
     let manifest = {};
     try { manifest = JSON.parse(byName['manifest.json'].toString('utf8')); } catch (e) { }
-    if (manifest.kind && manifest.kind !== 'fcpt') return { success: false, error: '这不是主题方案（是 ' + manifest.kind + '），请在「配置备份」处导入' };
+    // 装错类型是最常见的手滑：给准确指路，别只说"格式不对"
+    if (manifest.kind === 'fcpt') return { success: false, error: '这是主题包（.fcpt），请到「主题 → 导入主题包」里装' };
+    if (manifest.kind === 'fcpc') return { success: false, error: '这是配置包（.fcpc），请在「配置备份」处导入' };
+    if (manifest.kind && manifest.kind !== 'fcps') return { success: false, error: '这不是主题方案（是 ' + manifest.kind + '）' };
     if (!byName['theme.json']) return { success: false, error: '包里没有 theme.json，文件可能不完整' };
     const scheme = JSON.parse(byName['theme.json'].toString('utf8'));
     const cfg = loadConfig();
@@ -1886,37 +1909,298 @@ ipcMain.handle('import-theme', async () => {
   }
 });
 
+/* ==================== 主题包管理（.fcpt，v2.5.0）====================
+ * 本体的"皮肤"从此分两层：
+ *   内置五套（glass/md3/fluent/miuix/harmony）编译在 renderer/style.css 里，不可删；
+ *   主题包（.fcpt）落在 <配置目录>/themes/<id>/，由本模块负责装/删/排序/投喂 CSS。
+ * 落盘与安全校验都在 themes.js，这里只做 IPC 编排 + 配置落盘。
+ *
+ * 随包附带的离线包在安装目录 themes/*.fcpt（app.asar 内，读得到）：
+ * 用户升级上来的第一件事就是"我以前那套别没了"，所以 whenReady 里会
+ * 自动把 config.theme 对应的离线包装上（见 autoInstallPreviousTheme）。 */
+const BUNDLED_THEMES_DIR = path.join(app.getAppPath ? app.getAppPath() : __dirname, 'themes');
+
+/** 渲染层要的全部主题信息：内置 + 已安装 + 随包离线库存 + 顺序 */
+function themeInventory() {
+  const cfg = loadConfig();
+  const installed = themes.scanInstalled(CONFIG_DIR);
+  const ok = installed.filter((t) => !t.broken);
+  const order = themes.orderedIds(cfg.themeOrder, ok.map((t) => t.id));
+  const byId = {};
+  ok.forEach((t) => { byId[t.id] = t; });
+  const cards = order.map((id) => {
+    const b = themes.BUILTIN.filter((t) => t.id === id)[0];
+    if (b) return Object.assign({}, b, { builtin: true, installed: true, removable: false });
+    const t = byId[id];
+    // 内置的不能删；主题包能删。宽高比 / 主色都在 cards 里，UI 不用再查表。
+    return Object.assign({}, t, { builtin: false, installed: true, removable: true });
+  });
+  return {
+    spec: themes.SPEC_VERSION,
+    current: cfg.theme,
+    order: order,
+    themes: cards,
+    broken: installed.filter((t) => t.broken).map((t) => ({ id: t.id, error: t.broken })),
+    bundled: themes.listBundled(BUNDLED_THEMES_DIR, ok.map((t) => t.id)),
+    themesDir: themes.themesDir(CONFIG_DIR),
+    hasBundled: fs.existsSync(BUNDLED_THEMES_DIR)
+  };
+}
+
+ipcMain.handle('themes-list', () => {
+  try { return { success: true, data: themeInventory() }; }
+  catch (e) { return { success: false, error: e.message }; }
+});
+
+/** 把已安装主题包的 CSS 交给渲染层（它注入一个 <style id="themePackCss">）。
+ *  url("assets/x.png") 在这里统一改写成绝对 file:/// 路径 —— 渲染层是注入样式，
+ *  相对路径会按 index.html 所在目录解析，改写成绝对路径才不会全变空白。 */
+ipcMain.handle('themes-css', (event, onlyId) => {
+  const out = {};
+  try {
+    const installed = themes.scanInstalled(CONFIG_DIR).filter((t) => !t.broken);
+    for (const t of installed) {
+      if (onlyId && t.id !== onlyId) continue;
+      try { out[t.id] = themes.cssFor(t.dir, t.id); }
+      catch (e) { out[t.id] = '/* 主题包 ' + t.id + ' 读取失败：' + e.message + ' */'; }
+    }
+    return { success: true, css: out };
+  } catch (e) {
+    return { success: false, error: e.message, css: out };
+  }
+});
+
+/** 导入主题包：选文件 → 装 → 返回新清单（UI 直接刷新，不用再问一次） */
+ipcMain.handle('themes-install', async () => {
+  try {
+    const r = await dialog.showOpenDialog(mainWindow, {
+      title: '导入主题包（.fcpt）',
+      filters: [{ name: 'FClassPal 主题包', extensions: ['fcpt'] }],
+      properties: ['openFile']
+    });
+    if (r.canceled || !r.filePaths || !r.filePaths[0]) return { success: false, canceled: true };
+    const t = themes.installFromBuffer(CONFIG_DIR, fs.readFileSync(r.filePaths[0]));
+    return { success: true, installed: { id: t.id, name: t.name, version: t.version }, data: themeInventory() };
+  } catch (e) {
+    return { success: false, error: (e && e.message) || '导入失败' };
+  }
+});
+
+/** 一键安装随包附带的离线主题包（路径只能落在安装目录 themes/ 里，不许外面乱指） */
+ipcMain.handle('themes-install-bundled', async (event, file) => {
+  try {
+    const root = path.resolve(BUNDLED_THEMES_DIR);
+    const full = path.resolve(String(file || ''));
+    if (!full.startsWith(root + path.sep) || !/\.fcpt$/i.test(full)) {
+      return { success: false, error: '离线包路径不合法' };
+    }
+    if (!fs.existsSync(full)) return { success: false, error: '离线包不存在：' + path.basename(full) };
+    const t = themes.installFromBuffer(CONFIG_DIR, fs.readFileSync(full));
+    return { success: true, installed: { id: t.id, name: t.name, version: t.version }, data: themeInventory() };
+  } catch (e) {
+    return { success: false, error: (e && e.message) || '安装失败' };
+  }
+});
+
+/** 删除主题包。删掉的正好是当前在用的 → 退回基线玻璃，不让窗口留在"没有皮肤"的状态 */
+ipcMain.handle('themes-remove', async (event, id) => {
+  try {
+    const tid = String(id || '');
+    themes.removeTheme(CONFIG_DIR, tid);
+    const cfg = loadConfig();
+    let theme = cfg.theme;
+    if (theme === tid) { theme = 'glass'; cfg.theme = 'glass'; }
+    cfg.themeOrder = (Array.isArray(cfg.themeOrder) ? cfg.themeOrder : []).filter((x) => x !== tid);
+    saveConfig(cfg);
+    return { success: true, theme, data: themeInventory() };
+  } catch (e) {
+    return { success: false, error: (e && e.message) || '删除失败' };
+  }
+});
+
+/** 排序：只收 id 数组，未知 id 直接丢掉（防止渲染层被改后往配置里塞垃圾） */
+ipcMain.handle('themes-reorder', async (event, ids) => {
+  try {
+    const cfg = loadConfig();
+    const installed = themes.scanInstalled(CONFIG_DIR).filter((t) => !t.broken).map((t) => t.id);
+    const known = themes.BUILTIN_IDS.concat(installed);
+    const list = (Array.isArray(ids) ? ids : [])
+      .map((x) => String(x)).filter((x, i, a) => known.indexOf(x) >= 0 && a.indexOf(x) === i);
+    cfg.themeOrder = list;
+    saveConfig(cfg);
+    return { success: true, order: themes.orderedIds(list, installed) };
+  } catch (e) {
+    return { success: false, error: (e && e.message) || '排序失败' };
+  }
+});
+
+ipcMain.handle('themes-open-folder', async () => {
+  try {
+    const dir = themes.themesDir(CONFIG_DIR);
+    fs.mkdirSync(dir, { recursive: true });
+    const err = await shell.openPath(dir);
+    return { success: !err, error: err || '' };
+  } catch (e) { return { success: false, error: e.message }; }
+});
+
+/** 升级兜底：配置里记的主题已经不在本体里了（v2.5.0 把角色主题拆包），
+ *  就从随包离线包把它装回来。用户不会一觉醒来发现变成基线紫。
+ *  找不到对应离线包（比如用户自己装的第三方包、又把目录删了）才退回玻璃。 */
+function autoInstallPreviousTheme() {
+  try {
+    const cfg = loadConfig();
+    const id = String(cfg.theme || '');
+    if (!id || themes.BUILTIN_IDS.indexOf(id) >= 0) return;
+    if (fs.existsSync(path.join(themes.themesDir(CONFIG_DIR), id))) return;
+    const file = path.join(BUNDLED_THEMES_DIR, id + '.fcpt');
+    if (!fs.existsSync(file)) {
+      console.log('[themes] 找不到主题包 ' + id + '，退回基线玻璃');
+      cfg.theme = 'glass';
+      saveConfig(cfg);
+      return;
+    }
+    const t = themes.installFromBuffer(CONFIG_DIR, fs.readFileSync(file));
+    console.log('[themes] 已从随包离线包装上主题：' + t.id + '（' + t.name + '）');
+  } catch (e) {
+    console.error('[themes] 自动安装随包主题失败：', e && e.message);
+  }
+}
+
 /* ---------- 检测更新（v2.5.0，关于界面）----------
- * 拉 GitHub latest release 的 tag 与当前版本比。网络不可达（api.github.com
- * 被墙/断网）时返回可读错误，不给用户看天书。超时 8 秒。 */
-ipcMain.handle('check-update', async () => {
-  const current = app.getVersion();
-  const fetchLatest = () => new Promise((resolve, reject) => {
-    const req = https.get({
-      host: 'api.github.com',
-      path: '/repos/fangyugit/FclassPal/releases/latest',
-      headers: { 'User-Agent': 'FClassPal/' + current, 'Accept': 'application/vnd.github+json' },
-      timeout: 8000
+ * ★ 本机的网络现实（2026-10 排障结论，别删这段注释）：hosts 把 github 域名族
+ * 钉到 127.0.0.1，且全机 UDP DNS 拒答 —— 直接 https.get('api.github.com')
+ * 100% 拿到 ECONNREFUSED 127.0.0.1:443，这就是"检测更新用不了"的根因。
+ * 所以链路是两级：先直连（网络正常的机器一次就成），失败再走
+ * 「DoH over IP 解析出真实 IP → 手工 SNI 连过去」。超时给短，别让按钮转圈太久。
+ *
+ * 版本比较只认纯 x.y.z 形态的 tag：用户把历史 release 改名成 "4.9.9-Pre" 这类
+ * 带后缀的预发布标记，不能被当成"有新版"（4.9.9 > 2.5.0 会把用户吓一跳）。 */
+const GITHUB_API_HOST = 'api.github.com';
+const GITHUB_REPO = 'fangyugit/FClassPal';
+const DOH_PROVIDERS = [
+  { ip: '223.5.5.5', servername: 'dns.alidns.com' },     // 阿里 DoH，国内可达性好
+  { ip: '1.1.1.1', servername: 'cloudflare-dns.com' },   // Cloudflare 兜底
+  { ip: '8.8.8.8', servername: 'dns.google' }            // Google 再兜底
+];
+
+function httpsJson(hostHeader, pathname, ip, servername, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      host: ip || hostHeader,
+      port: 443,
+      method: 'GET',
+      path: pathname,
+      servername: servername || undefined,
+      headers: {
+        Host: hostHeader,
+        'User-Agent': 'FClassPal/' + app.getVersion(),
+        'Accept': 'application/vnd.github+json'
+      },
+      timeout: timeoutMs
     }, (res) => {
-      if (res.statusCode !== 200) { res.resume(); return reject(new Error('GitHub 返回 ' + res.statusCode)); }
       let d = '';
+      res.setEncoding('utf8');
       res.on('data', (c) => { d += c; });
       res.on('end', () => {
-        try { resolve(JSON.parse(d).tag_name || ''); } catch (e) { reject(e); }
+        if (res.statusCode !== 200) { reject(new Error('GitHub 返回 ' + res.statusCode)); return; }
+        try { resolve(JSON.parse(d)); } catch (e) { reject(new Error('返回内容不是 JSON')); }
       });
     });
     req.on('timeout', () => { req.destroy(); reject(new Error('连接超时')); });
     req.on('error', reject);
+    req.end();
   });
+}
+
+/** DoH over IP：拿不到系统 DNS 时的唯一出路（纯 A 记录，够用） */
+function dohResolve(host) {
+  return new Promise((resolve, reject) => {
+    let idx = 0;
+    const next = () => {
+      if (idx >= DOH_PROVIDERS.length) { reject(new Error('DoH 解析失败（三个解析器都没通）')); return; }
+      const p = DOH_PROVIDERS[idx++];
+      const req = https.request({
+        host: p.ip, port: 443, method: 'GET',
+        path: '/dns-query?name=' + encodeURIComponent(host) + '&type=A',
+        servername: p.servername,
+        headers: { Host: p.servername, Accept: 'application/dns-json' },
+        timeout: 5000
+      }, (res) => {
+        let d = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => { d += c; });
+        res.on('end', () => {
+          try {
+            const j = JSON.parse(d);
+            const hit = (j.Answer || []).filter((a) => a.type === 1 && /^\d+\.\d+\.\d+\.\d+$/.test(a.data))[0];
+            if (hit) resolve(hit.data); else next();
+          } catch (e) { next(); }
+        });
+      });
+      req.on('timeout', () => { req.destroy(); next(); });
+      req.on('error', () => { next(); });
+      req.end();
+    };
+    next();
+  });
+}
+
+function friendlyNetError(e) {
+  const m = String((e && e.message) || e || '');
+  if (/ECONNREFUSED/.test(m)) return '网络被本机拦截（GitHub 域名被解析到 127.0.0.1），直连兜底也没通';
+  if (/ENOTFOUND|EAI_AGAIN/.test(m)) return '域名解析不了（这台机器的 DNS 不通）';
+  if (/超时|ETIMEDOUT|ESOCKETTIMEDOUT/.test(m)) return '连接超时，检查网络或代理后重试';
+  if (/403/.test(m)) return 'GitHub 拒绝了请求（可能是访问频率限制），过一会儿再试';
+  if (/404/.test(m)) return '仓库或发布页找不到（404）';
+  return m || '网络不可达';
+}
+
+async function githubApi(pathname) {
   try {
-    const tag = await fetchLatest();
-    if (!tag) return { success: false, error: '发布信息为空' };
-    const num = (s) => String(s).replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0);
-    const a = num(current), b = num(tag);
-    const newer = b[0] > a[0] || (b[0] === a[0] && b[1] > a[1]) || (b[0] === a[0] && b[1] === a[1] && b[2] > a[2]);
-    return { success: true, update: newer, latest: String(tag).replace(/^v/i, ''), current };
+    return await httpsJson(GITHUB_API_HOST, pathname, null, null, 5000);
   } catch (e) {
-    return { success: false, error: (e && e.message) || '网络不可达' };
+    const m = String((e && e.message) || '');
+    if (!/ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|超时|ECONNRESET|socket hang up/.test(m)) throw e;
+    const ip = await dohResolve(GITHUB_API_HOST);
+    return await httpsJson(GITHUB_API_HOST, pathname, ip, GITHUB_API_HOST, 9000);
+  }
+}
+
+ipcMain.handle('check-update', async () => {
+  const current = app.getVersion();
+  try {
+    let list;
+    try {
+      list = await githubApi('/repos/' + GITHUB_REPO + '/releases?per_page=30');
+    } catch (e) {
+      list = [await githubApi('/repos/' + GITHUB_REPO + '/releases/latest')];
+    }
+    if (!Array.isArray(list)) list = [list];
+    const parse = (tag) => {
+      const core = String(tag || '').replace(/^v/i, '').trim();
+      if (!/^\d+(\.\d+){1,3}$/.test(core)) return null;   // 带后缀的（4.9.9-Pre）不算正式版本
+      return { core, num: core.split('.').map((x) => parseInt(x, 10) || 0) };
+    };
+    const stable = list
+      .filter((r) => r && !r.draft && !r.prerelease)
+      .map((r) => ({ r, v: parse(r.tag_name) }))
+      .filter((x) => x.v);
+    if (!stable.length) return { success: false, error: '发布页里没有可比较的正式版本' };
+    stable.sort((a, b) => {
+      const A = a.v.num, B = b.v.num;
+      for (let i = 0; i < 4; i++) { const d = (B[i] || 0) - (A[i] || 0); if (d) return d; }
+      return 0;
+    });
+    const best = stable[0];
+    const cur = parse(current) || { core: current, num: [0, 0, 0] };
+    let update = false;
+    for (let i = 0; i < 4; i++) {
+      const d = (best.v.num[i] || 0) - (cur.num[i] || 0);
+      if (d) { update = d > 0; break; }
+    }
+    return { success: true, update, latest: best.v.core, current };
+  } catch (e) {
+    return { success: false, error: friendlyNetError(e) };
   }
 });
 

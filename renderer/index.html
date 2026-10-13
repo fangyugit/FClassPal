@@ -31,6 +31,10 @@
     <symbol id="i-sort-desc" viewBox="0 0 24 24"><path d="M11 5h10M11 9h7M11 13h4M7 21V3M7 3L3 7M7 3l4 4"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4.6A1.6 1.6 0 0 1 9.6 3h4.8A1.6 1.6 0 0 1 16 4.6V6"/><path d="M18.4 6l-.9 13.2a1.9 1.9 0 0 1-1.9 1.8H8.4a1.9 1.9 0 0 1-1.9-1.8L5.6 6"/><path d="M10.4 10.6v6.6M13.6 10.6v6.6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7.4 10.4L12 15l4.6-4.6"/><path d="M4.5 20h15"/></symbol>
 
     <!-- ====== 液态玻璃折射滤镜（standard 模式，逐行对齐 liquid-glass-react）======
          参考实现：https://github.com/rdev/liquid-glass-react  (MIT, © 2025 MAX ROVENSKY)
@@ -408,11 +412,20 @@
           <button id="btnCfgImport" class="text-btn">导入 .fcpc</button>
         </div>
       </div>
+      <!-- 主题管理（v2.5.0）：本体只带五套内置皮肤，其余主题是 .fcpt 主题包。
+           这里只管入口，弹窗在页面底部（README 里讲清了 .fcps / .fcpt 的区别）。 -->
+      <div class="row" id="rowThemes">
+        <span>主题</span>
+        <div class="btn-row">
+          <button id="btnThemeManage" class="text-btn" type="button">管理主题</button>
+          <button id="btnThemeRepo" class="text-btn" type="button">获取更多主题</button>
+        </div>
+      </div>
       <div class="row" id="rowThemePack">
         <span>主题方案</span>
         <div class="btn-row">
-          <button id="btnThemeExport" class="text-btn">导出 .fcpt</button>
-          <button id="btnThemeImport" class="text-btn">导入 .fcpt</button>
+          <button id="btnThemeExport" class="text-btn">导出 .fcps</button>
+          <button id="btnThemeImport" class="text-btn">导入 .fcps</button>
         </div>
       </div>
 
@@ -544,6 +557,38 @@
           <div class="spacer"></div>
           <button id="btnResetCancel" class="ghost-btn">取消</button>
           <button id="btnResetConfirm" class="danger-btn">确认重置</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主题管理（v2.5.0）
+       本体只保留五套内置皮肤（液态玻璃/MD3/Fluent/MIUI/鸿蒙），角色主题一律是
+       .fcpt 主题包。这里做四件事：切换、排序、删除、导入。
+       排序用箭头按钮 + 指针拖动两套：箭头在触摸屏和键盘上稳，拖动是桌面习惯。
+       ※ 按钮一律 .text-btn / 自带尺寸的 .theme-mini，别塞进 .size-controls
+         （那个类写死 30×30，文字按钮进去会被压扁、可点区域错位）。 -->
+  <div id="themeModal" class="modal hidden">
+    <div class="modal-card theme-card-modal">
+      <div class="modal-header">
+        <span>主题管理</span>
+        <button class="panel-close" id="btnThemeModalClose"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p class="row-hint" id="themeManageHint">点一下卡片就能换风格；用箭头或直接拖动调整顺序；主题包可以删除，内置五套删不掉。</p>
+        <div class="theme-list" id="themeList"></div>
+        <div class="theme-group hidden" id="themeBundledBox">
+          <span class="theme-group-title">随包附带 · 点一下装进来</span>
+          <div class="theme-list" id="themeBundledList"></div>
+        </div>
+        <div class="theme-group hidden" id="themeBrokenBox">
+          <span class="theme-group-title">读不出来的主题包</span>
+          <div class="theme-list" id="themeBrokenList"></div>
+        </div>
+        <div class="btn-row theme-actions">
+          <button id="btnThemeInstall" class="text-btn" type="button">导入 .fcpt</button>
+          <button id="btnThemeFolder" class="text-btn" type="button">打开主题文件夹</button>
+          <button id="btnThemeRepoLink" class="text-btn" type="button">主题仓库</button>
         </div>
       </div>
     </div>

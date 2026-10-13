@@ -39,8 +39,8 @@ import subprocess
 import sys
 import time
 
-OWNER = 'fangyugit'
-REPO = 'FclassPal'
+OWNER = os.environ.get('FCP_GH_OWNER', 'fangyugit')
+REPO = os.environ.get('FCP_GH_REPO', 'FclassPal')
 BRANCH = 'main'
 DNS_SERVER = '8.8.8.8'
 
@@ -207,10 +207,10 @@ def local_files():
 
 
 def remote_tree(token):
-    """远端整个树：path -> (sha, size)。"""
+    """远端整个树：path -> (sha, size)。空仓库（404/409）按没有文件处理。"""
     out = {}
     data = api('GET', '/repos/%s/%s/git/trees/heads/%s?recursive=1' % (OWNER, REPO, BRANCH),
-               token=token)
+               ok=(200, 404, 409), token=token)
     for ent in data.get('tree', []):
         if ent.get('type') == 'blob':
             out[ent['path']] = (ent['sha'], ent.get('size', 0))
@@ -241,24 +241,41 @@ def diff(token, verbose=True):
 
 # ---------------------------------------------------------------- 提交
 
-def push(message, only=None, all_files=False):
+def push(message, only=None, all_files=False, prune=False):
     token = _token()
     changed, added, removed, local = diff(token)
-    if removed:
-        print('注意 以下文件只在远端存在，本脚本**不会**删（要删请自己上 GitHub 动手）：'
+    if removed and not prune:
+        print('注意 以下文件只在远端存在，本脚本**不会**删（加 --prune 才删，或上 GitHub 动手）：'
               + ', '.join(removed))
     targets = sorted(local) if all_files else sorted(set(changed) | set(added))
     if only:
         targets = [t for t in targets if t in set(only)]
-    if not targets:
+    if not targets and not (prune and removed):
         print('没有需要提交的文件，收工。')
         return
 
-    head = api('GET', '/repos/%s/%s/git/ref/heads/%s' % (OWNER, REPO, BRANCH), token=token)
-    base_commit = head['object']['sha']
-    base_tree = api('GET', '/repos/%s/%s/git/commits/%s' % (OWNER, REPO, base_commit),
-                    token=token)['tree']['sha']
-    print('基线 commit %s（tree %s）' % (base_commit[:8], base_tree[:8]))
+    # 空仓库没有分支：走根提交；否则正常以当前 main 为基线
+    ref = api('GET', '/repos/%s/%s/git/ref/heads/%s' % (OWNER, REPO, BRANCH),
+              ok=(200, 404, 409), token=token)
+    if ref.get('object'):
+        base_commit = ref['object']['sha']
+        base_tree = api('GET', '/repos/%s/%s/git/commits/%s' % (OWNER, REPO, base_commit),
+                        token=token)['tree']['sha']
+        print('基线 commit %s（tree %s）' % (base_commit[:8], base_tree[:8]))
+    else:
+        base_commit, base_tree = None, None
+        print('远端是空仓库，先用 contents API 落一个 README 初始化（GitHub 空仓库不接受 git data API）')
+        init = local.get('README.md')
+        if init is None:
+            init = next(iter(local.values())) if local else b'# %s' % REPO.encode()
+        api('PUT', '/repos/%s/%s/contents/README.md' % (OWNER, REPO),
+            {'message': 'init', 'content': base64.b64encode(init).decode('ascii')},
+            token=token, ok=(200, 201))
+        ref = api('GET', '/repos/%s/%s/git/ref/heads/%s' % (OWNER, REPO, BRANCH), token=token)
+        base_commit = ref['object']['sha']
+        base_tree = api('GET', '/repos/%s/%s/git/commits/%s' % (OWNER, REPO, base_commit),
+                        token=token)['tree']['sha']
+        print('初始化完成，基线 commit %s' % base_commit[:8])
 
     entries = []
     for i, path in enumerate(targets, 1):
@@ -273,13 +290,25 @@ def push(message, only=None, all_files=False):
         if blob['sha'] != blob_sha(data):
             raise SystemExit('blob sha 不一致（%s），中止' % path)
 
+    # --prune：远端有而本地没有的文件，在 tree 里用 sha=null 表达删除
+    if prune and removed:
+        entries.extend({'path': p, 'mode': '100644', 'type': 'blob', 'sha': None}
+                       for p in sorted(removed))
+        print('  prune 远端多余文件 %d 个' % len(removed))
+
     tree = api('POST', '/repos/%s/%s/git/trees' % (OWNER, REPO),
-               {'base_tree': base_tree, 'tree': entries}, token=token)
+               ({'tree': entries} if base_tree is None else
+                {'base_tree': base_tree, 'tree': entries}), token=token)
     commit = api('POST', '/repos/%s/%s/git/commits' % (OWNER, REPO),
-                 {'message': message, 'tree': tree['sha'], 'parents': [base_commit]},
+                 {'message': message, 'tree': tree['sha'],
+                  'parents': ([] if base_commit is None else [base_commit])},
                  token=token)
-    api('PATCH', '/repos/%s/%s/git/refs/heads/%s' % (OWNER, REPO, BRANCH),
-        {'sha': commit['sha'], 'force': False}, token=token)
+    if base_commit is None:
+        api('POST', '/repos/%s/%s/git/refs' % (OWNER, REPO),
+            {'ref': 'refs/heads/%s' % BRANCH, 'sha': commit['sha']}, token=token)
+    else:
+        api('PATCH', '/repos/%s/%s/git/refs/heads/%s' % (OWNER, REPO, BRANCH),
+            {'sha': commit['sha'], 'force': False}, token=token)
     url = 'https://github.com/%s/%s/commit/%s' % (OWNER, REPO, commit['sha'])
     print('\n提交完成 ' + commit['sha'][:8] + '\n' + url)
     return commit['sha']
@@ -359,16 +388,30 @@ def upload_asset(upload_url, path, token):
 
 # ---------------------------------------------------------------- CLI
 
+def guard_repo():
+    """防误伤：从非主仓库目录（没有 main.js 的 git 根）执行时，若目标还是默认的
+    主仓库 FclassPal，多半是忘了设 FCP_GH_REPO —— 真事故发生过一次（主题仓库的
+    内容 + --prune 打到了主仓库远端），所以在入口处硬性拦下。"""
+    root = git_root()
+    if REPO == 'FclassPal' and not os.path.exists(os.path.join(root, 'main.js')):
+        raise SystemExit(
+            '拒绝执行：当前 git 根 %s 里没有 main.js（不是主仓库），但目标仓库是默认的 %s/%s。\n'
+            '同步主题仓库请设环境变量 FCP_GH_REPO=FClassPal-theme 后再跑。' % (root, OWNER, REPO))
+
+
 def main():
     ap = argparse.ArgumentParser(description='FClassPal -> GitHub 同步器')
     sub = ap.add_subparsers(dest='cmd', required=True)
 
     sub.add_parser('status', help='列出本地与远端的差异')
+    sub.add_parser('create', help='创建远端仓库（新仓库第一次 push 前用一次）')
 
     p_push = sub.add_parser('push', help='一次提交所有差异文件')
     p_push.add_argument('-m', '--message', required=True)
     p_push.add_argument('--all', action='store_true', help='忽略差异检测，全量重推')
     p_push.add_argument('--only', nargs='*', help='只推指定路径')
+    p_push.add_argument('--prune', action='store_true',
+                        help='同时删除「仅远端有」的文件（确认本地树才是真相源时用）')
 
     p_rel = sub.add_parser('release', help='建 release 并可选上传资产')
     p_rel.add_argument('tag')
@@ -382,10 +425,23 @@ def main():
                        help='make_latest=false（历史版本归档用，别抢 Latest 标记）')
 
     args = ap.parse_args()
+    guard_repo()
     if args.cmd == 'status':
         diff(_token())
+    elif args.cmd == 'create':
+        tok = _token()
+        try:
+            api('POST', '/user/repos', {'name': REPO, 'private': False,
+                'description': 'FClassPal theme packs (.fcpt) — spec, examples and themes'}, token=tok)
+            print('已创建仓库 https://github.com/%s/%s' % (OWNER, REPO))
+        except SystemExit as e:
+            # 422 = 已存在，不算错
+            if '422' in str(e) or 'already_exists' in str(e):
+                print('仓库已存在，跳过创建')
+            else:
+                raise
     elif args.cmd == 'push':
-        push(args.message, only=args.only, all_files=args.all)
+        push(args.message, only=args.only, all_files=args.all, prune=args.prune)
     elif args.cmd == 'release':
         release(args.tag, name=args.name, notes_file=args.notes_file,
                 notes=args.notes, asset=args.asset, prerelease=args.prerelease,

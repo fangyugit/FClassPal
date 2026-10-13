@@ -61,6 +61,18 @@ const CFG = {
 };
 const saved = [];
 let calls = [];
+/* ---- v2.5.0：角色主题是 .fcpt 包，预览模式（无主进程）装不了它们 ----
+ * 这里把 13 套包直接 stub 进来：themesList 给清单、themesCss 给包 CSS，
+ * 让 applyTheme 类切换 + 固定配色联动的断言能覆盖真实链路（不是只测内置五套）。 */
+const PACK_ROOT = 'D:/workb/FClassPal-theme/themes';
+const PACK_IDS = ['kitty', 'dog', 'kuromi', 'melody', 'sanrio', 'pochacco', 'purin',
+  'milk', 'tianyi', 'ling', 'teto', 'whale', 'miku'];
+const packMf = {}, packCssText = {};
+PACK_IDS.forEach((id) => {
+  try { packMf[id] = JSON.parse(fs.readFileSync(path.join(PACK_ROOT, id, 'manifest.json'), 'utf8')); } catch (e) { packMf[id] = {}; }
+  try { packCssText[id] = fs.readFileSync(path.join(PACK_ROOT, id, 'theme.css'), 'utf8'); } catch (e) { packCssText[id] = ''; }
+});
+const builtinCard = (id, name, accent, fixed) => ({ id, name, accent, fixedPalette: fixed, builtin: true, installed: true });
 window.widgetAPI = {
   getConfig: () => Promise.resolve(JSON.parse(JSON.stringify(CFG))),
   saveConfig: (c) => { saved.push(JSON.parse(JSON.stringify(c))); return Promise.resolve(true); },
@@ -72,6 +84,23 @@ window.widgetAPI = {
     const c = String((patch && patch.accentColor) || CFG.accentColor || '#6750A4');
     return Promise.resolve(paletteOf(c));
   },
+  /* 主题包引擎 stub：清单 = 内置五套 + 13 套包；CSS 按包原文给 */
+  themesList: () => Promise.resolve({ success: true, data: {
+    spec: 1, current: 'glass',
+    order: ['glass', 'md3', 'fluent', 'miuix', 'harmony'].concat(PACK_IDS),
+    themes: [
+      builtinCard('glass', '液态玻璃', '#6750A4', false),
+      builtinCard('md3', 'MD3', '#6750A4', false),
+      builtinCard('fluent', 'Fluent', '#0B57D0', false),
+      builtinCard('miuix', 'MIUI', '#3482FF', true),
+      builtinCard('harmony', '鸿蒙', '#0A59F7', true)
+    ].concat(PACK_IDS.map((id) => ({
+      id, name: packMf[id].name || id, accent: packMf[id].accent || '',
+      fixedPalette: true, builtin: false, installed: true
+    }))),
+    themesDir: '', bundled: [], broken: []
+  } }),
+  themesCss: () => Promise.resolve({ success: true, css: packCssText }),
   getUsbDrives: () => Promise.resolve([]),
   onUsbChange: () => () => {},
   onBoundsChanged: () => () => {},

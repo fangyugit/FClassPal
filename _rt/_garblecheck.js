@@ -118,7 +118,12 @@ app.whenReady().then(async () => {
     `Array.from(document.querySelectorAll('#themeSelect option')).map(o => o.value)`
   );
   console.log('  可选主题: ' + themes.join(', '));
-  assert('主题下拉里有 18 套主题（v2.5.0 起加八套角色主题）', themes.length === 18, '实际 ' + themes.length);
+  /* v2.5.0：角色主题是 .fcpt 包，本探针走预览模式（无主进程）装不了它们，
+   * 下拉里只有内置五套 —— 这是环境事实，不是回归。13 套包的同类守卫
+   * （定位规则 / 裸类名 / body 污染）由 _check_src.js 的静态扫描 + _themecheck 引擎级覆盖。 */
+  assert('主题下拉里是内置五套（预览模式装不了主题包）', themes.length === 5 &&
+    ['glass', 'md3', 'fluent', 'miuix', 'harmony'].every((t) => themes.indexOf(t) >= 0),
+    '实际 ' + themes.length);
   assert('透明主题已从列表移除', themes.indexOf('transparent') < 0);
 
   const shots = [];

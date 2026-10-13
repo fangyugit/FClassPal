@@ -49,11 +49,19 @@ contextBridge.exposeInMainWorld('widgetAPI', {
   ejectDriveElevated: (letter) => ipcRenderer.invoke('eject-drive-elevated', letter),
   // v2.4.6：关掉占用 U 盘的窗口/进程（占用弹窗里"关闭占用并重试"用）
   closeDriveOccupants: (list) => ipcRenderer.invoke('close-drive-occupants', list),
-  // v2.4.6：配置包 .fcpc / 主题方案 .fcpt 导入导出
+  // v2.4.6：配置包 .fcpc / 主题方案 .fcps 导入导出（v2.5.0 起主题方案从 .fcpt 改名 .fcps）
   exportConfig: () => ipcRenderer.invoke('export-config'),
   importConfig: () => ipcRenderer.invoke('import-config'),
   exportTheme: () => ipcRenderer.invoke('export-theme'),
   importTheme: () => ipcRenderer.invoke('import-theme'),
+  /* v2.5.0：主题包（.fcpt）管理 —— 主题与应用本体分离后，角色主题靠这套接口增删排序 */
+  themesList: () => ipcRenderer.invoke('themes-list'),
+  themesCss: (id) => ipcRenderer.invoke('themes-css', id),
+  themesInstall: () => ipcRenderer.invoke('themes-install'),
+  themesInstallBundled: (file) => ipcRenderer.invoke('themes-install-bundled', file),
+  themesRemove: (id) => ipcRenderer.invoke('themes-remove', id),
+  themesReorder: (ids) => ipcRenderer.invoke('themes-reorder', ids),
+  themesOpenFolder: () => ipcRenderer.invoke('themes-open-folder'),
   /* v2.5.0：检测更新 + 恢复出厂（关于界面） */
   checkUpdate: () => ipcRenderer.invoke('check-update'),
   factoryReset: () => ipcRenderer.invoke('factory-reset'),

@@ -34,6 +34,9 @@ const ruleBlockFrom = (sel) => {
  *   "body.theme-md3, body.theme-fluent, ..., body.theme-kitty {" 的选择器列表，
  *   不加换行会先命中那一条，取到"动效归零块"而不是主题 token（实测踩过）。 */
 const themeTokens = (t) => {
+  /* 角色主题已经不在本体里了：它的"token"就是整个主题包（角色色一块、
+   * 形状/模糊/veil 一块，分散在多个规则里，所以整包一起看）。 */
+  if (PACK_IDS.indexOf(t) >= 0) return packNC[t] || '';
   const i = cssNC.indexOf('\nbody.theme-' + t + ' {');
   if (i < 0) return '';
   const j = cssNC.indexOf('}', i);
@@ -45,6 +48,34 @@ const srcPkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 // README / CHANGELOG 不在 asar 里（不是运行时文件），从磁盘读，用来防"发版忘了同步文档"
 const readme = (() => { try { return fs.readFileSync('README.md', 'utf8'); } catch (e) { return ''; } })();
 const changelog = (() => { try { return fs.readFileSync('CHANGELOG.md', 'utf8'); } catch (e) { return ''; } })();
+/* ============================================================================
+ * v2.5.0：应用本体与主题分离
+ *   本体只留五套内置皮肤（glass / md3 / fluent / miuix / harmony），
+ *   13 套角色主题剥离成独立 .fcpt 主题包 —— 源树在 FClassPal-theme 仓库，
+ *   随包附带的 themes/*.fcpt 是同一份内容。
+ * 因此：凡是"某套角色主题应该有什么"的断言，一律改成查**主题包源文件**。
+ * 不是删掉断言，而是换个正确的位置查（本体里已经查不到了，留着只会永远红）。
+ * ==========================================================================*/
+const PACK_ROOT = 'D:/workb/FClassPal-theme/themes';
+const PACK_IDS = ['kitty', 'dog', 'kuromi', 'melody', 'sanrio', 'pochacco', 'purin',
+  'milk', 'tianyi', 'ling', 'teto', 'whale', 'miku'];
+const packCss = {}, packNC = {}, packManifest = {};
+PACK_IDS.forEach((t) => {
+  try { packCss[t] = fs.readFileSync(path.join(PACK_ROOT, t, 'theme.css'), 'utf8'); } catch (e) { packCss[t] = ''; }
+  packNC[t] = packCss[t].replace(/\/\*[\s\S]*?\*\//g, '');
+  try { packManifest[t] = JSON.parse(fs.readFileSync(path.join(PACK_ROOT, t, 'manifest.json'), 'utf8')); } catch (e) { packManifest[t] = {}; }
+});
+const packsAll = () => PACK_IDS.map((t) => packNC[t]).join('\n');
+/** 某套主题的 CSS：角色主题看它自己的包，内置主题看本体 */
+const themeSrc = (t) => (PACK_IDS.indexOf(t) >= 0 ? (packNC[t] || '') : cssNC);
+/** 某套主题里某条规则的声明体（包里的选择器和 `{` 之间没有空格） */
+const ruleInTheme = (t, sel) => {
+  const hay = themeSrc(t);
+  const i = hay.indexOf(sel + '{');
+  if (i < 0) return '';
+  const j = hay.indexOf('}', i);
+  return j < 0 ? '' : hay.slice(i, j);
+};
 const checks = [
   ['html: SVG sprite svgDefs', html.includes('svgDefs')],
   ['html: 光斑宿主 sheen', html.includes('id="sheen"')],
@@ -255,36 +286,44 @@ const checks = [
     /--md3-ease-emphasized-decelerate:\s*cubic-bezier\(0\.05, 0\.7, 0\.1, 1\)/.test(css) &&
     /--md3-dur-short1:\s*50ms/.test(css) && /--md3-dur-extra-long2:\s*800ms/.test(css)],
   ['css: 入场动效用 backwards（不用 both/forwards，否则压掉 :active 按压反馈）',
+    // v2.5.0：13 套角色主题的入场动画已进各自主题包，所以要在本体 + 全部包里数
     /animation-fill-mode:\s*backwards/.test(cssNC) &&
-    (cssNC.match(/backwards/g) || []).length >= 11 &&
+    ((cssNC + packsAll()).match(/backwards/g) || []).length >= 19 &&
     /animation-delay:\s*calc\(var\(--i, 0\) \* var\(--t-stagger\)\)/.test(cssNC) &&
-    !/animation:\s*t-(?:in|panel|toast)-[\w-]+[^;]*\b(?:both|forwards)\b/.test(cssNC)],
-  ['css: 十套入场动画名互不相同',
-    ['md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'].every((t) =>
-      new RegExp('@keyframes t-in-' + t + '\\b').test(cssNC))],
+    !/animation:\s*t-(?:in|panel|toast)-[\w-]+[^;]*\b(?:both|forwards)\b/.test(cssNC + packsAll())],
+  ['css: 入场动画名各套互不相同（内置在本体、角色主题在各自包里）',
+    ['md3', 'fluent', 'miuix', 'harmony'].every((t) =>
+      new RegExp('@keyframes t-in-' + t + '\\b').test(cssNC)) &&
+    PACK_IDS.every((t) => new RegExp('@keyframes t-in-' + t + '\\b').test(packNC[t]))],
   ['css: reduced-motion 让路', /@media \(prefers-reduced-motion: reduce\)/.test(css)],
   ['css: 预设色板样式', /\.swatch\s*\{/.test(css) && /\.swatch\[aria-pressed="true"\]/.test(css)],
   ['多主题: 已彻底移除 theme-flat 共底（十套风格各自自足）',
     !/theme-flat/.test(cssNC) && !/theme-flat/.test(app) &&
     !/md3-enter/.test(cssNC) && !/md3-enter/.test(app)],
-  ['多主题: 主题选择为下拉栏（#themeSelect 由 THEME_LABEL 填充；分段按钮已移除）',
+  ['多主题 v2.5.0: 主题选择为下拉栏 + 主题管理弹窗（都由注册表驱动；分段按钮已移除）',
     html.includes('<select id="themeSelect"') && !/data-theme="/.test(html) &&
-    /themeSelect\.innerHTML = THEMES\.map/.test(app)],
-  ['多主题: app.js THEMES 清单 10 套 + 每套推荐主色 + accentPicked 守卫',
-    /const THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'\]/.test(app) &&
-    /kitty:\s*'#C2185B'/.test(app) && /dog:\s*'#4FA8E8'/.test(app) &&
-    /kuromi:\s*'#8E5BC8'/.test(app) && /melody:\s*'#EC6FA8'/.test(app) &&
-    /sanrio:\s*'#E8548A'/.test(app) && /accentPicked/.test(app)],
-  ['多主题: 固定配色主题集合（kitty/dog/miuix/harmony/kuromi/melody/sanrio）',
-    /const FIXED_PALETTE_THEMES = \['kitty', 'dog', 'miuix', 'harmony', 'kuromi', 'melody', 'sanrio'\]/.test(app)],
-  ['多主题: 十套主题各自定义完整 token（形状/模糊/表面/强调色/动效）',
-    ['md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'].every((t) => {
+    /function renderThemeOptions\(\)/.test(app) && /sel\.innerHTML = THEMES\.map/.test(app) &&
+    html.includes('id="themeModal"') && /function openThemeModal\(\)/.test(app) &&
+    html.includes('id="btnThemeManage"')],
+  ['多主题 v2.5.0: 内置五套 + 运行时可刷新注册表（装/删/排序后不用改代码）',
+    /const BUILTIN_THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony'\]/.test(app) &&
+    /let THEMES = BUILTIN_THEMES\.slice\(\)/.test(app) &&
+    /function applyThemeRegistry\(cards\)/.test(app) &&
+    /function loadThemeRegistry\(\)/.test(app) &&
+    /glass:\s*'#6750A4'/.test(app) && /miuix:\s*'#3482FF'/.test(app) &&
+    /harmony:\s*'#0A59F7'/.test(app) && /accentPicked/.test(app)],
+  ['多主题 v2.5.0: 固定配色主题 = MIUI/鸿蒙 本体写死 + 主题包按 manifest.fixedPalette',
+    /const BUILTIN_FIXED = \['miuix', 'harmony'\]/.test(app) &&
+    /fixedPalette: raw\.fixedPalette !== false/.test(fs.readFileSync('themes.js', 'utf8')) &&
+    PACK_IDS.every((t) => packManifest[t].fixedPalette === true)],
+  ['多主题: 每套主题各自定义完整 token（本体 5 套 + 主题包 13 套）',
+    ['md3', 'fluent', 'miuix', 'harmony'].concat(PACK_IDS).every((t) => {
       const b = themeTokens(t);
       return /--t-r-win:/.test(b) && /--t-r-card:/.test(b) && /--t-btn-r:/.test(b) &&
         /--t-blur:/.test(b) && /--t-surface:/.test(b) && /--t-accent:/.test(b) &&
         /--t-ease:/.test(b) && /--t-dur:/.test(b) && /--t-stagger:/.test(b);
     })],
-  ['多主题: 十套形状标度各就各位（16/8/16/20/24/22/20/22/22）',
+  ['多主题: 形状标度各就各位（本体 4 套 + 角色包老五套；16/8/16/20/24/22/20/22/22）',
     /--t-r-card:\s*16px/.test(themeTokens('md3')) &&
     /--t-r-card:\s*8px/.test(themeTokens('fluent')) &&
     /--t-r-card:\s*16px/.test(themeTokens('miuix')) &&
@@ -294,7 +333,7 @@ const checks = [
     /--t-r-card:\s*20px/.test(themeTokens('kuromi')) &&
     /--t-r-card:\s*22px/.test(themeTokens('melody')) &&
     /--t-r-card:\s*22px/.test(themeTokens('sanrio'))],
-  ['多主题: 十套模糊强度互不相同',
+  ['多主题: 模糊强度各就各位（本体 4 套 + 角色包老五套）',
     /blur\(14px\) saturate\(118%\)/.test(themeTokens('md3')) &&
     /blur\(30px\) saturate\(125%\)/.test(themeTokens('fluent')) &&
     /blur\(22px\) saturate\(150%\)/.test(themeTokens('miuix')) &&
@@ -304,6 +343,23 @@ const checks = [
     /blur\(20px\) saturate\(130%\)/.test(themeTokens('kuromi')) &&
     /blur\(18px\) saturate\(135%\)/.test(themeTokens('melody')) &&
     /blur\(22px\) saturate\(135%\)/.test(themeTokens('sanrio'))],
+  ['多主题 v2.5.0: 17 套主题的配色身份互不相同 + 形状/模糊不塌成一套（不共底）',
+    (() => {
+      const all = ['md3', 'fluent', 'miuix', 'harmony'].concat(PACK_IDS);
+      const pick = (t, name) => {
+        const m = new RegExp('--' + name + ':\\s*([^;]+);').exec(themeTokens(t));
+        return m ? m[1].trim() : '';
+      };
+      const accents = all.map((t) => pick(t, 't-accent'));
+      // 八套生成主题（帕恰狗 / 布丁狗 / 奶蛙 / 洛天依 / 乐正绫 / 初音 / 重音Teto / 鲸鱼娘）
+      // 当初是拿 kitty 当骨架生成的：形状与模糊沿用 24px / blur(18px)，只在配色和
+      // 贴图上做出差异 —— 这是刻意的取舍（用户要的就是"kitty 那套感觉 + 新角色素材"），
+      // 不是漏改。所以这里只要求"别塌成同一套"，同时配色身份必须各自独立
+      // （sanrio 用 kitty 粉当主色是设计如此，所以放宽到 >= 14）。
+      const combos = all.map((t) => pick(t, 't-r-card') + '|' + pick(t, 't-blur'));
+      return accents.every((x) => x) && new Set(accents).size >= 14 &&
+        combos.every((x) => x !== '|') && new Set(combos).size >= 9;
+    })()],
   ['多主题: Fluent 小圆角 4px 控件 / 亚克力 / 噪点 / Reveal 高光',
     /--t-r-ctl:\s*4px/.test(themeTokens('fluent')) &&
     /feTurbulence/.test(cssNC) &&
@@ -321,64 +377,52 @@ const checks = [
     /conic-gradient\(from var\(--hl-angle\)/.test(css) &&
     /@keyframes hl-orbit/.test(cssNC) &&
     /body\.theme-harmony \.item-icon \{[^}]*border-radius:\s*50%/.test(cssNC)],
-  ['多主题: Kitty v2.2 = 固定粉白配色 + 真实裁剪图片（5 张素材 8 处贴图位）',
+  ['多主题: Kitty = 固定粉白配色 + 真实裁剪图片（v2.5.0 起在主题包 kitty 里）',
     /--md3-primary:\s*#E8548A/.test(themeTokens('kitty')) &&
     /--t-accent:\s*#E8548A/.test(themeTokens('kitty')) &&
     /#FFF7FA/.test(themeTokens('kitty')) &&
-    /body\.theme-kitty \.titlebar::after[^}]*theme\/kitty\/kitty-head\.png/.test(cssNC) &&
-    /body\.theme-kitty \.widget::after[^}]*theme\/kitty\/kitty-full\.png/.test(cssNC) &&
-    /body\.theme-kitty \.glass-veil::before[^}]*theme\/kitty\/kitty-wave\.png/.test(cssNC) &&
-    /body\.theme-kitty \.usb-section::before[^}]*theme\/kitty\/kitty-ballet\.png/.test(cssNC) &&
-    /body\.theme-kitty \.group-title::before[^}]*%3Csvg/.test(cssNC)],
-  ['资产: kitty 图片进了 asar（随 renderer 白名单打包）',
-    /* ※ @electron/asar 的 extractFile 对多级子目录只认反斜杠（实测：
-     *   'renderer/theme/kitty/x.png' 报 not found，'renderer\theme\kitty\x.png' 才行）。 */
-    ['kitty-head.png', 'kitty-full.png', 'kitty-sit.png', 'kitty-wave.png', 'kitty-ballet.png', 'kitty-kimono.png'].every((f) => {
-      try {
-        return fs.readFileSync('renderer/theme/kitty/' + f,'utf-8').length > 1000;
-      } catch (e) { return false; }
-    })],
-  ['多主题: 玉桂狗 v2.2 = 固定蓝白配色 + 真实裁剪图片（头像/飞机/眨眼）',
+    ruleInTheme('kitty', 'body.theme-kitty .titlebar::after').includes('assets/kitty-head.png') &&
+    ruleInTheme('kitty', 'body.theme-kitty .widget::after').includes('assets/kitty-full.png') &&
+    ruleInTheme('kitty', 'body.theme-kitty .glass-veil::before').includes('assets/kitty-wave.png') &&
+    ruleInTheme('kitty', 'body.theme-kitty .usb-section::before').includes('assets/kitty-ballet.png') &&
+    ruleInTheme('kitty', 'body.theme-kitty .group-title::before').includes('%3Csvg')],
+  ['资产 v2.5.0: 角色素材随主题包分发（本体不再内嵌，asar 白名单已排除 renderer/theme）',
+    ['kitty-head.png', 'kitty-full.png', 'kitty-sit.png', 'kitty-wave.png', 'kitty-ballet.png', 'kitty-kimono.png'].every((f) =>
+      fs.existsSync(path.join(PACK_ROOT, 'kitty', 'assets', f))) &&
+    fs.existsSync('themes/kitty.fcpt') && fs.existsSync('themes/miku.fcpt') &&
+    srcPkg.build.files.some((x) => /^!renderer\/theme/.test(x))],
+  ['多主题: 玉桂狗 = 固定蓝白配色 + 真实裁剪图片（头像/飞机/眨眼）',
     /--md3-primary:\s*#4FA8E8/.test(themeTokens('dog')) &&
     /--t-accent:\s*#4FA8E8/.test(themeTokens('dog')) &&
     /--t-r-card:\s*22px/.test(themeTokens('dog')) &&
-    /body\.theme-dog \.titlebar::after[^}]*theme\/dog\/cinna-head\.png/.test(cssNC) &&
-    /body\.theme-dog \.widget::after[^}]*theme\/dog\/cinna-plane\.png/.test(cssNC) &&
-    /body\.theme-dog \.usb-section::after[^}]*theme\/dog\/cinna-wink\.png/.test(cssNC)],
-  ['资产: dog 图片进了 asar（v2.2.2 含单车/草莓）',
-    ['cinna-head.png', 'cinna-plane.png', 'cinna-wink.png', 'cinna-bike.png', 'cinna-berry.png'].every((f) => {
-      try {
-        return fs.readFileSync('renderer/theme/dog/' + f,'utf-8').length > 500;
-      } catch (e) { return false; }
-    })],
-  ['多主题: 库洛米 v2.2 = 固定紫粉配色（#8E5BC8/#F06292）+ 真实裁剪图片',
+    ruleInTheme('dog', 'body.theme-dog .titlebar::after').includes('assets/cinna-head.png') &&
+    ruleInTheme('dog', 'body.theme-dog .widget::after').includes('assets/cinna-plane.png') &&
+    ruleInTheme('dog', 'body.theme-dog .usb-section::after').includes('assets/cinna-wink.png')],
+  ['资产: dog 素材随主题包分发（含单车/草莓）',
+    ['cinna-head.png', 'cinna-plane.png', 'cinna-wink.png', 'cinna-bike.png', 'cinna-berry.png'].every((f) =>
+      fs.existsSync(path.join(PACK_ROOT, 'dog', 'assets', f)))],
+  ['多主题: 库洛米 = 固定紫粉配色（#8E5BC8/#F06292）+ 真实裁剪图片',
     /--md3-primary:\s*#8E5BC8/.test(themeTokens('kuromi')) &&
     /--md3-secondary:\s*#F06292/.test(themeTokens('kuromi')) &&
     /--t-accent:\s*#8E5BC8/.test(themeTokens('kuromi')) &&
     /--t-btn-r:\s*14px/.test(themeTokens('kuromi')) &&
-    /body\.theme-kuromi \.titlebar::after[^}]*theme\/kuromi\/kuromi-head\.png/.test(cssNC) &&
-    /body\.theme-kuromi \.widget::after[^}]*theme\/kuromi\/kuromi-stand\.png/.test(cssNC) &&
-    /body\.theme-kuromi \.usb-section::after[^}]*theme\/kuromi\/kuromi-love\.png/.test(cssNC) &&
-    /body\.theme-kuromi \.panel::after[^}]*theme\/kuromi\/kuromi-face\.png/.test(cssNC)],
-  ['资产: kuromi 图片进了 asar（v2.2.2 含躺姿/伤心）',
-    ['kuromi-stand.png', 'kuromi-love.png', 'kuromi-face.png', 'kuromi-head.png', 'kuromi-lie.png', 'kuromi-cry.png'].every((f) => {
-      try {
-        return fs.readFileSync('renderer/theme/kuromi/' + f,'utf-8').length > 500;
-      } catch (e) { return false; }
-    })],
-  ['多主题: 美乐蒂 v2.2 = 固定粉白配色（#EC6FA8）+ 真实裁剪图片',
+    ruleInTheme('kuromi', 'body.theme-kuromi .titlebar::after').includes('assets/kuromi-head.png') &&
+    ruleInTheme('kuromi', 'body.theme-kuromi .widget::after').includes('assets/kuromi-stand.png') &&
+    ruleInTheme('kuromi', 'body.theme-kuromi .usb-section::after').includes('assets/kuromi-love.png') &&
+    ruleInTheme('kuromi', 'body.theme-kuromi .panel::after').includes('assets/kuromi-face.png')],
+  ['资产: kuromi 素材随主题包分发（含躺姿/伤心）',
+    ['kuromi-stand.png', 'kuromi-love.png', 'kuromi-face.png', 'kuromi-head.png', 'kuromi-lie.png', 'kuromi-cry.png'].every((f) =>
+      fs.existsSync(path.join(PACK_ROOT, 'kuromi', 'assets', f)))],
+  ['多主题: 美乐蒂 = 固定粉白配色（#EC6FA8）+ 真实裁剪图片',
     /--md3-primary:\s*#EC6FA8/.test(themeTokens('melody')) &&
     /--t-accent:\s*#EC6FA8/.test(themeTokens('melody')) &&
     /--t-btn-r:\s*999px/.test(themeTokens('melody')) &&
-    /body\.theme-melody \.titlebar::after[^}]*theme\/melody\/melody-cheer\.png/.test(cssNC) &&
-    /body\.theme-melody \.widget::after[^}]*theme\/melody\/melody-full\.png/.test(cssNC) &&
-    /body\.theme-melody \.usb-section::after[^}]*theme\/melody\/melody-cheer\.png/.test(cssNC)],
-  ['资产: melody 图片进了 asar（v2.2.2 含刺绣）',
-    ['melody-full.png', 'melody-cheer.png', 'melody-head.png', 'melody-emb.png'].every((f) => {
-      try {
-        return fs.readFileSync('renderer/theme/melody/' + f,'utf-8').length > 500;
-      } catch (e) { return false; }
-    })],
+    ruleInTheme('melody', 'body.theme-melody .titlebar::after').includes('assets/melody-cheer.png') &&
+    ruleInTheme('melody', 'body.theme-melody .widget::after').includes('assets/melody-full.png') &&
+    ruleInTheme('melody', 'body.theme-melody .usb-section::after').includes('assets/melody-cheer.png')],
+  ['资产: melody 素材随主题包分发（含刺绣）',
+    ['melody-full.png', 'melody-cheer.png', 'melody-head.png', 'melody-emb.png'].every((f) =>
+      fs.existsSync(path.join(PACK_ROOT, 'melody', 'assets', f)))],
   ['多主题: 装饰不串（只有 Fluent 有噪点、md3/harmony 标题栏无贴图）',
     !/body\.theme-md3 \.titlebar::after/.test(cssNC) &&
     !/body\.theme-harmony \.titlebar::after/.test(cssNC) &&
@@ -387,15 +431,17 @@ const checks = [
     /--md3-primary:\s*#E8548A/.test(themeTokens('sanrio')) &&
     /--md3-secondary:\s*#8E5BC8/.test(themeTokens('sanrio')) &&
     /--md3-tertiary:\s*#4FA8E8/.test(themeTokens('sanrio')) &&
-    /body\.theme-sanrio \.titlebar::after[^}]*theme\/kitty\/kitty-head\.png/.test(cssNC) &&
-    /body\.theme-sanrio \.widget::after[^}]*theme\/kuromi\/kuromi-stand\.png/.test(cssNC) &&
-    /body\.theme-sanrio \.glass-veil::before[^}]*theme\/dog\/cinna-plane\.png/.test(cssNC) &&
-    /body\.theme-sanrio \.usb-section::before[^}]*theme\/melody\/melody-cheer\.png/.test(cssNC) &&
-    /body\.theme-sanrio \.panel::after[^}]*theme\/melody\/melody-full\.png/.test(cssNC) &&
-    /body\.theme-sanrio \.ctx-menu::after[^}]*theme\/kitty\/kitty-wave\.png/.test(cssNC)],
+    ruleInTheme('sanrio', 'body.theme-sanrio .titlebar::after').includes('assets/kitty-head.png') &&
+    ruleInTheme('sanrio', 'body.theme-sanrio .widget::after').includes('assets/kuromi-stand.png') &&
+    ruleInTheme('sanrio', 'body.theme-sanrio .glass-veil::before').includes('assets/cinna-plane.png') &&
+    ruleInTheme('sanrio', 'body.theme-sanrio .usb-section::before').includes('assets/melody-cheer.png') &&
+    ruleInTheme('sanrio', 'body.theme-sanrio .panel::after').includes('assets/melody-full.png') &&
+    ruleInTheme('sanrio', 'body.theme-sanrio .ctx-menu::after').includes('assets/kitty-wave.png')],
   ['多主题: 贴图主题不改写 panel/ctx-menu 定位（v2.2.1 事故守卫；modal-card 锚点合法）',
-    ['dog', 'kuromi', 'melody', 'sanrio'].every((t) =>
-      !new RegExp('body\\\\.theme-' + t + ' \\\\.(?:panel|ctx-menu)[^{};]*\\\\{[^}]*position:\\\\s*relative').test(cssNC))],
+    // v2.5.0：断言原来的正则被转义了两层（`\\\\.`），永远匹配不到东西 —— 等于空转。
+    // 改回真匹配，并且覆盖全部 13 个角色主题包（贴图都在包里）。
+    PACK_IDS.every((t) =>
+      !new RegExp('body\\.theme-' + t + ' \\.(?:panel|ctx-menu)[^{};]*\\{[^}]*position:\\s*relative').test(packNC[t]))],
   ['圆角: 主界面圆角弧度可调（滑块写 --radius/--t-r-win，null 跟随主题）',
     html.includes('id="setRadius"') && html.includes('id="radiusVal"') &&
     /function applyRadius/.test(app) &&
@@ -411,8 +457,9 @@ const checks = [
   ['css: MD3 主表面是平的 tonal 色（alpha 跟随透明度滑块）',
     /rgb\(var\(--md3-surface-rgb\) \/ calc\(0\.74/.test(cssNC)],
   ['css: --t-veil 与 background 声明在同一条规则内（否则整条声明作废）',
+    // v2.5.0：md3 在本体；角色主题的 veil 规则在各自包里（那里面的 `{` 前没空格）
     /--t-veil:[\s\S]*?background:\s*var\(--t-veil\)/.test(ruleBlockFrom('body.theme-md3 .glass-veil {')) &&
-    /--t-veil:[\s\S]*?background:\s*var\(--t-veil\)/.test(ruleBlockFrom('body.theme-kitty .glass-veil {'))],
+    PACK_IDS.every((t) => /--t-veil:[\s\S]*?background:\s*var\(--t-veil\)/.test(ruleInTheme(t, 'body.theme-' + t + ' .glass-veil')))],
   ['css: MD3 关掉折射并隐藏 sheen/边光环',
     /body\.theme-md3 \.glass-warp[\s\S]*?filter:\s*none\s*!important/.test(cssNC) &&
     /body\.theme-md3 \.sheen/.test(cssNC)],
@@ -817,8 +864,9 @@ const checks = [
     app.includes("localeCompare") && app.includes('zh-Hans-CN') &&
     html.includes('data-act="sortAsc"') && html.includes('data-act="sortDesc"')],
   ['v2.4.6: 编辑模式菜单项只在编辑态露出', css.includes('body.edit-mode .ctx-menu .ctx-sort')],
-  ['v2.4.6: 设置面板描述文字已清空（只留 JS 回填的 fixedPaletteHint 一处）',
-    (html.match(/class="row-hint/g) || []).length === 1],
+  ['v2.4.6: 设置面板描述文字已清空（只留 JS 回填的 fixedPaletteHint；v2.5.0 主题管理弹窗的提示是第二个例外）',
+    (html.match(/class="row-hint/g) || []).length === 2 &&
+    html.includes('id="fixedPaletteHint"') && html.includes('id="themeManageHint"')],
   ['v2.4.6: 占用程序弹窗（三键：关闭占用并重试 / 直接重试 / 取消）',
     app.includes('showOccupiedDialog') && main.includes("'close-drive-occupants'") &&
     pre.includes('closeDriveOccupants') && css.includes('occupied-menu')],

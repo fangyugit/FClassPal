@@ -198,8 +198,25 @@ const API = window.widgetAPI || (function () {
     closeDriveOccupants: () => Promise.resolve({ success: true, closed: 0 }),
     exportConfig: () => { alert('预览模式：导出配置包 .fcpc'); return Promise.resolve({ success: false }); },
     importConfig: () => { alert('预览模式：导入配置包 .fcpc'); return Promise.resolve({ success: false }); },
-    exportTheme: () => { alert('预览模式：导出主题方案 .fcpt'); return Promise.resolve({ success: false }); },
-    importTheme: () => { alert('预览模式：导入主题方案 .fcpt'); return Promise.resolve({ success: false }); },
+    exportTheme: () => { alert('预览模式：导出主题方案 .fcps'); return Promise.resolve({ success: false }); },
+    importTheme: () => { alert('预览模式：导入主题方案 .fcps'); return Promise.resolve({ success: false }); },
+    /* 主题包（v2.5.0）：预览模式没有主进程、也没有磁盘，只能给内置五套 + 空库存，
+     * 让主题管理弹窗仍然能正常渲染（不能装/删，按钮会被禁掉）。 */
+    themesList: () => Promise.resolve({ success: true, data: {
+      spec: 1, current: 'glass', order: BUILTIN_THEMES.slice(),
+      themes: BUILTIN_THEMES.map((id) => ({
+        id: id, name: BUILTIN_LABEL[id], accent: BUILTIN_ACCENT[id],
+        fixedPalette: BUILTIN_FIXED.indexOf(id) >= 0, builtin: true, installed: true
+      })),
+      broken: [], bundled: [], hasBundled: false, themesDir: '（预览模式没有磁盘）'
+    } }),
+    themesCss: () => Promise.resolve({ success: true, css: {} }),
+    themesInstall: undefined,
+    themesInstallBundled: undefined,
+    themesRemove: undefined,
+    themesReorder: (ids) => Promise.resolve({ success: true, order: ids }),
+    themesOpenFolder: () => Promise.resolve({ success: false, error: '预览模式没有主题文件夹' }),
+    checkUpdate: () => Promise.resolve({ success: false, error: '预览模式没有联网检测能力' }),
     ejectDriveElevated: (l) => { alert('预览模式：将以管理员身份弹出 ' + l + ':'); return Promise.resolve({ success: true }); },
     onUsbChange: () => () => {},
     onBoundsChanged: () => () => {},
@@ -248,31 +265,36 @@ const ctxMenu = $('ctxMenu');
  * 各主题从中挑不同角色当强调色（MD3/Fluent/Harmony 用 primary、
  * MIUI 用 primary→tertiary 渐变、Kitty 用 tertiary 的粉调），
  * 所以同一个源色在不同主题下观感并不相同。 */
-const THEMES = ['glass', 'md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio',
-  'pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale'];
-const FLAT_THEMES = THEMES.filter((t) => t !== 'glass');
-const THEME_LABEL = {
-  glass: '液态玻璃', md3: 'MD3', fluent: 'Fluent',
-  miuix: 'MIUI', harmony: '鸿蒙', kitty: 'Hello Kitty', dog: '玉桂狗',
-  kuromi: '库洛米', melody: '美乐蒂', sanrio: '三丽鸥混合',
-  pochacco: '帕恰狗', purin: '布丁狗', milk: '奶娃', tianyi: '洛天依',
-  ling: '乐正绫', miku: '初音未来', teto: '重音Teto', whale: 'DS鲸鱼娘'
+/* ---------- 主题注册表（v2.5.0：本体与主题分离）----------
+ * 编译在本体里的只有五套（BUILTIN_THEMES），角色主题一律是 .fcpt 主题包，
+ * 由主进程扫描 <配置目录>/themes/<id>/ 后经 themesList() / themesCss() 交过来。
+ * 因此下面这几个不再是常量表，而是**可变注册表**：启动时 loadThemeRegistry()
+ * 填一次，装/删/排序之后再填一次；界面各处（下拉栏、推荐主色、固定配色判定、
+ * 动效门控 FLAT_THEMES）都只读这一份，新增/删除主题不用回来改代码。
+ * 安卓壳没有主进程 → 拿不到主题包，注册表就停在"内置五套"，界面照常可用。 */
+const BUILTIN_THEMES = ['glass', 'md3', 'fluent', 'miuix', 'harmony'];
+const BUILTIN_LABEL = {
+  glass: '液态玻璃', md3: 'MD3', fluent: 'Fluent', miuix: 'MIUI', harmony: '鸿蒙'
 };
 /* 每套主题的推荐主色：从「莫奈取色」切到「手动指定」时用它当起点，
  * 这样每套风格一上手就是自己的味道（而不是一律基线紫）。 */
-const THEME_ACCENT = {
-  glass: '#6750A4', md3: '#6750A4', fluent: '#0B57D0',
-  miuix: '#3482FF', harmony: '#0A59F7', kitty: '#C2185B', dog: '#4FA8E8',
-  kuromi: '#8E5BC8', melody: '#EC6FA8', sanrio: '#E8548A',
-  pochacco: '#4D8FE0', purin: '#D9962E', milk: '#C08552', tianyi: '#2FA98C',
-  ling: '#D8433F', miku: '#1FB5AA', teto: '#E0557F', whale: '#3E6FD8'
+const BUILTIN_ACCENT = {
+  glass: '#6750A4', md3: '#6750A4', fluent: '#0B57D0', miuix: '#3482FF', harmony: '#0A59F7'
 };
-/* 固定配色主题：Hello Kitty / 玉桂狗 / 库洛米 / 美乐蒂 / 三丽鸥混合（角色扮演配色）、
- * MIUIX（compose-miuix-ui 规范浅色方案 #3482FF）、鸿蒙（HarmonyOS 品牌蓝 #0A59F7）。
- * 对它们做壁纸取色是无效操作，设置面板里换成提示文案。 */
-const FIXED_PALETTE_THEMES = ['kitty', 'dog', 'miuix', 'harmony', 'kuromi', 'melody', 'sanrio',
-  'pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale'];
-const THEME_ACCENT_LIST = Object.keys(THEME_ACCENT).map((k) => THEME_ACCENT[k].toUpperCase());
+/* 固定配色（不跟壁纸取色）的内置主题：MIUI / 鸿蒙 是品牌色方案。
+ * 主题包默认也是固定配色（manifest 里 fixedPalette，缺省 true）。 */
+const BUILTIN_FIXED = ['miuix', 'harmony'];
+
+let THEMES = BUILTIN_THEMES.slice();
+let FLAT_THEMES = BUILTIN_THEMES.filter((t) => t !== 'glass');
+let THEME_LABEL = Object.assign({}, BUILTIN_LABEL);
+let THEME_ACCENT = Object.assign({}, BUILTIN_ACCENT);
+let FIXED_PALETTE_THEMES = BUILTIN_FIXED.slice();
+let THEME_ACCENT_LIST = Object.keys(THEME_ACCENT).map((k) => THEME_ACCENT[k].toUpperCase());
+/* 已安装主题包的 CSS（id → 文本），统一注入一个 <style id="themePackCss"> */
+let themePackCss = {};
+/* 主题管理弹窗的最近一次清单（排序/装/删之后重画用） */
+let themeInv = null;
 let currentTheme = 'glass';
 /* 用户是否亲手挑过主色。为 false 时，切风格/切手动模式会用该风格的推荐色；
  * 为 true 就一律尊重用户的选择，不再被主题默认值覆盖。 */
@@ -281,7 +303,14 @@ let accentPicked = false;
 function applyTheme(theme) {
   const t = THEMES.indexOf(theme) >= 0 ? theme : 'glass';
   currentTheme = t;
-  FLAT_THEMES.forEach((n) => document.body.classList.toggle('theme-' + n, n === t));
+  /* 要清的类 = 注册表里的全部 + body 上**已存在**的 theme-*。
+   * 后一半是主题包被删掉时的保险：那个 id 已经不在注册表里了，
+   * 只按注册表 toggle 的话它会永远挂在 body 上，皮肤继续生效。 */
+  const all = new Set(FLAT_THEMES);
+  document.body.className.split(/\s+/).forEach((c) => {
+    if (/^theme-[a-z]/.test(c) && c !== 'theme-glass') all.add(c.slice(6));
+  });
+  all.forEach((n) => document.body.classList.toggle('theme-' + n, n === t));
   /* glass 也要一个标记类（v2.3.1）—— 它有自己的专属覆盖（苹果风滑块、
    * overLight 亮底自适应），写 `body.theme-glass ...` 比 `body:not(.theme-md3)
    * :not(.theme-fluent)...` 的九段长链清楚得多，新增主题也不用回来改。
@@ -2645,6 +2674,332 @@ $('themeSelect').addEventListener('change', (e) => {
   if (e.target.value) switchTheme(e.target.value);
 });
 
+/* ==================== 主题包（.fcpt）管理（v2.5.0）====================
+ * 本体只带五套内置皮肤（BUILTIN_THEMES），其余主题以 .fcpt 独立分发。
+ * 这一段负责两件事：
+ *   ① 启动时把注册表（THEMES / LABEL / ACCENT / 固定配色）和主题包 CSS 拉下来；
+ *   ② 主题管理弹窗：切换 / 排序（箭头 + 拖动）/ 删除 / 导入 / 一键装离线包。
+ * 三条硬规矩：
+ *   · 主题包的 CSS 统一注入 <style id="themePackCss">，包里选择器都带
+ *     body.theme-<id>，靠树序赢，**不改 builtin 的样式文件**；
+ *   · 主题名/作者来自 manifest.json（别人写的），进 innerHTML 一律先转义；
+ *   · 顺序只在主进程落盘（config.themeOrder），渲染层不留第二份真相。
+ */
+const THEME_REPO_URL = 'https://github.com/fangyugit/FClassPal-theme';
+
+/** 下拉栏选项：由注册表生成（装/删/排序后也要重画，所以抽成函数） */
+function renderThemeOptions() {
+  const sel = $('themeSelect');
+  if (!sel) return;
+  sel.innerHTML = THEMES.map((t) =>
+    '<option value="' + escapeHtml(t) + '">' + escapeHtml(THEME_LABEL[t] || t) + '</option>').join('');
+  sel.value = THEMES.indexOf(currentTheme) >= 0 ? currentTheme : 'glass';
+}
+
+/** 主进程给的卡片列表 → 注册表（顺序就是用户排的顺序；内置五套缺了就补在末尾） */
+function applyThemeRegistry(cards) {
+  const list = [], label = {}, accent = {}, fixed = [];
+  (cards || []).forEach((c) => {
+    if (!c || !c.id || list.indexOf(c.id) >= 0) return;
+    list.push(c.id);
+    label[c.id] = c.name || BUILTIN_LABEL[c.id] || c.id;
+    accent[c.id] = c.accent || BUILTIN_ACCENT[c.id] || '#6750A4';
+    if (c.fixedPalette !== false) fixed.push(c.id);
+  });
+  BUILTIN_THEMES.forEach((id) => { if (list.indexOf(id) < 0) list.push(id); });
+  THEMES = list;
+  FLAT_THEMES = list.filter((t) => t !== 'glass');
+  THEME_LABEL = label;
+  THEME_ACCENT = accent;
+  FIXED_PALETTE_THEMES = fixed;
+  THEME_ACCENT_LIST = Object.keys(THEME_ACCENT).map((k) => THEME_ACCENT[k].toUpperCase());
+  renderThemeOptions();
+}
+
+function injectThemePackCss() {
+  let el = document.getElementById('themePackCss');
+  if (!el) {
+    el = document.createElement('style');
+    el.id = 'themePackCss';
+    document.head.appendChild(el);
+  }
+  el.textContent = THEMES.map((id) => themePackCss[id] || '').join('\n');
+}
+
+/** 没有主进程（安卓壳 / 预览模式）时的兜底清单：只有内置五套，库存为空 */
+function localThemeInventory() {
+  return {
+    spec: 1, current: currentTheme, order: BUILTIN_THEMES.slice(),
+    themes: BUILTIN_THEMES.map((id) => ({
+      id: id, name: BUILTIN_LABEL[id], accent: BUILTIN_ACCENT[id],
+      fixedPalette: BUILTIN_FIXED.indexOf(id) >= 0, builtin: true, installed: true
+    })),
+    broken: [], bundled: [], hasBundled: false, themesDir: ''
+  };
+}
+
+/** 拉一次主题清单 + 主题包 CSS。返回 data 或 null（宿主不支持时） */
+async function loadThemeRegistry() {
+  if (typeof API.themesList !== 'function') {
+    themeInv = themeInv || localThemeInventory();
+    return null;
+  }
+  try {
+    const r = await API.themesList();
+    if (!r || !r.success || !r.data) { themeInv = localThemeInventory(); return null; }
+    themeInv = r.data;
+    applyThemeRegistry(r.data.themes);
+    if (typeof API.themesCss === 'function') {
+      const c = await API.themesCss();
+      themePackCss = (c && c.css) || {};
+      injectThemePackCss();
+    }
+    return r.data;
+  } catch (e) {
+    console.warn('[themes] 主题清单读取失败', e);
+    themeInv = localThemeInventory();
+    return null;
+  }
+}
+
+/* ---------- 弹窗渲染 ---------- */
+function themeCardHTML(t, idx, total) {
+  const cur = t.id === currentTheme;
+  const btns = [];
+  btns.push('<button class="theme-mini" type="button" data-act="up" title="上移"' +
+    (idx === 0 ? ' disabled' : '') + '>' + svgIcon('i-up') + '</button>');
+  btns.push('<button class="theme-mini" type="button" data-act="down" title="下移"' +
+    (idx === total - 1 ? ' disabled' : '') + '>' + svgIcon('i-down') + '</button>');
+  if (!t.builtin) {
+    btns.push('<button class="theme-mini danger" type="button" data-act="del" title="删除这个主题包">' +
+      svgIcon('i-trash') + '</button>');
+  }
+  return '<div class="theme-card' + (cur ? ' is-current' : '') + '" data-id="' + escapeHtml(t.id) + '"' +
+    ' role="button" tabindex="0" title="' + escapeHtml(t.desc || t.name || t.id) + '">' +
+    '<span class="theme-dot" style="--c:' + escapeHtml(t.accent || '#6750A4') + '"></span>' +
+    '<span class="theme-name">' + escapeHtml(t.name || t.id) + '</span>' +
+    '<span class="theme-tag">' + escapeHtml(t.builtin ? '内置' : '包 ' + (t.version || '1.0.0')) + '</span>' +
+    '<span class="theme-card-btns">' + btns.join('') + '</span>' +
+    '</div>';
+}
+
+function bundledCardHTML(b) {
+  return '<div class="theme-card" data-bundled="' + escapeHtml(b.file) + '" role="button" tabindex="0"' +
+    ' title="' + escapeHtml(b.desc || b.name) + '">' +
+    '<span class="theme-dot" style="--c:#8794B4"></span>' +
+    '<span class="theme-name">' + escapeHtml(b.name) + '</span>' +
+    '<span class="theme-tag">' + escapeHtml(b.id || '离线包') + '</span>' +
+    '<span class="theme-card-btns"><button class="theme-mini" type="button" data-act="install"' +
+    ' title="装进来">' + svgIcon('i-download') + '</button></span>' +
+    '</div>';
+}
+
+function renderThemeModal() {
+  const list = $('themeList');
+  if (!list) return;
+  if (!themeInv) themeInv = localThemeInventory();
+  const themes = themeInv.themes || [];
+  list.innerHTML = themes.map((t, i) => themeCardHTML(t, i, themes.length)).join('');
+
+  const bund = (themeInv.bundled || []).filter((b) => !b.installed);
+  const box = $('themeBundledBox');
+  if (box) {
+    box.classList.toggle('hidden', bund.length === 0);
+    const bl = $('themeBundledList');
+    if (bl) bl.innerHTML = bund.map(bundledCardHTML).join('');
+  }
+  const broken = themeInv.broken || [];
+  const bx = $('themeBrokenBox');
+  if (bx) {
+    bx.classList.toggle('hidden', broken.length === 0);
+    const xl = $('themeBrokenList');
+    if (xl) {
+      xl.innerHTML = broken.map((b) =>
+        '<div class="theme-card broken"><span class="theme-name">' + escapeHtml(b.id) + '</span>' +
+        '<span class="theme-tag" title="' + escapeHtml(b.error) + '">读不出来</span></div>').join('');
+    }
+  }
+  const hint = $('themeManageHint');
+  if (hint) {
+    hint.textContent = '点一下卡片就能换风格；用箭头或直接拖动调整顺序；主题包可以删除，内置五套删不掉。' +
+      (typeof API.themesInstall === 'function' ? '' : '（这个版本不能导入主题包）');
+  }
+  // 宿主没有主进程（安卓壳）时，导入/文件夹按钮直接禁掉，别让用户点了没反应
+  const canInstall = typeof API.themesInstall === 'function';
+  ['btnThemeInstall', 'btnThemeFolder'].forEach((id) => {
+    const b = $(id);
+    if (b) b.disabled = !canInstall;
+  });
+}
+
+function openThemeModal() {
+  const m = $('themeModal');
+  if (!m) return;
+  m.classList.remove('hidden');
+  renderThemeModal();
+  loadThemeRegistry().then(() => renderThemeModal());
+}
+function closeThemeModal() {
+  const m = $('themeModal');
+  if (m) m.classList.add('hidden');
+}
+
+/* ---------- 变更：导入 / 装离线包 / 删除 / 排序 ---------- */
+async function afterThemeMutation(r, okMsg) {
+  if (!r || !r.success) { toast((r && r.error) || '操作失败'); return; }
+  themeInv = r.data;
+  applyThemeRegistry(r.data.themes);
+  if (typeof API.themesCss === 'function') {
+    const c = await API.themesCss();
+    themePackCss = (c && c.css) || {};
+    injectThemePackCss();
+  }
+  // 删掉的正好是当前在用的 → 主进程已经把它落回基线，这里跟着切
+  if (r.theme && r.theme !== currentTheme) switchTheme(r.theme);
+  renderThemeModal();
+  if (okMsg) toast(okMsg);
+}
+
+async function installThemeFromFile() {
+  if (typeof API.themesInstall !== 'function') return;
+  const r = await API.themesInstall();
+  if (!r || r.canceled) return;
+  const n = r.success && r.installed ? '「' + r.installed.name + '」' : '';
+  await afterThemeMutation(r, r.success ? '已装上 ' + n : '');
+}
+
+async function installBundledTheme(file) {
+  if (typeof API.themesInstallBundled !== 'function') return;
+  const r = await API.themesInstallBundled(file);
+  const n = r && r.success && r.installed ? '「' + r.installed.name + '」' : '';
+  await afterThemeMutation(r, r && r.success ? '已装上 ' + n : '');
+}
+
+async function removeThemePack(id) {
+  if (typeof API.themesRemove !== 'function') return;
+  const t = (themeInv.themes || []).filter((x) => x.id === id)[0];
+  const name = (t && t.name) || id;
+  if (!confirm('删除主题包「' + name + '」？\n\n只从本机删掉这套皮肤，重新导入就能装回来。')) return;
+  const r = await API.themesRemove(id);
+  await afterThemeMutation(r, r && r.success ? '已删除「' + name + '」' : '');
+}
+
+async function commitThemeOrder(ids) {
+  if (typeof API.themesReorder !== 'function') return;
+  const r = await API.themesReorder(ids);
+  if (!r || !r.success) { toast((r && r.error) || '排序失败'); return; }
+  const byId = {};
+  (themeInv.themes || []).forEach((t) => { byId[t.id] = t; });
+  themeInv.order = r.order;
+  themeInv.themes = r.order.map((x) => byId[x]).filter(Boolean);
+  applyThemeRegistry(themeInv.themes);
+  renderThemeModal();
+}
+
+async function moveTheme(id, dir) {
+  const ids = (themeInv.themes || []).map((t) => t.id);
+  const i = ids.indexOf(id), j = i + dir;
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  const tmp = ids[i]; ids[i] = ids[j]; ids[j] = tmp;
+  await commitThemeOrder(ids);
+}
+
+/* ---------- 弹窗交互 ---------- */
+let themeDrag = null;
+let themeClickSuppress = false;
+
+(function bindThemeModal() {
+  const list = $('themeList');
+  if (!list) return;
+
+  // 拖动排序：卡片整块可拖，但按在按钮上不算拖动（否则点删除会顺手把顺序搅乱）
+  list.addEventListener('pointerdown', (e) => {
+    const card = e.target.closest && e.target.closest('.theme-card');
+    if (!card || !card.dataset.id || (e.target.closest && e.target.closest('button'))) return;
+    themeDrag = { card: card, y0: e.clientY, active: false };
+    if (card.setPointerCapture) { try { card.setPointerCapture(e.pointerId); } catch (err) { /* 捕获失败也能拖 */ } }
+  });
+  list.addEventListener('pointermove', (e) => {
+    if (!themeDrag) return;
+    if (!themeDrag.active) {
+      // 5px 死区：手指/鼠标轻微抖动不该被当成排序，否则"点一下换风格"会经常失手
+      if (Math.abs(e.clientY - themeDrag.y0) < 5) return;
+      themeDrag.active = true;
+      themeDrag.card.classList.add('is-dragging');
+    }
+    e.preventDefault();
+    const cards = Array.prototype.slice.call(list.querySelectorAll('.theme-card'));
+    const after = cards.filter((c) => c !== themeDrag.card).find((c) => {
+      const r = c.getBoundingClientRect();
+      return e.clientY < r.top + r.height / 2;
+    });
+    if (after) list.insertBefore(themeDrag.card, after);
+    else list.appendChild(themeDrag.card);
+  });
+  const endDrag = () => {
+    if (!themeDrag) return;
+    const d = themeDrag;
+    themeDrag = null;
+    d.card.classList.remove('is-dragging');
+    if (!d.active) return;
+    // 拖完紧跟的 click 要吞掉，不然松手瞬间还会切一次主题
+    themeClickSuppress = true;
+    setTimeout(() => { themeClickSuppress = false; }, 0);
+    const ids = Array.prototype.slice.call(list.querySelectorAll('.theme-card'))
+      .map((c) => c.dataset.id).filter(Boolean);
+    commitThemeOrder(ids);
+  };
+  list.addEventListener('pointerup', endDrag);
+  list.addEventListener('pointercancel', endDrag);
+
+  list.addEventListener('click', (e) => {
+    const card = e.target.closest && e.target.closest('.theme-card');
+    if (!card) return;
+    const btn = e.target.closest && e.target.closest('button');
+    if (btn) {
+      const act = btn.dataset.act;
+      if (act === 'del') removeThemePack(card.dataset.id);
+      else if (act === 'up' || act === 'down') moveTheme(card.dataset.id, act === 'up' ? -1 : 1);
+      return;
+    }
+    if (themeClickSuppress) return;
+    if (card.dataset.id && card.dataset.id !== currentTheme) switchTheme(card.dataset.id);
+    renderThemeModal();
+  });
+  list.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest && e.target.closest('.theme-card');
+    if (!card || !card.dataset.id) return;
+    e.preventDefault();
+    if (card.dataset.id !== currentTheme) switchTheme(card.dataset.id);
+    renderThemeModal();
+  });
+
+  const bl = $('themeBundledList');
+  if (bl) {
+    bl.addEventListener('click', (e) => {
+      const card = e.target.closest && e.target.closest('.theme-card');
+      if (!card || !card.dataset.bundled) return;
+      installBundledTheme(card.dataset.bundled);
+    });
+  }
+})();
+
+if ($('btnThemeManage')) $('btnThemeManage').addEventListener('click', openThemeModal);
+if ($('btnThemeModalClose')) $('btnThemeModalClose').addEventListener('click', closeThemeModal);
+if ($('btnThemeInstall')) $('btnThemeInstall').addEventListener('click', installThemeFromFile);
+if ($('btnThemeFolder')) {
+  $('btnThemeFolder').addEventListener('click', async () => {
+    if (typeof API.themesOpenFolder !== 'function') return;
+    const r = await API.themesOpenFolder();
+    if (r && !r.success) toast('打不开主题文件夹：' + (r.error || '未知错误'));
+  });
+}
+['btnThemeRepo', 'btnThemeRepoLink'].forEach((id) => {
+  const b = $(id);
+  if (b) b.addEventListener('click', () => API.openExternal(THEME_REPO_URL));
+});
+
 /* ---------- 主色来源：莫奈取色 / 手动指定 ----------
  * 两种模式走同一条派生链路（主进程 SchemeTonalSpot），差别只在于 source color
  * 来自壁纸聚类打分还是用户手选。选完立即向主进程要一份新的 palette 写进 CSS 变量。
@@ -2906,8 +3261,9 @@ if (typeof API.getAppVersion === 'function') {
 }
 $('aboutGithub').addEventListener('click', () => { API.openExternal(GITHUB_URL); });
 
-/* --- 检测更新（v2.5.0）：比对 GitHub latest release 与当前版本 ---
- * 走主进程 https（渲染层有 CORS），网络不可达时给可读提示，不弹窗打扰。 */
+/* --- 检测更新（v2.5.0）：比对 GitHub 正式 release 与当前版本 ---
+ * 主进程那边有两级链路（直连 → DoH over IP 直连），本机 hosts 把 github
+ * 域名钉到 127.0.0.1 也能通，所以这里不再提示"网络不可用"那类含糊文案。 */
 $('btnCheckUpdate').addEventListener('click', async () => {
   const b = $('btnCheckUpdate');
   b.disabled = true; const old = b.textContent; b.textContent = '检测中…';
@@ -3659,13 +4015,15 @@ if (typeof API.onTrayAction === 'function') {
   titleInput.value = config.title || 'FClassPal';
   opacityRange.value = config.opacity ?? 0.55;
   widget.style.setProperty('--glass-alpha', config.opacity ?? 0.55);
-  /* 下拉栏选项由 THEME_LABEL 生成（新增主题只改一处注册表） */
-  const themeSelect = $('themeSelect');
-  if (themeSelect && !themeSelect.options.length) {
-    themeSelect.innerHTML = THEMES.map((t) =>
-      '<option value="' + t + '">' + (THEME_LABEL[t] || t) + '</option>').join('');
-  }
-  if (themeSelect) themeSelect.value = config.theme || 'glass';
+  /* 主题注册表 + 主题包 CSS 必须先到位：下面 applyTheme 要按 config.theme 上皮肤，
+   * 主题包还没读进来就会被退回基线（用户看到的就是"升级完主题没了"）。
+   * 主进程在建窗前其实已经自动装过随包离线包，这里是渲染层的第二道保险。 */
+  await loadThemeRegistry();
+  renderThemeOptions();
+  /* 配置里记的主题已经不在本机（包被删了、或从别的机器同步过来的配置）→ 收回基线，
+   * 顺手落盘，别让"配置说是 kitty、界面却是玻璃"这种状态一直挂着 */
+  if (THEMES.indexOf(config.theme) < 0) config.theme = 'glass';
+  if ($('themeSelect')) $('themeSelect').value = config.theme;
   applyRadius(config.cornerRadius ?? null, false);
   API.setBounds(bounds);
   enableLiquidGlass();   // 能力探测通过后点亮 .lg-ready

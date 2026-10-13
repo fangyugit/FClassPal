@@ -115,14 +115,16 @@ app.whenReady().then(async () => {
   await wait(500);
 
   const BUTTONS = [
-    ['btnCfgExport', 'save', 'fcpc'],
+    /* v2.5.0：导出从「另存为」改成「选文件夹」（用户反馈另存为不直观），
+     * 所以导出按钮触发的也是 showOpenDialog(openDirectory) —— kind 全是 open。 */
+    ['btnCfgExport', 'open', 'fcpc'],
     ['btnCfgImport', 'open', 'fcpc'],
-    ['btnThemeExport', 'save', 'fcpt'],
+    ['btnThemeExport', 'open', 'fcpt'],
     ['btnThemeImport', 'open', 'fcpt']
   ];
 
   for (const [id, kind, ext] of BUTTONS) {
-    const before = calls[kind] + calls.open * 0;   // 计数基准
+    const before = calls[kind];   // 计数基准
     const info = await clickButton(wc, id);
     if (!info) { check(id + ' 存在', false); continue; }
     // ① 尺寸没被压扁（30×30 的方形图标按钮容器症状）
@@ -130,10 +132,10 @@ app.whenReady().then(async () => {
       info.w + '×' + info.h + '  文字宽 ' + info.textW);
     // ② 点得到的区域：文字中心必须命中按钮
     check(id + ' 文字中心命中的是按钮本身', info.hitIsBtn, '命中 ' + info.hitDesc);
-    // ③ 真实点击后对话框被调用
+    // ③ 真实点击后对话框被调用（比点击前多一次）
     await wait(700);
-    const now = kind === 'save' ? calls.save : calls.open;
-    check(id + ' 真实点击触发了文件对话框', now > (kind === 'save' ? (ext === 'fcpc' ? 0 : 1) : 0),
+    const now = calls[kind];
+    check(id + ' 真实点击触发了文件对话框', now > before,
       'save=' + calls.save + ' open=' + calls.open);
   }
 
