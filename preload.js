@@ -54,6 +54,9 @@ contextBridge.exposeInMainWorld('widgetAPI', {
   importConfig: () => ipcRenderer.invoke('import-config'),
   exportTheme: () => ipcRenderer.invoke('export-theme'),
   importTheme: () => ipcRenderer.invoke('import-theme'),
+  /* v2.5.0：检测更新 + 恢复出厂（关于界面） */
+  checkUpdate: () => ipcRenderer.invoke('check-update'),
+  factoryReset: () => ipcRenderer.invoke('factory-reset'),
   // U 盘列表变化（插入/拔出）时回调，参数为驱动数组
   onUsbChange: (callback) => {
     const handler = (_e, drives) => callback(drives);

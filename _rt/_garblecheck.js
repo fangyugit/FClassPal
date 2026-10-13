@@ -118,7 +118,7 @@ app.whenReady().then(async () => {
     `Array.from(document.querySelectorAll('#themeSelect option')).map(o => o.value)`
   );
   console.log('  可选主题: ' + themes.join(', '));
-  assert('主题下拉里有 10 套主题（透明主题已下线）', themes.length === 10, '实际 ' + themes.length);
+  assert('主题下拉里有 18 套主题（v2.5.0 起加八套角色主题）', themes.length === 18, '实际 ' + themes.length);
   assert('透明主题已从列表移除', themes.indexOf('transparent') < 0);
 
   const shots = [];

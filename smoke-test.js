@@ -452,10 +452,10 @@ function themeTokens(theme) {
     /function syncSettingsControls/.test(js) &&
     /box\.classList\.toggle\('hidden', fixed\)/.test(js) &&
     !/classList\.toggle\('hidden',\s*!isMd3\)/.test(js));
-  check('app.js: 七套固定配色主题（kitty/dog/miuix/harmony/kuromi/melody/sanrio）隐藏取色面板并给出说明',
+  check('app.js: 十五套固定配色主题（角色扮演 + MIUIX/鸿蒙 + v2.5.0 八套新角色）隐藏取色面板并给出说明',
     /* 透明（黑背景）是深色固定方案；miuix/harmony 用各自官方配色（MIUIX #3482FF /
      * 鸿蒙 #0A59F7），kitty/dog/kuromi/melody/sanrio 是角色扮演配色；对它们取色都是无效操作 */
-    /const FIXED_PALETTE_THEMES = \['kitty', 'dog', 'miuix', 'harmony', 'kuromi', 'melody', 'sanrio'\]/.test(js) &&
+    /const FIXED_PALETTE_THEMES = \['kitty', 'dog', 'miuix', 'harmony', 'kuromi', 'melody', 'sanrio',\s*\n?\s*'pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale'\]/.test(js) &&
     /fixedPaletteHint/.test(js) && /固定主题配色|官方规范固定配色/.test(js));
   check('html: 固定配色提示行存在', /id="fixedPaletteHint"/.test(html));
   check('html: 取色控件不再挂 md3-only（措辞也不再是 MD3 专属）',
@@ -471,23 +471,23 @@ function themeTokens(theme) {
     /function accentLivePreview/.test(js) && /accentInputTimer/.test(js) &&
     /clearTimeout\(accentInputTimer\)/.test(js));
 
-  /* ---- 十套独立风格（v2.2.2 起）：Kitty / 玉桂狗 / 库洛米 / 美乐蒂 / 三丽鸥混合 ---- */
-  console.log('[Multi theme - ten independent design systems]');
-  check('app.js: 主题清单共 10 套（v2.4.0 起「透明（黑背景）」下线，改由黑暗模式承担）+ 固定配色集合',
-    /const THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'\]/.test(js) &&
+  /* ---- 十八套独立风格（v2.5.0 起加 8 套角色主题）---- */
+  console.log('[Multi theme - independent design systems]');
+  check('app.js: 主题清单共 18 套（v2.5.0 加帕恰狗/布丁狗/奶娃/洛天依/乐正绫/Miku/Teto/DS鲸鱼娘）',
+    /const THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio',\s*\n?\s*'pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale'\]/.test(js) &&
     !/transparent/.test(js.slice(js.indexOf('const THEMES'), js.indexOf('const THEME_LABEL'))) &&
     /FLAT_THEMES = THEMES\.filter/.test(js) && /FIXED_PALETTE_THEMES/.test(js));
   check('app.js: 主题下拉栏选项由 THEME_LABEL 生成（新增主题只改注册表一处）',
     /themeSelect\.innerHTML = THEMES\.map/.test(js) && /THEME_LABEL\[t\] \|\| t/.test(js));
   check('app.js: 每套风格各有默认推荐主色（用户没手挑过才套用）',
-    /const THEME_ACCENT = \{[\s\S]{0,420}kitty:\s*'#C2185B'[\s\S]{0,120}kuromi:\s*'#8E5BC8'[\s\S]{0,60}melody:\s*'#EC6FA8'[\s\S]{0,60}sanrio:\s*'#E8548A'/.test(js) &&
+    /const THEME_ACCENT = \{[\s\S]{0,900}kitty:\s*'#C2185B'[\s\S]{0,120}kuromi:\s*'#8E5BC8'[\s\S]{0,80}melody:\s*'#EC6FA8'[\s\S]{0,80}sanrio:\s*'#E8548A'[\s\S]{0,400}miku:\s*'#1FB5AA'[\s\S]{0,80}whale:\s*'#3E6FD8'/.test(js) &&
     /accentPicked/.test(js));
   check('app.js: 切风格不重算颜色（动态配色主题共用同一份 --md3-* 配色中枢；明暗不匹配时才重算）',
     /const have = wallInfo && wallInfo\.palette;/.test(js) &&
     /if \(isDynamicTheme\(currentTheme\) && \(!have \|\| !!have\.dark !== wantDark\)\)/.test(js) &&
     /applyPalette\(wallInfo\.palette\)/.test(js));
   check('app.js: 切换主题的 toast 带主题名', /THEME_LABEL\[currentTheme\]/.test(js) &&
-    /THEME_LABEL = \{[^}]*harmony: '鸿蒙'[^}]*kuromi: '库洛米'[^}]*melody: '美乐蒂'[^}]*sanrio: '三丽鸥混合'/.test(js));
+    /THEME_LABEL = \{[^}]*harmony: '鸿蒙'[^}]*kuromi: '库洛米'[^}]*melody: '美乐蒂'[^}]*sanrio: '三丽鸥混合'[^}]*teto: '重音Teto'/.test(js));
   check('app.js: 主题经下拉栏切换（change 事件 → switchTheme，不再用分段按钮点击）',
     /\$\('themeSelect'\)\.addEventListener\('change'/.test(js) &&
     /function switchTheme/.test(js) &&
@@ -496,8 +496,9 @@ function themeTokens(theme) {
     !/data-theme="/.test(html) && /<select id="themeSelect"/.test(html));
   check('css: 已彻底移除 theme-flat 共底（每套主题自足，不再是"平面系共用结构"）',
     !/theme-flat/.test(css) && !/theme-flat/.test(js) && !/md3-enter/.test(css) && !/md3-enter/.test(js));
-  check('css: 九套皮肤各自定义同一份表面清单 token（形状/模糊/表面/强调色）',
-    ['md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'].every((t) => {
+  check('css: 十八套皮肤各自定义同一份表面清单 token（形状/模糊/表面/强调色）',
+    ['md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio',
+      'pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale'].every((t) => {
       const b = themeTokens(t);
       return /--t-r-win:/.test(b) && /--t-r-card:/.test(b) && /--t-btn-r:/.test(b) &&
         /--t-blur:/.test(b) && /--t-surface:/.test(b) && /--t-accent:/.test(b) &&
@@ -1242,6 +1243,29 @@ function themeTokens(theme) {
       fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')) &&
     /"artifactName":\s*"FClassPal-\$\{version\}\.exe"/.test(
       fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')));
+
+  /* ---- v2.5.0：asar require 完整性（build.files 漏 pack.js 真机事故）----
+   * 开发态全绿、打包版「操作失败」——main.js:1631 require('./pack') 在 asar 里
+   * 解析不到，uncaughtException 兜住后四个导入导出 handler 根本没注册。
+   * 源码层守卫：build.files 必须显式列出 main.js 相对 require 到的每个模块。 */
+  console.log('\n[v2.5.0 asar require 完整性]');
+  {
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
+    const mainSrc = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf-8')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const reqs = [...new Set([...mainSrc.matchAll(/require\((['"])(\.[^'"]+)\1\)/g)].map((m) => m[2]))];
+    const fileRules = (pkg.build && pkg.build.files) || [];
+    check('main.js 存在相对 require（守卫自身有效性）', reqs.length > 0);
+    for (const r of reqs) {
+      const base = r.replace(/^\.\//, '');
+      const cands = [base, base + '.js', base + '.json', base + '/index.js'];
+      const covered = cands.some((c) => fileRules.some((f) => f === c ||
+        (f.endsWith('/**/*') && c.startsWith(f.slice(0, -5))) ||
+        (f.includes('*') && new RegExp('^' + f.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+          .replace(/\*/g, '.*') + '$').test(c))));
+      check('build.files 覆盖 require(' + r + ')', covered);
+    }
+  }
 
   /* ---- v2.3.0：折射修复（JPEG 贴图 → PNG）与关于界面 ---- */
   console.log('\n[v2.3.0 折射修复与关于界面]');

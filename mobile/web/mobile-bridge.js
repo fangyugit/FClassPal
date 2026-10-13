@@ -27,7 +27,7 @@
 
   var MOBILE_KEY = 'fclasspal-mobile-config';
   var FALLBACK_ACCENT = '#6750A4';   // 与桌面版 DEFAULT_CONFIG.accentColor 一致
-  var APP_VERSION = '2.4.7';
+  var APP_VERSION = '2.5.0';
 
   /* ---------------------------------------------------------------- 原生插件 */
   function plugin() {
@@ -140,7 +140,7 @@
     keepBottom: false,          // 安卓没有"窗口置底"这回事，统一 false
     autoLaunch: false,
     locked: false,
-    realtime: true,             // 实时模糊默认开（悬浮窗模式走录屏采集；全屏自动退壁纸）
+    realtime: false,            // v2.5.0 起默认关：录屏权限只在用户打开实时选项时才要（不要开屏就弹）
     androidMode: 'fullscreen',  // fullscreen=铺满 | float=悬浮小窗（像桌面版）
     theme: 'glass',
     // 安卓首启默认"跟随系统"：手机几乎都开着深色定时切换，这一档最省心
@@ -383,6 +383,163 @@
 
   function imageLuminance(dataUrl) { return averageLuminance(dataUrl); }
 
+  /* ------------------------------------------------------------ .fcpc/.fcpt 打包工具（v2.5.0）
+   * 写：STORE（不压缩，容器手工拼 —— 和桌面版 pack.js 读得到的布局一致）。
+   * 读：EOCD → central directory → local header，deflate 条目用
+   * DecompressionStream('deflate-raw') 解（桌面包是 deflate 压的）。 */
+  function packStamp() {
+    var d = new Date();
+    var p = function (n) { return ('0' + n).slice(-2); };
+    return '' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
+  }
+
+  var CRC_T = (function () {
+    var t = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(u8) {
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function zipBuild(entries) {
+    var enc = new TextEncoder();
+    var parts = [], centrals = [], offset = 0, count = 0;
+    var now = new Date();
+    var dTime = ((now.getHours() & 0x1F) << 11) | ((now.getMinutes() & 0x3F) << 5) | ((now.getSeconds() / 2) & 0x1F);
+    var dDate = (((now.getFullYear() - 1980) & 0x7F) << 9) | (((now.getMonth() + 1) & 0xF) << 5) | now.getDate();
+    function w16(a, v) { a.push(v & 0xFF, (v >>> 8) & 0xFF); }
+    function w32(a, v) { a.push(v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF); }
+    entries.forEach(function (e) {
+      var name = enc.encode(e.name);
+      var data = e.u8 || enc.encode(e.text || '');
+      var crc = crc32(data);
+      var local = [];
+      w32(local, 0x04034b50); w16(local, 20); w16(local, 0x0800); w16(local, 0);
+      w16(local, dTime); w16(local, dDate);
+      w32(local, crc); w32(local, data.length); w32(local, data.length);
+      w16(local, name.length); w16(local, 0);
+      var cen = [];
+      w32(cen, 0x02014b50); w16(cen, 20); w16(cen, 20); w16(cen, 0x0800); w16(cen, 0);
+      w16(cen, dTime); w16(cen, dDate);
+      w32(cen, crc); w32(cen, data.length); w32(cen, data.length);
+      w16(cen, name.length); w16(cen, 0); w16(cen, 0); w16(cen, 0); w16(cen, 0);
+      w32(cen, 0); w32(cen, offset);
+      parts.push(new Uint8Array(local), name, data);
+      centrals.push(new Uint8Array(cen), name);
+      offset += local.length + name.length + data.length;
+      count++;
+    });
+    var cdStart = offset, cdSize = 0;
+    centrals.forEach(function (b) { cdSize += b.length; });
+    var end = [];
+    w32(end, 0x06054b50); w16(end, 0); w16(end, 0);
+    w16(end, count); w16(end, count);
+    w32(end, cdSize); w32(end, cdStart); w16(end, 0);
+    var all = parts.concat(centrals, [new Uint8Array(end)]);
+    var total = 0;
+    all.forEach(function (b) { total += b.length; });
+    var out = new Uint8Array(total), pos = 0;
+    all.forEach(function (b) { out.set(b, pos); pos += b.length; });
+    return Promise.resolve(out);
+  }
+
+  function inflateRaw(u8) {
+    if (typeof DecompressionStream !== 'function') return Promise.reject(new Error('WebView 太旧，不支持解压'));
+    var ds = new DecompressionStream('deflate-raw');
+    return new Response(new Blob([u8]).stream().pipeThrough(ds)).arrayBuffer()
+      .then(function (ab) { return new Uint8Array(ab); });
+  }
+
+  function zipRead(u8) {
+    var dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    /* 从尾部扫 EOCD（0x06054b50） */
+    var i = u8.length - 22;
+    while (i >= 0 && dv.getUint32(i, true) !== 0x06054b50) i--;
+    if (i < 0) return Promise.reject(new Error('不是合法的 zip 包'));
+    var count = dv.getUint16(i + 10, true);
+    var cdOff = dv.getUint32(i + 16, true);
+    var dec = new TextDecoder();
+    var p = cdOff, files = {};
+    var chain = Promise.resolve();
+    for (var k = 0; k < count; k++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      var method = dv.getUint16(p + 10, true);
+      var cSize = dv.getUint32(p + 20, true);
+      var nameLen = dv.getUint16(p + 28, true);
+      var extraLen = dv.getUint16(p + 30, true);
+      var cmtLen = dv.getUint16(p + 32, true);
+      var lho = dv.getUint32(p + 42, true);
+      var name = dec.decode(u8.subarray(p + 46, p + 46 + nameLen));
+      p += 46 + nameLen + extraLen + cmtLen;
+      if (name.slice(-1) === '/') continue;
+      /* 跳过 local header 拿数据起点 */
+      var lnLen = dv.getUint16(lho + 26, true), lxLen = dv.getUint16(lho + 28, true);
+      var dStart = lho + 30 + lnLen + lxLen;
+      var raw = u8.slice(dStart, dStart + cSize);
+      (function (name2, method2, raw2) {
+        chain = chain.then(function () {
+          if (method2 === 0) { files[name2] = raw2; return null; }
+          if (method2 === 8) return inflateRaw(raw2).then(function (out) { files[name2] = out; });
+          throw new Error('不认识的压缩方式 ' + method2);
+        });
+      })(name, method, raw);
+    }
+    return chain.then(function () {
+      var out = {};
+      Object.keys(files).forEach(function (n) {
+        out[n] = n === 'config.json' || n === 'theme.json' || n === 'manifest.json'
+          ? new TextDecoder().decode(files[n]) : files[n];
+      });
+      try { out.manifest = out['manifest.json'] ? JSON.parse(out['manifest.json']) : {}; } catch (e) { out.manifest = {}; }
+      return out;
+    });
+  }
+
+  function u8ToB64(u8) {
+    var s = '';
+    var CH = 0x8000;
+    for (var i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+    return btoa(s);
+  }
+
+  function pickAndReadPack() {
+    return new Promise(function (resolve) {
+      var p = plugin();
+      if (!p || typeof p.addListener !== 'function' || typeof p.pickPack !== 'function') {
+        resolve(null);
+        return;
+      }
+      var done = false;
+      var off = function () { };
+      var timer = setTimeout(function () { if (!done) { done = true; try { off(); } catch (e) { } resolve(null); } }, 120000);
+      Promise.resolve(p.addListener('packPicked', function (r) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try { off(); } catch (e) { }
+        if (!r || r.canceled) { resolve(null); return; }
+        try {
+          var bin = atob(r.base64 || '');
+          var u8 = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+          zipRead(u8).then(resolve, function () { resolve(null); });
+        } catch (e) { resolve(null); }
+      })).then(function (h) {
+        if (h && typeof h.remove === 'function') off = function () { try { h.remove(); } catch (e) { } };
+        Promise.resolve(soft('pickPack', {}, null)).then(function (r) {
+          if (!r || !r.started) { if (!done) { done = true; clearTimeout(timer); try { off(); } catch (e) { } resolve(null); } }
+        });
+      });
+    });
+  }
+
   /* ------------------------------------------------------------ API 实现 */
   var API = {
     /* ---- 配置 ---- */
@@ -607,6 +764,91 @@
     openDrive: function () { return Promise.resolve({ success: false, error: '安卓版不支持 U 盘弹出' }); },
     ejectDrive: function () { return Promise.resolve({ success: false, error: '安卓版不支持 U 盘弹出' }); },
     ejectDriveElevated: function () { return Promise.resolve({ success: false, error: '安卓版不支持 U 盘弹出' }); },
+
+    /* ================================================================ 配置包 .fcpc / 主题包 .fcpt（v2.5.0）
+     * 桌面版走系统文件对话框；安卓是 SAF 选文件 + MediaStore 落盘（下载/FClassPal/）。
+     * zip 打包/解包在渲染层做（STORE 写出最稳；读桌面包的 deflate 用
+     * DecompressionStream('deflate-raw')，Android System WebView 103+ 支持）。
+     * 图标/背景在安卓侧本来就是 data URL 存在 config 里，随 JSON 一起走，
+     * 不需要桌面版那套 icons/ 资产袋；桌面版导入时对 data: 原样保留。 */
+    exportConfig: function () {
+      if (!cfg) return Promise.resolve({ success: false, error: '配置还没加载' });
+      var out = JSON.parse(JSON.stringify(cfg));
+      ['x', 'y', 'width', 'height', 'androidMode', 'autoLaunch'].forEach(function (k) { delete out[k]; });
+      var n = 0;
+      (out.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) { n += (it.children ? it.children.length + 1 : 1); }); });
+      var entries = [
+        { name: 'manifest.json', text: JSON.stringify({ kind: 'fcpc', app: 'FClassPal', version: 1, appVersion: APP_VERSION, exportedAt: new Date().toISOString() }, null, 2) },
+        { name: 'config.json', text: JSON.stringify(out, null, 2) },
+        { name: '说明.txt', text: 'FClassPal 配置包（.fcpc）\r\n\r\n安卓版导出。config.json 里是全部设置与快捷方式，\r\n图标/背景以 data URL 内嵌。桌面版「导入 .fcpc」可直接吃。\r\n\r\n快捷方式数：' + n + '\r\n导出时间：' + new Date().toLocaleString() + '\r\n' }
+      ];
+      return zipBuild(entries).then(function (u8) {
+        var stamp = packStamp();
+        return soft('savePack', { name: 'FClassPal-配置-' + stamp + '.fcpc', base64: u8ToB64(u8) }, null)
+          .then(function (r) {
+            if (r && r.saved) return { success: true, path: r.path || '下载/FClassPal/', items: n };
+            return { success: false, error: (r && r.error) || '保存失败' };
+          });
+      });
+    },
+    exportTheme: function () {
+      if (!cfg) return Promise.resolve({ success: false, error: '配置还没加载' });
+      var KEYS = ['theme', 'appearance', 'cornerRadius', 'opacity', 'title',
+        'background', 'iconFit', 'iconBorder', 'iconShape', 'iconRadius', 'iconRingColor', 'iconMono', 'colorMode', 'accentColor', 'accentPicked'];
+      var scheme = {};
+      KEYS.forEach(function (k) { if (cfg[k] !== undefined) scheme[k] = cfg[k]; });
+      var entries = [
+        { name: 'manifest.json', text: JSON.stringify({ kind: 'fcpt', app: 'FClassPal', version: 1, appVersion: APP_VERSION, theme: scheme.theme, exportedAt: new Date().toISOString() }, null, 2) },
+        { name: 'theme.json', text: JSON.stringify(scheme, null, 2) },
+        { name: 'README.txt', text: 'FClassPal 主题方案（.fcpt）\r\n\r\n界面风格　' + (scheme.theme || 'glass') + '\r\n安卓版导出，桌面版「导入 .fcpt」可直接吃（只改观感，不动快捷方式）。\r\n' }
+      ];
+      return zipBuild(entries).then(function (u8) {
+        return soft('savePack', { name: 'FClassPal-主题-' + (cfg.theme || 'glass') + '-' + packStamp() + '.fcpt', base64: u8ToB64(u8) }, null)
+          .then(function (r) {
+            if (r && r.saved) return { success: true, path: r.path || '下载/FClassPal/' };
+            return { success: false, error: (r && r.error) || '保存失败' };
+          });
+      });
+    },
+    importConfig: function () {
+      return pickAndReadPack().then(function (pack) {
+        if (!pack) return { success: false, canceled: true };
+        if (pack.manifest && pack.manifest.kind && pack.manifest.kind !== 'fcpc')
+          return { success: false, error: '这不是配置包（是 ' + pack.manifest.kind + '），请在「主题方案」处导入' };
+        if (!pack['config.json']) return { success: false, error: '包里没有 config.json，文件可能不完整' };
+        var incoming;
+        try { incoming = JSON.parse(pack['config.json']); } catch (e) { return { success: false, error: 'config.json 解析失败' }; }
+        var cur = cfg || {};
+        ['x', 'y', 'width', 'height', 'androidMode', 'autoLaunch'].forEach(function (k) { incoming[k] = cur[k]; });
+        incoming.androidMode = cur.androidMode || 'fullscreen';
+        incoming.realtime = false;   // 录屏令牌不跨设备，导入后回到默认关
+        cfg = incoming;
+        persist(cfg);
+        var n = 0;
+        (incoming.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) { n += (it.children ? it.children.length + 1 : 1); }); });
+        return { success: true, items: n, theme: incoming.theme };
+      });
+    },
+    importTheme: function () {
+      return pickAndReadPack().then(function (pack) {
+        if (!pack) return { success: false, canceled: true };
+        if (pack.manifest && pack.manifest.kind && pack.manifest.kind !== 'fcpt')
+          return { success: false, error: '这不是主题方案（是 ' + pack.manifest.kind + '），请在「配置备份」处导入' };
+        if (!pack['theme.json']) return { success: false, error: '包里没有 theme.json，文件可能不完整' };
+        var scheme;
+        try { scheme = JSON.parse(pack['theme.json']); } catch (e) { return { success: false, error: 'theme.json 解析失败' }; }
+        var KEYS = ['theme', 'appearance', 'cornerRadius', 'opacity', 'title',
+          'background', 'iconFit', 'iconBorder', 'iconShape', 'iconRadius', 'iconRingColor', 'iconMono', 'colorMode', 'accentColor', 'accentPicked'];
+        KEYS.forEach(function (k) { if (scheme[k] !== undefined) cfg[k] = scheme[k]; });
+        persist(cfg);
+        return { success: true, theme: cfg.theme };
+      });
+    },
+    /* ---- 悬浮窗权限（v2.5.0） ---- */
+    overlayGranted: function () {
+      return soft('overlayGranted', {}, { granted: false }).then(function (r) { return !!(r && r.granted); });
+    },
+    requestOverlay: function () { return soft('requestOverlay', {}, null); },
     onUsbChange: function () { return function () { }; },
 
     /* ---- 托盘：安卓没有托盘，菜单一律在应用内 ---- */
@@ -637,8 +879,9 @@
    * 全部按"找不到就跳过"写，renderer 以后改文案最多是少改几句，不会报错。 */
   /* setRadius 也藏掉：全屏时圆角只会把四个角削出 Activity 底色，没有可调空间。
    * setRealtime **不再藏**（v2.4.6 起悬浮窗模式走录屏实时模糊，默认打开）。 */
-  var HIDE_ROWS = ['setBottom', 'setAutoLaunch', 'setLock', 'setRadius',
-    'rowBackup', 'rowThemePack'];   // .fcpc/.fcpt 走桌面文件对话框，安卓没有 → 整行藏掉
+  var HIDE_ROWS = ['setBottom', 'setAutoLaunch', 'setLock', 'setRadius'];
+  // v2.5.0 起 rowBackup/rowThemePack 不再藏：.fcpc/.fcpt 导入导出在安卓用
+  // SAF + MediaStore 实现了（见 API.exportConfig/importConfig）
   var HIDE_ROW_WITH = ['blurInfo'];
 
   function hideRowById(id) {
@@ -703,9 +946,25 @@
     var isFloat = !!(cfg && cfg.androidMode === 'float');
     document.documentElement.classList.toggle('float', isFloat);
     if (!isFloat) return;
-    soft('setWindowMode', {
-      mode: 'float', x: cfg.x, y: cfg.y, width: cfg.width, height: cfg.height
-    }, null);
+    ensureOverlayThenApply();
+  }
+
+  /* v2.5.0：悬浮窗模式先看「显示在其他应用上层」权限。
+   * 没授予：照常应用应用内悬浮（行为不变），但引导去开权限；
+   * 已授予：带 overlay:true 重新应用，把窗口升级成系统悬浮层。 */
+  function ensureOverlayThenApply() {
+    API.overlayGranted().then(function (granted) {
+      soft('setWindowMode', {
+        mode: 'float', x: cfg && cfg.x, y: cfg && cfg.y,
+        width: cfg && cfg.width, height: cfg && cfg.height,
+        overlay: granted
+      }, null);
+      if (!granted && !ensureOverlayThenApply._asked) {
+        ensureOverlayThenApply._asked = true;   // 只引导一次，别每次启动都打扰
+        soft('toast', { text: '想要在任何界面上显示？去系统设置授予「显示在其他应用上层」权限' }, null);
+        setTimeout(function () { API.requestOverlay(); }, 1200);
+      }
+    });
   }
 
   function injectWindowModeRow() {
@@ -737,10 +996,13 @@
         sync();
         if (cfg) { cfg.androidMode = want; persist(); }
         document.documentElement.classList.toggle('float', want === 'float');
-        soft('setWindowMode', {
-          mode: want, x: cfg && cfg.x, y: cfg && cfg.y,
-          width: cfg && cfg.width, height: cfg && cfg.height
-        }, null);
+        if (want === 'float') { ensureOverlayThenApply(); }
+        else {
+          soft('setWindowMode', {
+            mode: 'fullscreen', x: cfg && cfg.x, y: cfg && cfg.y,
+            width: cfg && cfg.width, height: cfg && cfg.height
+          }, null);
+        }
         soft('toast', { text: want === 'float' ? '已切换为悬浮窗' : '已切换为全屏' }, null);
         // 采集链路和布局都按新窗口重启，延迟重载一次最干净
         setTimeout(function () { try { location.reload(); } catch (e) { } }, 600);

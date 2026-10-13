@@ -416,14 +416,24 @@
         </div>
       </div>
 
-      <!-- 关于：只放作者 / 版本号 / GitHub 链接 -->
+      <!-- 使用统计（v2.5.0）：设置界面最最下面的纯文字榜，点开的每个快捷方式 +1 -->
+      <div class="row" id="rowUsage">
+        <span>使用统计</span>
+        <div class="usage-list" id="usageList"></div>
+      </div>
+
+      <!-- 关于：作者 / 版本号（连点 20 次触发重置）/ 检测更新 / GitHub 链接 -->
       <div class="about" id="aboutBlock">
         <div class="about-head">
           <span class="about-name">FClassPal</span>
-          <span class="about-ver" id="aboutVersion"></span>
+          <button id="aboutVersion" class="text-btn about-ver" type="button"
+            title="别点我——连点 20 次会触发重置流程"></button>
         </div>
         <div class="about-line">作者 YU</div>
-        <button id="aboutGithub" class="text-btn about-link" type="button">GitHub 仓库</button>
+        <div class="btn-row about-actions">
+          <button id="btnCheckUpdate" class="text-btn" type="button">检测更新</button>
+          <button id="aboutGithub" class="text-btn about-link" type="button">GitHub 仓库</button>
+        </div>
       </div>
     </div>
   </div>
@@ -515,6 +525,25 @@
         <div class="add-group-row">
           <input type="text" id="newGroupName" placeholder="新分组名称" />
           <button id="btnAddGroup" class="primary-btn">添加分组</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 恢复出厂确认弹窗（v2.5.0）：连点版本号 20 次触发，两道确认，
+       第二道的确认按钮锁 15 秒（倒计时），防止无脑连点。 -->
+  <div id="resetModal" class="modal hidden">
+    <div class="modal-card small">
+      <div class="modal-header">
+        <span id="resetTitle">重置应用</span>
+        <button class="panel-close" id="btnResetClose"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p id="resetText" class="reset-text"></p>
+        <div class="modal-footer">
+          <div class="spacer"></div>
+          <button id="btnResetCancel" class="ghost-btn">取消</button>
+          <button id="btnResetConfirm" class="danger-btn">确认重置</button>
         </div>
       </div>
     </div>

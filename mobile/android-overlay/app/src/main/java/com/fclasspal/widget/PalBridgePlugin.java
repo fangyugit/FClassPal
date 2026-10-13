@@ -20,6 +20,11 @@ import android.graphics.drawable.Drawable;
 import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.content.ContentValues;
+import android.provider.OpenableColumns;
+import android.provider.Settings;
 import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
@@ -37,6 +42,10 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -71,6 +80,9 @@ public class PalBridgePlugin extends Plugin {
 
     /** 系统录屏授权对话框的 requestCode（ActivityResult 回调里认这个号）。 */
     private static final int REQ_CAPTURE = 51517;
+
+    /** SAF 选择 .fcpc/.fcpt 包（v2.5.0 导入用）。 */
+    private static final int REQ_PICK_PACK = 51518;
 
     /** 当前窗口模式：fullscreen（铺满）| float（悬浮小窗，对应桌面版）。 */
     private volatile String windowMode = "fullscreen";
@@ -229,6 +241,7 @@ public class PalBridgePlugin extends Plugin {
         data.put("y", call.getInt("y"));
         data.put("width", call.getInt("width"));
         data.put("height", call.getInt("height"));
+        data.put("overlay", call.getBoolean("overlay"));
         setWindowModeData(data, call);
     }
 
@@ -273,6 +286,15 @@ public class PalBridgePlugin extends Plugin {
                         lp.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
                         lp.dimAmount = 0f;
                         w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                        // v2.5.0：用户授予了「显示在其他应用上层」后，把窗口升级成真正的
+                        // 系统悬浮层（TYPE_APPLICATION_OVERLAY）。部分 ROM 不允许 Activity
+                        // 窗口改类型 —— 失败就静默留在应用内悬浮，不影响使用。
+                        if (data.optBoolean("overlay", false) && canOverlay()) {
+                            try {
+                                lp.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+                            } catch (Throwable ignored) {
+                            }
+                        }
                     } else {
                         lp.width = WindowManager.LayoutParams.MATCH_PARENT;
                         lp.height = WindowManager.LayoutParams.MATCH_PARENT;
@@ -295,6 +317,7 @@ public class PalBridgePlugin extends Plugin {
                     o.put("error", String.valueOf(t.getMessage()));
                 }
                 o.put("mode", windowMode);
+                o.put("overlayGranted", canOverlay());
                 call.resolve(o);
             }
         });
@@ -338,6 +361,119 @@ public class PalBridgePlugin extends Plugin {
         });
         out.put("applied", true);
         call.resolve(out);
+    }
+
+    /** 悬浮窗权限（v2.5.0）：浮在其它应用上层需要「显示在其他应用上层」授权。 */
+    private boolean canOverlay() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                return Settings.canDrawOverlays(getContext());
+            } catch (Throwable t) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @PluginMethod
+    public void overlayGranted(final PluginCall call) {
+        JSObject o = new JSObject();
+        o.put("granted", canOverlay());
+        call.resolve(o);
+    }
+
+    @PluginMethod
+    public void requestOverlay(final PluginCall call) {
+        Activity act = getActivity();
+        if (act != null) {
+            try {
+                act.startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + act.getPackageName())));
+            } catch (Throwable t) {
+                try {
+                    act.startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION));
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        call.resolve();
+    }
+
+    /* ------------------------------------------------ 配置包/主题包导入导出（v2.5.0）
+     * 桌面版是系统另存为/打开对话框；安卓走 MediaStore（下载/FClassPal/）+ SAF。
+     * 包体本身由渲染层拼装（base64 进出），原生只负责落盘和选文件。 */
+
+    @PluginMethod
+    public void savePack(final PluginCall call) {
+        String name = call.getString("name", "");
+        String b64 = call.getString("base64", "");
+        JSObject o = new JSObject();
+        o.put("saved", false);
+        byte[] bytes;
+        try {
+            bytes = Base64.decode(b64 == null ? "" : b64, Base64.DEFAULT);
+        } catch (Throwable t) {
+            o.put("error", "bad-data");
+            call.resolve(o);
+            return;
+        }
+        if (name == null || name.trim().isEmpty()) name = "FClassPal-export.fcpc";
+        final String fname = name.replaceAll("[\\\\/:*?\"<>|]", "_");
+        final Context ctx = getContext().getApplicationContext();
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                ContentValues cv = new ContentValues();
+                cv.put(MediaStore.MediaColumns.DISPLAY_NAME, fname);
+                cv.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
+                cv.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/FClassPal");
+                Uri uri = ctx.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                if (uri != null) {
+                    OutputStream os = ctx.getContentResolver().openOutputStream(uri);
+                    os.write(bytes);
+                    os.close();
+                    o.put("saved", true);
+                    o.put("path", "下载/FClassPal/" + fname);
+                }
+            } else {
+                // 旧设备没有 MediaStore.Downloads：写应用专属外部目录（免存储权限）
+                File dir = ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                if (dir == null) dir = ctx.getFilesDir();
+                File out = new File(new File(dir, "FClassPal"), fname);
+                out.getParentFile().mkdirs();
+                FileOutputStream fos = new FileOutputStream(out);
+                fos.write(bytes);
+                fos.close();
+                o.put("saved", true);
+                o.put("path", out.getAbsolutePath());
+            }
+        } catch (Throwable t) {
+            o.put("saved", false);
+            o.put("error", String.valueOf(t.getMessage()));
+        }
+        call.resolve(o);
+    }
+
+    /** 打 SAF 选择器；结果通过 packPicked 事件回（带 base64 或 canceled）。 */
+    @PluginMethod
+    public void pickPack(final PluginCall call) {
+        JSObject o = new JSObject();
+        Activity act = getActivity();
+        if (act == null) {
+            o.put("started", false);
+            call.resolve(o);
+            return;
+        }
+        try {
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("*/*");
+            act.startActivityForResult(i, REQ_PICK_PACK);
+            o.put("started", true);
+        } catch (Throwable t) {
+            o.put("started", false);
+            o.put("error", String.valueOf(t.getMessage()));
+        }
+        call.resolve(o);
     }
 
     /** 渲染层的窗口尺寸/位置同步（桌面 set-bounds 的对应物；悬浮窗模式生效）。
@@ -424,6 +560,42 @@ public class PalBridgePlugin extends Plugin {
     @Override
     protected void handleOnActivityResult(int requestCode, int resultCode, Intent data) {
         super.handleOnActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_PICK_PACK) {
+            /* v2.5.0：SAF 选中的 .fcpc/.fcpt 读成 base64 推给渲染层 */
+            JSObject o = new JSObject();
+            if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) {
+                o.put("canceled", true);
+                notifyListeners("packPicked", o);
+                return;
+            }
+            try {
+                Uri uri = data.getData();
+                InputStream is = getContext().getContentResolver().openInputStream(uri);
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+                is.close();
+                String name = "import.fcpc";
+                try {
+                    android.database.Cursor c = getContext().getContentResolver().query(uri, null, null, null, null);
+                    if (c != null) {
+                        int idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                        if (c.moveToFirst() && idx >= 0 && c.getString(idx) != null) name = c.getString(idx);
+                        c.close();
+                    }
+                } catch (Throwable ignored) {
+                }
+                o.put("canceled", false);
+                o.put("name", name);
+                o.put("base64", Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP));
+            } catch (Throwable t) {
+                o.put("canceled", true);
+                o.put("error", String.valueOf(t.getMessage()));
+            }
+            notifyListeners("packPicked", o);
+            return;
+        }
         if (requestCode != REQ_CAPTURE) return;
         if (resultCode != Activity.RESULT_OK || data == null) {
             pendingStart = false;

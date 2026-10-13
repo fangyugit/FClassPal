@@ -248,24 +248,30 @@ const ctxMenu = $('ctxMenu');
  * 各主题从中挑不同角色当强调色（MD3/Fluent/Harmony 用 primary、
  * MIUI 用 primary→tertiary 渐变、Kitty 用 tertiary 的粉调），
  * 所以同一个源色在不同主题下观感并不相同。 */
-const THEMES = ['glass', 'md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'];
+const THEMES = ['glass', 'md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio',
+  'pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale'];
 const FLAT_THEMES = THEMES.filter((t) => t !== 'glass');
 const THEME_LABEL = {
   glass: '液态玻璃', md3: 'MD3', fluent: 'Fluent',
   miuix: 'MIUI', harmony: '鸿蒙', kitty: 'Hello Kitty', dog: '玉桂狗',
-  kuromi: '库洛米', melody: '美乐蒂', sanrio: '三丽鸥混合'
+  kuromi: '库洛米', melody: '美乐蒂', sanrio: '三丽鸥混合',
+  pochacco: '帕恰狗', purin: '布丁狗', milk: '奶娃', tianyi: '洛天依',
+  ling: '乐正绫', miku: '初音未来', teto: '重音Teto', whale: 'DS鲸鱼娘'
 };
 /* 每套主题的推荐主色：从「莫奈取色」切到「手动指定」时用它当起点，
  * 这样每套风格一上手就是自己的味道（而不是一律基线紫）。 */
 const THEME_ACCENT = {
   glass: '#6750A4', md3: '#6750A4', fluent: '#0B57D0',
   miuix: '#3482FF', harmony: '#0A59F7', kitty: '#C2185B', dog: '#4FA8E8',
-  kuromi: '#8E5BC8', melody: '#EC6FA8', sanrio: '#E8548A'
+  kuromi: '#8E5BC8', melody: '#EC6FA8', sanrio: '#E8548A',
+  pochacco: '#4D8FE0', purin: '#D9962E', milk: '#C08552', tianyi: '#2FA98C',
+  ling: '#D8433F', miku: '#1FB5AA', teto: '#E0557F', whale: '#3E6FD8'
 };
 /* 固定配色主题：Hello Kitty / 玉桂狗 / 库洛米 / 美乐蒂 / 三丽鸥混合（角色扮演配色）、
  * MIUIX（compose-miuix-ui 规范浅色方案 #3482FF）、鸿蒙（HarmonyOS 品牌蓝 #0A59F7）。
  * 对它们做壁纸取色是无效操作，设置面板里换成提示文案。 */
-const FIXED_PALETTE_THEMES = ['kitty', 'dog', 'miuix', 'harmony', 'kuromi', 'melody', 'sanrio'];
+const FIXED_PALETTE_THEMES = ['kitty', 'dog', 'miuix', 'harmony', 'kuromi', 'melody', 'sanrio',
+  'pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale'];
 const THEME_ACCENT_LIST = Object.keys(THEME_ACCENT).map((k) => THEME_ACCENT[k].toUpperCase());
 let currentTheme = 'glass';
 /* 用户是否亲手挑过主色。为 false 时，切风格/切手动模式会用该风格的推荐色；
@@ -852,10 +858,53 @@ function render() {
 
 /* ---------- 打开目标 ---------- */
 async function openItem(it) {
+  bumpUsage(it);
   toast('正在打开：' + it.name);
   const res = await API.openTarget(it);
   if (!res.success) toast('打开失败：' + res.error);
 }
+
+/* ---------- 使用统计（v2.5.0）----------
+ * 每次 openItem 就 +1（文件夹本身不记，点开的每个子项各记各的）。
+ * 键用条目稳定 id；老数据没有 id 就用 name|target 兜底（改名会重新计数，可接受）。
+ * 存 config.usage，设置面板最下面出纯文字榜，不做图表。 */
+function usageKey(it) {
+  return (it && it.id) ? it.id : ((it && it.name || '') + '|' + (it && it.target || ''));
+}
+function bumpUsage(it) {
+  if (!it || isFolder(it)) return;
+  if (!config.usage || typeof config.usage !== 'object') config.usage = {};
+  const k = usageKey(it);
+  config.usage[k] = (config.usage[k] || 0) + 1;
+  API.saveConfig(config);
+  renderUsage();
+}
+function renderUsage() {
+  const box = $('usageList');
+  if (!box || !config) return;   // config 是异步加载的，早于此的调用直接略过
+  const nameOf = {};
+  const walk = (items) => (items || []).forEach((it) => {
+    if (isFolder(it)) { walk(it.children); return; }
+    nameOf[usageKey(it)] = it.name || '(未命名)';
+  });
+  (config.groups || []).forEach((g) => walk(g.items));
+  const rows = Object.keys(config.usage || {})
+    .map((k) => [k, config.usage[k] || 0])
+    .filter(([k, n]) => n > 0 && nameOf[k])
+    .sort((a, b) => b[1] - a[1]);
+  if (!rows.length) {
+    box.textContent = '还没有记录——点开的每个快捷方式都会在这里计数。';
+    return;
+  }
+  box.innerHTML = '';
+  rows.forEach(([k, n], i) => {
+    const div = document.createElement('div');
+    div.className = 'usage-line';
+    div.textContent = (i + 1) + '. ' + nameOf[k] + ' · ' + n + ' 次';
+    box.appendChild(div);
+  });
+}
+renderUsage();
 
 /* ---------- 聚合文件夹（v2.4.6）----------
  * 数据形态：{ name, kind 不用, children: [item...] } —— 用 **children 数组**判定，
@@ -2847,7 +2896,7 @@ $('btnResetPos').addEventListener('click', () => {
   toast('窗口位置已重置');
 });
 
-/* ---------- 关于（设置面板底部）：作者 / 版本号 / GitHub ---------- */
+/* ---------- 关于（设置面板底部）：版本号连点重置 / 检测更新 / GitHub ---------- */
 const GITHUB_URL = 'https://github.com/fangyugit/FClassPal';
 if (typeof API.getAppVersion === 'function') {
   API.getAppVersion().then((v) => {
@@ -2856,6 +2905,83 @@ if (typeof API.getAppVersion === 'function') {
   }).catch(() => {});
 }
 $('aboutGithub').addEventListener('click', () => { API.openExternal(GITHUB_URL); });
+
+/* --- 检测更新（v2.5.0）：比对 GitHub latest release 与当前版本 ---
+ * 走主进程 https（渲染层有 CORS），网络不可达时给可读提示，不弹窗打扰。 */
+$('btnCheckUpdate').addEventListener('click', async () => {
+  const b = $('btnCheckUpdate');
+  b.disabled = true; const old = b.textContent; b.textContent = '检测中…';
+  try {
+    const r = await API.checkUpdate();
+    if (!r || !r.success) toast('检测失败：' + ((r && r.error) || '网络不可达，稍后再试'));
+    else if (r.update) {
+      toast('发现新版本 v' + r.latest + '（当前 v' + r.current + '），正在打开发布页');
+      API.openExternal(GITHUB_URL + '/releases');
+    } else toast('已是最新版本（v' + r.current + '）');
+  } catch (e) { toast('检测失败：' + (e && e.message || e)); }
+  b.disabled = false; b.textContent = old;
+});
+
+/* --- 连点版本号 20 次 → 恢复出厂（v2.5.0）---
+ * 流程：连点 20 次（2.5 秒内不续点就清零）→ 第一道风险弹窗 → 确认后
+ * 第二道弹窗的确认按钮**锁 15 秒**（倒计时展示，防止无脑连点确认）
+ * → 两次都同意才真的清配置重启。 */
+let resetTaps = 0, resetTapTimer = null, resetCountdown = null;
+$('aboutVersion').addEventListener('click', () => {
+  resetTaps++;
+  clearTimeout(resetTapTimer);
+  resetTapTimer = setTimeout(() => { resetTaps = 0; }, 2500);
+  if (resetTaps >= 5 && resetTaps < 20) toast('再点 ' + (20 - resetTaps) + ' 次进入重置流程');
+  if (resetTaps < 20) return;
+  resetTaps = 0;
+  openResetDialog(1);
+});
+
+function openResetDialog(step) {
+  const modal = $('resetModal');
+  $('btnResetConfirm').textContent = '确认重置';
+  if (step === 1) {
+    $('resetTitle').textContent = '重置应用（1/2）';
+    $('resetText').textContent = '即将把 FClassPal 恢复到初始状态：全部快捷方式、分组、图标、' +
+      '主题与设置都会被清空，且无法恢复。确定要继续吗？';
+  } else {
+    $('resetTitle').textContent = '重置应用（2/2）· 最后确认';
+    $('resetText').textContent = '再次确认：重置不可撤销，所有数据立即删除。' +
+      '如果只是想调整某个设置，请点「取消」。';
+  }
+  modal.classList.remove('hidden');
+  const btn = $('btnResetConfirm');
+  btn.disabled = false;
+  if (step === 2) {
+    /* 15 秒冷静期：按钮置灰 + 倒计时，期间点不了 */
+    let left = 15;
+    btn.disabled = true;
+    btn.textContent = '请再读一遍（' + left + 's）';
+    clearInterval(resetCountdown);
+    resetCountdown = setInterval(() => {
+      left--;
+      if (left <= 0) { clearInterval(resetCountdown); btn.disabled = false; btn.textContent = '确认重置'; return; }
+      btn.textContent = '请再读一遍（' + left + 's）';
+    }, 1000);
+  }
+}
+function closeResetDialog() {
+  clearInterval(resetCountdown);
+  $('resetModal').classList.add('hidden');
+}
+$('btnResetCancel').addEventListener('click', closeResetDialog);
+$('btnResetClose').addEventListener('click', closeResetDialog);
+$('btnResetConfirm').addEventListener('click', async () => {
+  if ($('btnResetConfirm').disabled) return;
+  if ($('resetTitle').textContent.indexOf('1/2') >= 0) {
+    closeResetDialog();
+    openResetDialog(2);          // 第一道过了 → 进 15 秒冷静期的第二道
+    return;
+  }
+  closeResetDialog();
+  toast('正在重置…');
+  try { await API.factoryReset(); } catch (e) { toast('重置失败：' + (e && e.message || e)); }
+});
 
 /* ---------- 配置包 .fcpc / 主题方案 .fcpt（v2.4.6，设置面板最下面） ---------- */
 function bindPackButton(btnId, fn) {
@@ -3572,7 +3698,12 @@ if (typeof API.onTrayAction === 'function') {
   refreshWallpaper();
   // 实时底材默认**关**（用户要的是"只模糊壁纸"）。只有明确开启时才去采集
   // 真实桌面，采集失败/未开启都留在静态壁纸基底。
-  if (config.realtime === true) {
+  // v2.5.0 安卓：**绝不在启动时弹录屏授权**（用户点名"打开实时选项才要权限"）。
+  // 旧版本存过 realtime:true 的，静默降级一次，等用户手动打开选项再授权。
+  if (typeof API.onRealtimeFrame === 'function' && config.realtime === true) {
+    config.realtime = false;
+    persist();
+  } else if (config.realtime === true) {
     startRealtimeBackdrop().catch(() => { /* 失败已在函数内降级 */ });
   } else {
     updateRealtimeInfo('静态壁纸', 'ok');
@@ -3586,6 +3717,7 @@ if (typeof API.onTrayAction === 'function') {
     try { await ensureIconColors(); } catch (e) { /* 取不到色 → 走主题强调色回退 */ }
   }
   render();
+  renderUsage();   // v2.5.0：config 就位后再刷一次使用统计
   /* render 之后再刷一次外观：形状选「跟随主题」且填充是「内部」时，内缩量要**实测**
    * 主题给的圆角半径，而上面那次 applyIconLook 跑在 render 之前、网格还是空的，
    * 量不到就只能退回圆形的值 —— 圆角主题（MD3/Fluent/MIUIX）里会白白多留一圈白。 */

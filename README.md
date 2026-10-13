@@ -2,7 +2,7 @@
 
 > FClassPal是一个主要为班级大屏打造的桌面快捷方式启动器小部件 可用于替代希沃管家助手/桌面助手
 
-![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-901%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.4.7-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
+![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-922%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.5.0-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **FClassPal**是一个常驻桌面的启动器小部件，用于替代希沃管家助手/桌面助手 把常用的应用、文件、文件夹和网页钉在桌面一角，顺手管理 U 盘的弹出。无任务栏图标——右键或长按唤醒菜单，其余时间安静地贴在桌面上。
 
@@ -74,12 +74,12 @@
 - **主题跟随色**：纯 CSS 回退链 `--ic-c: var(--ic-ring-c, var(--t-accent, var(--accent)))`，JS 在「跟随主题」这一档一个颜色变量都不写——没有钩子就不会有陈旧色；外发光 45% / 底色 20% 的透明度用 `color-mix()` 现算，同理免钩子
 - **统一图标风格**：统一色由 body 一处下发（逐图标写内联值会把"一个色"拆成 N 份）；图片的形状靠 CSS 蒙版（`--ic-mask`，JS 从元素自己的 `<img>` 取已编码的绝对 URL），蒙版层 `inset: var(--ic-pad)` + `mask-size: contain` 与图片的 `padding + object-fit: contain` **逐像素对齐**（对不齐的症状是统一色飘在图标旁边）；`mix-blend-mode: color` 让色相取统一色、明暗仍来自图标本身（细节留着、认得出应用）；`:has(img)` 保证没有图片的图标不长出这一层（否则 mask 取不到值会退回 none = 整块涂满）
 
-## 测试（901 项断言，九层验证）
+## 测试（922 项断言，九层验证）
 
 | 层 | 命令 | 数量 | 说明 |
 |---|---|---|---|
 | 源码层 | `node smoke-test.js` | 372 | jsdom 跑 renderer 逻辑 |
-| 打包层 | `node _check.js` | 265 | 从 `dist/win-unpacked/resources/app.asar` 解包逐项断言 |
+| 打包层 | `node _check.js` | 268 | 从 `dist/win-unpacked/resources/app.asar` 解包逐项断言 |
 | 取色层 | `node _rt/_palettecheck.js` | 50 | 真 `vendor/monet.js` 产出的 palette 喂真 `renderer/app.js` |
 | 真机取色 | `electron _rt/_monetcheck.js` | 48 | 真 Electron + 合成壁纸验 Monet（含明暗两套方案） |
 | 真机图形 | `electron _rt/_garblecheck.js` | 64 | 真实产品页逐主题验 `<body>` 计算样式干净 + 81 点命中测试 |
@@ -101,12 +101,13 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 
 | 平台 | 产物 | 处理器架构 |
 |---|---|---|
-| Windows | [FClassPal-2.4.7.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.4.7/FClassPal-2.4.7.exe)（免安装便携版，约 62MB） | x64 |
+| Windows | [FClassPal-2.5.0.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.5.0/FClassPal-2.5.0.exe)（免安装便携版，约 62MB） | x64 |
 | Linux | `FClassPal-2.4.5-linux-amd64.deb` / `FClassPal-2.4.5-linux-x64.tar.gz`（沿用上一版） | x64 |
 | Linux | `FClassPal-2.4.5-linux-arm64.deb` / `FClassPal-2.4.5-linux-arm64.tar.gz`（沿用上一版） | arm64 |
-| macOS | `FClassPal-2.4.7-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
-| macOS | `FClassPal-2.4.7-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
-| Android | `FClassPal-2.4.7-android.apk`（正式签名，可直接覆盖安装升级） | arm64 / armv7 / x86_64 |
+| Linux | [FClassPal-2.5.0-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.5.0/FClassPal-2.5.0-linux-loong64.tar.gz)（龙芯新世界，解压即可运行） | LoongArch64 |
+| macOS | `FClassPal-2.5.0-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
+| macOS | `FClassPal-2.5.0-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
+| Android | `FClassPal-2.5.0-android.apk`（正式签名，可直接覆盖安装升级） | arm64 / armv7 / x86_64 |
 
 - 产物名都带平台与架构，下载时一眼看清装的是哪一份；[全部版本](https://github.com/fangyugit/FclassPal/releases)
 - 安卓版的用法与能力取舍见 [docs/ANDROID.md](docs/ANDROID.md)（界面与桌面版同源；v2.4.6 起
@@ -158,7 +159,7 @@ FclassPal/
 ├── mobile/              # 安卓壳（Capacitor）：web/ 桥接层 + tools/ 装配与出包脚本
 │   └── android-overlay/ # 原生工程定制（PalBridge 插件 / 清单 / 主题 / 启动图标）
 ├── smoke-test.js        # 源码层回归（372 项）
-├── _check.js            # 打包层回归（265 项）
+├── _check.js            # 打包层回归（268 项）
 ├── _mksrccheck.js       # 由 _check.js 生成源码版 _check_src.js（构建前预跑）
 ├── CHANGELOG.md         # 更新日志
 ├── _rt/                 # 运行时验证与素材管线脚本

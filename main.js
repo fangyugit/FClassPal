@@ -7,6 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const { spawn, execFile } = require('child_process');
 const { pathToFileURL, fileURLToPath } = require('url');
+const https = require('https');   // v2.5.0：检测更新拉 GitHub latest release
 
 // 配置存储路径
 const CONFIG_DIR = path.join(os.homedir(), '.desktop-widget');
@@ -1636,11 +1637,24 @@ function packStamp() {
   return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
 }
 
+/* 导出目标文件重名时自动加序号，绝不静默覆盖用户已有的包 */
+function uniquePath(p) {
+  if (!fs.existsSync(p)) return p;
+  const dir = path.dirname(p), ext = path.extname(p), base = path.basename(p, ext);
+  for (let i = 2; i < 1000; i++) {
+    const q = path.join(dir, base + '-' + i + ext);
+    if (!fs.existsSync(q)) return q;
+  }
+  return p;
+}
+
 /* 递归收集/回写条目里的图标路径；mode='pack' 把 file:// 换成包内键，mode='unpack' 反向 */
 function walkPackIcons(items, mode, bag, misses) {
   items.forEach((it) => {
     if (Array.isArray(it.children)) { walkPackIcons(it.children, mode, bag, misses); return; }
     if (!it.iconPath) return;
+    // v2.5.0：安卓导出的包里图标/背景是 data URL（内嵌在 config.json 里），原样保留
+    if (/^data:/i.test(it.iconPath)) return;
     if (mode === 'pack') {
       let p = null;
       try { p = fileURLToPath(it.iconPath); } catch (e) { p = null; }
@@ -1672,12 +1686,16 @@ function countItems(cfg) {
 ipcMain.handle('export-config', async () => {
   try {
     const cfg = loadConfig();
-    const r = await dialog.showSaveDialog(mainWindow, {
-      title: '导出配置包（.fcpc）',
-      defaultPath: 'FClassPal-配置-' + packStamp() + '.fcpc',
-      filters: [{ name: 'FClassPal 配置包', extensions: ['fcpc'] }]
+    // v2.5.0：导出改为「选文件夹」——用户反馈另存为对话框不直观
+    const r = await dialog.showOpenDialog(mainWindow, {
+      title: '选择导出位置（配置包会保存到你选的文件夹里）',
+      buttonLabel: '导出到这里',
+      properties: ['openDirectory', 'createDirectory']
     });
-    if (r.canceled || !r.filePath) return { success: false, canceled: true };
+    if (r.canceled || !r.filePaths || !r.filePaths[0]) return { success: false, canceled: true };
+    const dir = r.filePaths[0];
+    const base = 'FClassPal-配置-' + packStamp();
+    const outPath = uniquePath(path.join(dir, base + '.fcpc'));
     const out = JSON.parse(JSON.stringify(cfg));
     ['x', 'y', 'width', 'height', 'themeMigratedToTransparent', 'autoLaunch'].forEach((k) => delete out[k]);
     const bag = {}; const misses = [];
@@ -1710,8 +1728,8 @@ ipcMain.handle('export-config', async () => {
         '导入：设置面板最下面「配置备份 → 导入」，选择本文件即可。'
       ].join('\r\n')
     });
-    fs.writeFileSync(r.filePath, createZip(entries));
-    return { success: true, path: r.filePath, items: countItems(out), misses };
+    fs.writeFileSync(outPath, createZip(entries));
+    return { success: true, path: outPath, items: countItems(out), misses };
   } catch (e) {
     return { success: false, error: e.message };
   }
@@ -1763,12 +1781,15 @@ const THEME_KEYS = ['theme', 'appearance', 'cornerRadius', 'opacity', 'title',
 ipcMain.handle('export-theme', async () => {
   try {
     const cfg = loadConfig();
-    const r = await dialog.showSaveDialog(mainWindow, {
-      title: '导出主题方案（.fcpt）',
-      defaultPath: 'FClassPal-主题-' + (cfg.theme || 'glass') + '-' + packStamp() + '.fcpt',
-      filters: [{ name: 'FClassPal 主题方案', extensions: ['fcpt'] }]
+    // v2.5.0：与配置包一致，导出走「选文件夹」
+    const r = await dialog.showOpenDialog(mainWindow, {
+      title: '选择导出位置（主题包会保存到你选的文件夹里）',
+      buttonLabel: '导出到这里',
+      properties: ['openDirectory', 'createDirectory']
     });
-    if (r.canceled || !r.filePath) return { success: false, canceled: true };
+    if (r.canceled || !r.filePaths || !r.filePaths[0]) return { success: false, canceled: true };
+    const outPath = uniquePath(path.join(r.filePaths[0],
+      'FClassPal-主题-' + (cfg.theme || 'glass') + '-' + packStamp() + '.fcpt'));
     const scheme = {};
     THEME_KEYS.forEach((k) => { if (cfg[k] !== undefined) scheme[k] = cfg[k]; });
     const bag = {};
@@ -1785,7 +1806,9 @@ ipcMain.handle('export-theme', async () => {
     const THEME_NAMES = {
       glass: '液态玻璃', md3: 'Material You 3', fluent: 'Fluent', miuix: 'MIUIX',
       harmony: '鸿蒙', kitty: 'Hello Kitty', dog: '玉桂狗', kuromi: '库洛米',
-      melody: '美乐蒂', sanrio: '三丽鸥'
+      melody: '美乐蒂', sanrio: '三丽鸥',
+      pochacco: '帕恰狗', purin: '布丁狗', milk: '奶娃', tianyi: '洛天依',
+      ling: '乐正绫', miku: '初音未来', teto: '重音Teto', whale: 'DS鲸鱼娘'
     };
     const lines = [];
     lines.push('FClassPal 主题方案（.fcpt）');
@@ -1809,8 +1832,8 @@ ipcMain.handle('export-theme', async () => {
     ];
     for (const k of Object.keys(bag)) entries.push({ name: k, data: bag[k] });
     entries.push({ name: 'README.txt', data: lines.join('\r\n') });
-    fs.writeFileSync(r.filePath, createZip(entries));
-    return { success: true, path: r.filePath };
+    fs.writeFileSync(outPath, createZip(entries));
+    return { success: true, path: outPath };
   } catch (e) {
     return { success: false, error: e.message };
   }
@@ -1846,6 +1869,54 @@ ipcMain.handle('import-theme', async () => {
     return { success: true, theme: cfg.theme };
   } catch (e) {
     return { success: false, error: '导入失败：' + e.message };
+  }
+});
+
+/* ---------- 检测更新（v2.5.0，关于界面）----------
+ * 拉 GitHub latest release 的 tag 与当前版本比。网络不可达（api.github.com
+ * 被墙/断网）时返回可读错误，不给用户看天书。超时 8 秒。 */
+ipcMain.handle('check-update', async () => {
+  const current = app.getVersion();
+  const fetchLatest = () => new Promise((resolve, reject) => {
+    const req = https.get({
+      host: 'api.github.com',
+      path: '/repos/fangyugit/FclassPal/releases/latest',
+      headers: { 'User-Agent': 'FClassPal/' + current, 'Accept': 'application/vnd.github+json' },
+      timeout: 8000
+    }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error('GitHub 返回 ' + res.statusCode)); }
+      let d = '';
+      res.on('data', (c) => { d += c; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(d).tag_name || ''); } catch (e) { reject(e); }
+      });
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('连接超时')); });
+    req.on('error', reject);
+  });
+  try {
+    const tag = await fetchLatest();
+    if (!tag) return { success: false, error: '发布信息为空' };
+    const num = (s) => String(s).replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0);
+    const a = num(current), b = num(tag);
+    const newer = b[0] > a[0] || (b[0] === a[0] && b[1] > a[1]) || (b[0] === a[0] && b[1] === a[1] && b[2] > a[2]);
+    return { success: true, update: newer, latest: String(tag).replace(/^v/i, ''), current };
+  } catch (e) {
+    return { success: false, error: (e && e.message) || '网络不可达' };
+  }
+});
+
+/* ---------- 恢复出厂（v2.5.0，连点版本号 20 次触发）----------
+ * 清掉整个 ~/.desktop-widget（config.json + icons/ + 导入的背景），然后重启。
+ * 前置的两道确认弹窗在渲染层；这里只管删和重启。 */
+ipcMain.handle('factory-reset', async () => {
+  try {
+    if (fs.existsSync(CONFIG_DIR)) fs.rmSync(CONFIG_DIR, { recursive: true, force: true });
+    app.relaunch({ args: process.argv.slice(1).filter((a) => !a.startsWith('--')) });
+    app.exit(0);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
 });
 

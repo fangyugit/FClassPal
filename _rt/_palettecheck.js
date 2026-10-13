@@ -122,7 +122,7 @@ const isHidden = (el) => !el || el.classList.contains('hidden');
   check('【glass 主题下取色面板也可见（旧版隐藏→用户找不到选色）】', !isHidden(box),
     'class="' + (box ? box.className : '') + '"');
   const themeSel = $('themeSelect');
-  check('主题下拉栏存在且选项 = 10（v2.4.0 起透明主题下线）', !!themeSel && themeSel.options.length === 10,
+  check('主题下拉栏存在且选项 = 18（v2.5.0 起含八套角色主题）', !!themeSel && themeSel.options.length === 18,
     'options=' + (themeSel ? themeSel.options.length : 'null'));
   /* 下拉切换助手：设值 + 派发 change（v2.2.2 起主题切换走 select） */
   const pickTheme = async (t) => {

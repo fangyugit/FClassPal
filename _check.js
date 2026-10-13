@@ -47,6 +47,28 @@ const srcPkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const readme = (() => { try { return fs.readFileSync('README.md', 'utf8'); } catch (e) { return ''; } })();
 const changelog = (() => { try { return fs.readFileSync('CHANGELOG.md', 'utf8'); } catch (e) { return ''; } })();
 const checks = [
+  /* ★★★ v2.5.0 真机事故守卫：asar 必须能解析 main.js 的每一个相对 require。
+   * v2.4.6/2.4.7 的 build.files 漏了 pack.js：开发态全绿（磁盘上有），
+   * 打包版 main.js:1631 require('./pack') 崩 → 全局 uncaughtException 兜住后
+   * 应用照常起窗，但 1631 行之后的四个导入导出 handler 根本没注册，
+   * 用户点按钮只看到「操作失败」。探针两层全绿、真机全灭，就是这个类型。 */
+  ['★ asar: main.js 的相对 require 全部可解析（防 build.files 漏文件）',
+    (() => {
+      const reqs = [...new Set([...mainNC.matchAll(/require\((['"])(\.[^'"]+)\1\)/g)].map((m) => m[2]))];
+      if (!reqs.length) return false;
+      for (const r of reqs) {
+        const base = r.replace(/^\.\//, '');
+        const candidates = [base, base + '.js', base + '.json', base + '/index.js'];
+        let ok = false;
+        for (const c of candidates) {
+          try { extractFile(asar, c); ok = true; break; } catch (e) { /* 继续试 */ }
+        }
+        if (!ok) return false;
+      }
+      return true;
+    })()],
+  ['★ asar: pack.js 在包里（.fcpc/.fcpt 导入导出的依赖）',
+    (() => { try { extractFile(asar, 'pack.js'); return true; } catch (e) { return false; } })()],
   ['html: SVG sprite svgDefs', html.includes('svgDefs')],
   ['html: 光斑宿主 sheen', html.includes('id="sheen"')],
   ['html: 液态玻璃滤镜 #liquidGlass（v1.6 standard）', html.includes('id="liquidGlass"') && /<feImage/.test(html)],
@@ -260,8 +282,9 @@ const checks = [
     (cssNC.match(/backwards/g) || []).length >= 11 &&
     /animation-delay:\s*calc\(var\(--i, 0\) \* var\(--t-stagger\)\)/.test(cssNC) &&
     !/animation:\s*t-(?:in|panel|toast)-[\w-]+[^;]*\b(?:both|forwards)\b/.test(cssNC)],
-  ['css: 十套入场动画名互不相同',
-    ['md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'].every((t) =>
+  ['css: 十八套入场动画名互不相同',
+    ['md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio',
+      'pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale'].every((t) =>
       new RegExp('@keyframes t-in-' + t + '\\b').test(cssNC))],
   ['css: reduced-motion 让路', /@media \(prefers-reduced-motion: reduce\)/.test(css)],
   ['css: 预设色板样式', /\.swatch\s*\{/.test(css) && /\.swatch\[aria-pressed="true"\]/.test(css)],
@@ -271,20 +294,28 @@ const checks = [
   ['多主题: 主题选择为下拉栏（#themeSelect 由 THEME_LABEL 填充；分段按钮已移除）',
     html.includes('<select id="themeSelect"') && !/data-theme="/.test(html) &&
     /themeSelect\.innerHTML = THEMES\.map/.test(app)],
-  ['多主题: app.js THEMES 清单 10 套 + 每套推荐主色 + accentPicked 守卫',
-    /const THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'\]/.test(app) &&
+  ['多主题: app.js THEMES 清单 18 套 + 每套推荐主色 + accentPicked 守卫',
+    /const THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio',\s*\n?\s*'pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale'\]/.test(app) &&
     /kitty:\s*'#C2185B'/.test(app) && /dog:\s*'#4FA8E8'/.test(app) &&
     /kuromi:\s*'#8E5BC8'/.test(app) && /melody:\s*'#EC6FA8'/.test(app) &&
-    /sanrio:\s*'#E8548A'/.test(app) && /accentPicked/.test(app)],
-  ['多主题: 固定配色主题集合（kitty/dog/miuix/harmony/kuromi/melody/sanrio）',
-    /const FIXED_PALETTE_THEMES = \['kitty', 'dog', 'miuix', 'harmony', 'kuromi', 'melody', 'sanrio'\]/.test(app)],
-  ['多主题: 十套主题各自定义完整 token（形状/模糊/表面/强调色/动效）',
-    ['md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio'].every((t) => {
+    /sanrio:\s*'#E8548A'/.test(app) && /miku:\s*'#1FB5AA'/.test(app) &&
+    /whale:\s*'#3E6FD8'/.test(app) && /accentPicked/.test(app)],
+  ['多主题: 固定配色主题集合（旧七套 + v2.5.0 八套新角色）',
+    /const FIXED_PALETTE_THEMES = \['kitty', 'dog', 'miuix', 'harmony', 'kuromi', 'melody', 'sanrio',\s*\n?\s*'pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale'\]/.test(app)],
+  ['多主题: 十八套主题各自定义完整 token（形状/模糊/表面/强调色/动效）',
+    ['md3', 'fluent', 'miuix', 'harmony', 'kitty', 'dog', 'kuromi', 'melody', 'sanrio',
+      'pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale'].every((t) => {
       const b = themeTokens(t);
       return /--t-r-win:/.test(b) && /--t-r-card:/.test(b) && /--t-btn-r:/.test(b) &&
         /--t-blur:/.test(b) && /--t-surface:/.test(b) && /--t-accent:/.test(b) &&
         /--t-ease:/.test(b) && /--t-dur:/.test(b) && /--t-stagger:/.test(b);
     })],
+  ['多主题: v2.5.0 新八套强调色互不相同且不与旧角色主题撞色（不共底的底线）',
+    (() => {
+      const accents = ['pochacco', 'purin', 'milk', 'tianyi', 'ling', 'miku', 'teto', 'whale']
+        .map((t) => (themeTokens(t).match(/--t-accent:\s*(#[0-9A-Fa-f]{6})/) || [])[1]);
+      return accents.every(Boolean) && new Set(accents).size === 8;
+    })()],
   ['多主题: 十套形状标度各就各位（16/8/16/20/24/22/20/22/22）',
     /--t-r-card:\s*16px/.test(themeTokens('md3')) &&
     /--t-r-card:\s*8px/.test(themeTokens('fluent')) &&

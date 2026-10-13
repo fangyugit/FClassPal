@@ -28,6 +28,11 @@ _rt/*
 !_rt/_palettecheck.js
 !_rt/_packcheck.js
 !_rt/_packui.js
+!_rt/_packdlg.js
+!_rt/_windump.py
+!_rt/_e2e_export.js
+!_rt/_genthemes.py
+!_rt/_kitty_tpl.css
 !_rt/probe.html
 !_rt/crop_chars.py
 !_rt/fetch_chars.py
