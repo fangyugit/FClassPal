@@ -6,7 +6,8 @@
  * 跑法：
  *   env -u ELECTRON_RUN_AS_NODE -u HTTP_PROXY -u HTTPS_PROXY \
  *     ./node_modules/electron/dist/electron.exe _rt/_iconshot.js
- * 会备份并还原真实 ~/.desktop-widget/config.json，autoLaunch 强制 false。
+ * 配置写在 _rt/_sandbox/cfg（见 _sandbox.js），**不碰用户真实配置目录**；
+ * fixture 里 autoLaunch 强制 false。
  */
 const { app, BrowserWindow, dialog, nativeImage } = require('electron');
 if (!app.commandLine.hasSwitch('no-sandbox')) app.commandLine.appendSwitch('no-sandbox');
@@ -14,9 +15,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
+const SB = require('./_sandbox');   // 配置走沙箱，绝不碰用户真实目录
 
 const ROOT = path.join(__dirname, '..');
-const CONF_DIR = path.join(os.homedir(), '.desktop-widget');
+const CONF_DIR = SB.DIR;
 const CONF = path.join(CONF_DIR, 'config.json');
 const WORK = path.join(__dirname, '_bg');
 const BACKUP = path.join(WORK, 'config.iconshot.backup.json');

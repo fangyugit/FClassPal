@@ -35,6 +35,9 @@ _rt/*
 !_rt/_kitty_tpl.css
 !_rt/_archive_old.py
 !_rt/_arch_probe.py
+!_rt/_arch_verify.py
+!_rt/_arch_clean.py
+!_rt/_sandbox.js
 !_rt/probe.html
 !_rt/crop_chars.py
 !_rt/fetch_chars.py

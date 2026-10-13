@@ -10,7 +10,21 @@ const { pathToFileURL, fileURLToPath } = require('url');
 const https = require('https');   // v2.5.0：检测更新拉 GitHub latest release
 
 // 配置存储路径
-const CONFIG_DIR = path.join(os.homedir(), '.desktop-widget');
+/* ★ 真实用户目录只有正式启动（用户双击 exe / npm start）才允许用。
+ * `_rt/` 下的验证探针会 require 本文件并往配置里塞测试快捷方式，以前靠
+ * "退出时还原"，但探针被强杀时还原根本不会跑 —— 用户真实配置就被测试数据覆盖了。
+ * 现在改成：探针进程一律被重定向到 `_rt/_sandbox/cfg`，机制在 main 层兜底，
+ * 探针自己忘了设也逃不掉。*/
+const REAL_CONFIG_DIR = path.join(os.homedir(), '.desktop-widget');
+const MAIN_ENTRY = (require.main && require.main.filename) || '';
+const IS_PROBE = /[\\/]_rt[\\/]/.test(MAIN_ENTRY);
+const CONFIG_DIR = process.env.FCP_CONFIG_DIR ||
+  (IS_PROBE ? path.join(__dirname, '_rt', '_sandbox', 'cfg') : REAL_CONFIG_DIR);
+// 探针却拿着真实目录 = 沙箱机制被绕开了，宁可退出也不写用户数据
+if (IS_PROBE && path.resolve(CONFIG_DIR) === path.resolve(REAL_CONFIG_DIR)) {
+  console.error('[main] 探针必须使用沙箱配置目录，拒绝写真实用户目录：' + CONFIG_DIR);
+  process.exit(2);
+}
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const ICONS_DIR = path.join(CONFIG_DIR, 'icons');
 

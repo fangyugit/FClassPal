@@ -19,9 +19,10 @@ if (!app.commandLine.hasSwitch('no-sandbox')) app.commandLine.appendSwitch('no-s
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const SB = require('./_sandbox');   // 配置走沙箱，绝不碰用户真实目录
 
 const ROOT = path.join(__dirname, '..');
-const CONF_DIR = path.join(os.homedir(), '.desktop-widget');
+const CONF_DIR = SB.DIR;
 const CONF = path.join(CONF_DIR, 'config.json');
 const BACKUP = path.join(__dirname, '_bg', 'config.backup.json');
 const IMG = (n) => path.join(__dirname, '_bg', n);

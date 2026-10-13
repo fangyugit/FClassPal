@@ -6,9 +6,10 @@ if (!app.commandLine.hasSwitch('no-sandbox')) app.commandLine.appendSwitch('no-s
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const SB = require('./_sandbox');   // 配置走沙箱，绝不碰用户真实目录
 
 const ROOT = path.join(__dirname, '..');
-const CONF = path.join(os.homedir(), '.desktop-widget', 'config.json');
+const CONF = SB.CONF;
 const BACKUP = path.join(__dirname, '_pack_cfg.bak.json');
 const OUTDIR = path.join(__dirname, '_pack_out');
 
@@ -55,7 +56,7 @@ app.whenReady().then(async () => {
   /* 先给配置塞一个自定义图标（拷一张现成 png 进 icons/ 再引用），验证资产随包 */
   const cfgNow = JSON.parse(fs.readFileSync(CONF, 'utf-8'));
   const iconSrc = path.join(ROOT, 'build', 'icon.png');
-  const iconDst = path.join(os.homedir(), '.desktop-widget', 'icons', '_packtest-icon.png');
+  const iconDst = path.join(SB.ICONS, '_packtest-icon.png');
   fs.copyFileSync(iconSrc, iconDst);
   cfgNow.groups[0].items[0].iconPath = require('url').pathToFileURL(iconDst).href;
   fs.writeFileSync(CONF, JSON.stringify(cfgNow, null, 2));

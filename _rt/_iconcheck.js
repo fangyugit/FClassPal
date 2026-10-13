@@ -18,8 +18,11 @@
  *   env -u ELECTRON_RUN_AS_NODE -u HTTP_PROXY -u HTTPS_PROXY \
  *     ./node_modules/electron/dist/electron.exe _rt/_iconcheck.js
  *
- * 会**备份并还原**用户真实的 ~/.desktop-widget/config.json（测试要往配置里塞几个
- * 假快捷方式），并强制 autoLaunch:false —— 绝不动用户的开机启动项。
+ * 配置写在 `_rt/_sandbox/cfg`（见 `_sandbox.js`）——**不碰用户真实配置目录**。
+ * 曾经是"备份真实配置 → 写测试配置 → 退出时还原"，探针被强杀时还原不跑，
+ * 把用户真实数据覆盖成了测试数据（真事故）。现在 main.js 见到 `_rt/` 下的
+ * entry 会自动重定向配置根目录，探针自己忘了设也逃不掉。
+ * fixture 里强制 autoLaunch:false —— 绝不动用户的开机启动项。
  */
 const { app, BrowserWindow, dialog, nativeImage } = require('electron');
 if (!app.commandLine.hasSwitch('no-sandbox')) app.commandLine.appendSwitch('no-sandbox');
@@ -27,9 +30,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
+const SB = require('./_sandbox');   // 配置走沙箱，绝不碰用户真实目录
 
 const ROOT = path.join(__dirname, '..');
-const CONF_DIR = path.join(os.homedir(), '.desktop-widget');
+const CONF_DIR = SB.DIR;
 const CONF = path.join(CONF_DIR, 'config.json');
 const WORK = path.join(__dirname, '_bg');
 const BACKUP = path.join(WORK, 'config.iconcheck.backup.json');

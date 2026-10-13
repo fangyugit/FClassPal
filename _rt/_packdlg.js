@@ -21,9 +21,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { execFile } = require('child_process');
+const SB = require('./_sandbox');   // 配置走沙箱，绝不碰用户真实目录
 
 const ROOT = path.join(__dirname, '..');
-const CONF = path.join(os.homedir(), '.desktop-widget', 'config.json');
+const CONF = SB.CONF;
 const BACKUP = path.join(__dirname, '_pack_cfg.bak.json');
 const PY = 'C:/Users/Seewo/.workbuddy/binaries/python/envs/default/Scripts/python.exe';
 /* 进程名过滤：开发态跑出来是 electron.exe，打包态才是 FClassPal.exe。
