@@ -1,6 +1,5 @@
 const path = require('path');
 const fs = require('fs');
-const { extractFile } = require('@electron/asar');
 const main = fs.readFileSync('main.js','utf-8').toString();
 const pre = fs.readFileSync('preload.js','utf-8').toString();
 const css = fs.readFileSync('renderer/style.css','utf-8').toString();
@@ -77,6 +76,28 @@ const ruleInTheme = (t, sel) => {
   return j < 0 ? '' : hay.slice(i, j);
 };
 const checks = [
+  /* ★★★ v2.5.0 真机事故守卫：asar 必须能解析 main.js 的每一个相对 require。
+   * v2.4.6/2.4.7 的 build.files 漏了 pack.js：开发态全绿（磁盘上有），
+   * 打包版 main.js:1631 require('./pack') 崩 → 全局 uncaughtException 兜住后
+   * 应用照常起窗，但 1631 行之后的四个导入导出 handler 根本没注册，
+   * 用户点按钮只看到「操作失败」。探针两层全绿、真机全灭，就是这个类型。 */
+  ['★ asar: main.js 的相对 require 全部可解析（防 build.files 漏文件）',
+    (() => {
+      const reqs = [...new Set([...mainNC.matchAll(/require\((['"])(\.[^'"]+)\1\)/g)].map((m) => m[2]))];
+      if (!reqs.length) return false;
+      for (const r of reqs) {
+        const base = r.replace(/^\.\//, '');
+        const candidates = [base, base + '.js', base + '.json', base + '/index.js'];
+        let ok = false;
+        for (const c of candidates) {
+          try { fs.readFileSync(c,'utf-8'); ok = true; break; } catch (e) { /* 继续试 */ }
+        }
+        if (!ok) return false;
+      }
+      return true;
+    })()],
+  ['★ asar: pack.js 在包里（.fcpc/.fcpt 导入导出的依赖）',
+    (() => { try { fs.readFileSync('pack.js','utf-8'); return true; } catch (e) { return false; } })()],
   ['html: SVG sprite svgDefs', html.includes('svgDefs')],
   ['html: 光斑宿主 sheen', html.includes('id="sheen"')],
   ['html: 液态玻璃滤镜 #liquidGlass（v1.6 standard）', html.includes('id="liquidGlass"') && /<feImage/.test(html)],
@@ -918,7 +939,29 @@ const checks = [
   ['v2.4.6: exe 体积优化（最大压缩 + 只留中英语言包）',
     srcPkg.build.win.compression === 'maximum' &&
     Array.isArray(srcPkg.build.electronLanguages) &&
-    srcPkg.build.electronLanguages.join(',') === 'zh-CN,en-US']
+    srcPkg.build.electronLanguages.join(',') === 'zh-CN,en-US'],
+  /* 2026-10 真事故：8 个包的 `--t-veil: linear-gradient(...` 少了右括号，渲染层
+   * 又把 13 个包拼成一个 <style>，Blink 从出错点往后整份丢弃 —— 一个字符带走了
+   * 8 套主题。括号不配平这种错肉眼看着是配平的，必须机器数（_rt/_csslint.js，
+   * 先剥注释和字符串再数，_packthemes.js 打包前也用同一份体检拦一道）。 */
+  ['主题包: CSS 语法体检 —— 圆括号/大括号/注释配平，13 个包全部干净',
+    (function () {
+      const lint = require('./_rt/_csslint').lintCss;
+      let ok = true;
+      PACK_IDS.forEach((t) => {
+        const ps = lint(packCss[t] || '', t);
+        if (ps.length) {
+          ok = false;
+          console.log('      · ' + t + '：' +
+            ps.map((x) => '第' + (x.line || '?') + '行 ' + x.msg).join('；'));
+        }
+      });
+      return ok;
+    })()],
+  ['主题包: 渲染层一包一表注入（一个包写坏不许连坐其它主题）',
+    app.includes("setAttribute('data-theme-pack'") &&
+    app.includes("querySelectorAll('style[data-theme-pack]')") &&
+    !app.includes("getElementById('themePackCss')")]
 ];
 let bad = 0;
 checks.forEach((c) => {
@@ -927,5 +970,7 @@ checks.forEach((c) => {
   if (!ok) bad++;
 });
 process.exit(bad ? 1 : 0);
+
+// ── 本文件由 _mksrccheck.js 从 _check.js 自动生成，请勿手工编辑 ──
 
 // ── 本文件由 _mksrccheck.js 从 _check.js 自动生成，请勿手工编辑 ──

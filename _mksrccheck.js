@@ -24,6 +24,12 @@ let s = fs.readFileSync('_check.js', 'utf8');
 const src = s;
 
 s = s.replace(/extractFile\(asar,\s*'([^']+)'\)/g, (m, p) => "fs.readFileSync('" + p + "','utf-8')");
+/* 变量形式：extractFile(asar, c) —— 源码版里 c 本来就是相对根目录的路径，
+ * 直接换成 fs.readFileSync(c)。早先漏了这条，「main.js 的相对 require 全部可解析」
+ * 这条断言在源码版里会因 extractFile/asar 未定义而永远假红（ReferenceError 被
+ * try/catch 吞掉，九个候选全判失败）。 */
+s = s.replace(/extractFile\(asar,\s*([A-Za-z_$][\w$]*)\)/g,
+  (m, v) => "fs.readFileSync(" + v + ",'utf-8')");
 /* 拼串形式（主题贴图逐个读）：extractFile(asar, 'renderer\\theme\\kitty\\' + f)
  * ★ 注意顺序：这条必须能处理「引号后面还跟着 + f」的形态，
  *   上面那条 `'([^']+)'\)` 要求引号后紧跟右括号，对拼串形式根本不匹配。

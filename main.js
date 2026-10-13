@@ -2067,20 +2067,35 @@ function autoInstallPreviousTheme() {
 }
 
 /* ---------- 检测更新（v2.5.0，关于界面）----------
- * ★ 本机的网络现实（2026-10 排障结论，别删这段注释）：hosts 把 github 域名族
- * 钉到 127.0.0.1，且全机 UDP DNS 拒答 —— 直接 https.get('api.github.com')
- * 100% 拿到 ECONNREFUSED 127.0.0.1:443，这就是"检测更新用不了"的根因。
- * 所以链路是两级：先直连（网络正常的机器一次就成），失败再走
+ * 链路是两级：先直连（网络正常一次就成），失败再走
  * 「DoH over IP 解析出真实 IP → 手工 SNI 连过去」。超时给短，别让按钮转圈太久。
+ *
+ * ★ 历史（2026-10 排障结论，留着是为了下次别再踩）：
+ *   本机 hosts 被加速器（Steam++ / Watt Toolkit）留下 27 条 `127.0.0.1 <github域名>`，
+ *   条目在工具退出后仍然生效 —— 直连 https.get('api.github.com') 100% 拿到
+ *   ECONNREFUSED 127.0.0.1:443，这就是当初"检测更新用不了"的根因。
+ *   2026-10-13 已用 _rt/_fixhosts.py 清掉（字节级备份在 _rt/_recover/），直连已恢复。
+ *   以后若又出现同样的 ECONNREFUSED 127.0.0.1，先查 hosts 再看这里。
  *
  * 版本比较只认纯 x.y.z 形态的 tag：用户把历史 release 改名成 "4.9.9-Pre" 这类
  * 带后缀的预发布标记，不能被当成"有新版"（4.9.9 > 2.5.0 会把用户吓一跳）。 */
 const GITHUB_API_HOST = 'api.github.com';
 const GITHUB_REPO = 'fangyugit/FClassPal';
+/* ★ 各家的 JSON 查询路径不统一，必须逐个写对（2026-10-13 实测）：
+ *   阿里 AliDNS：/resolve?name=…&type=A        —— 用 /dns-query?name= 会 400
+ *                                                  "no 'dns' query parameter found"
+ *                                                  （该端点只认 RFC8484 的二进制 dns=）
+ *   腾讯 DNSPod：/dns-query?name=…&type=A
+ *   Cloudflare / Google：/dns-query?name=…&type=A
+ * 顺序 = 优先级，国内两家放前面（实测可达），境外两家放最后兜底。
+ * 每个 provider 只填 ip 会退回 /dns-query?name=，兼容老写法。 */
 const DOH_PROVIDERS = [
-  { ip: '223.5.5.5', servername: 'dns.alidns.com' },     // 阿里 DoH，国内可达性好
-  { ip: '1.1.1.1', servername: 'cloudflare-dns.com' },   // Cloudflare 兜底
-  { ip: '8.8.8.8', servername: 'dns.google' }            // Google 再兜底
+  { ip: '223.5.5.5', servername: 'dns.alidns.com', path: '/resolve?name=%s&type=A' },
+  { ip: '223.6.6.6', servername: 'dns.alidns.com', path: '/resolve?name=%s&type=A' },  // 阿里备用 IP
+  { ip: '1.12.12.12', servername: 'doh.pub', path: '/dns-query?name=%s&type=A' },       // 腾讯 DNSPod
+  { ip: '120.53.53.53', servername: 'doh.pub', path: '/dns-query?name=%s&type=A' },     // 腾讯备用 IP
+  { ip: '1.1.1.1', servername: 'cloudflare-dns.com', path: '/dns-query?name=%s&type=A' },
+  { ip: '8.8.8.8', servername: 'dns.google', path: '/dns-query?name=%s&type=A' }
 ];
 
 function httpsJson(hostHeader, pathname, ip, servername, timeoutMs) {
@@ -2112,16 +2127,20 @@ function httpsJson(hostHeader, pathname, ip, servername, timeoutMs) {
   });
 }
 
-/** DoH over IP：拿不到系统 DNS 时的唯一出路（纯 A 记录，够用） */
+/** DoH over IP：拿不到系统 DNS 时的唯一出路（走各家 JSON 接口，纯 A 记录够用） */
 function dohResolve(host) {
   return new Promise((resolve, reject) => {
     let idx = 0;
     const next = () => {
-      if (idx >= DOH_PROVIDERS.length) { reject(new Error('DoH 解析失败（三个解析器都没通）')); return; }
+      if (idx >= DOH_PROVIDERS.length) {
+        reject(new Error('DoH 解析失败（' + DOH_PROVIDERS.length + ' 个解析器都没通）'));
+        return;
+      }
       const p = DOH_PROVIDERS[idx++];
+      const tpl = p.path || '/dns-query?name=%s&type=A';
       const req = https.request({
         host: p.ip, port: 443, method: 'GET',
-        path: '/dns-query?name=' + encodeURIComponent(host) + '&type=A',
+        path: tpl.replace('%s', encodeURIComponent(host)),
         servername: p.servername,
         headers: { Host: p.servername, Accept: 'application/dns-json' },
         timeout: 5000
@@ -2130,6 +2149,13 @@ function dohResolve(host) {
         res.setEncoding('utf8');
         res.on('data', (c) => { d += c; });
         res.on('end', () => {
+          /* 状态码要查：阿里对错的路径回 400 + 一行纯文本，JSON.parse 会静默失败，
+           * 结果就是"三路全挂"却看不出哪一步错了（这就是曾经的真 bug）。 */
+          if (res.statusCode !== 200) {
+            console.warn('[doh] ' + p.servername + ' 返回 ' + res.statusCode + '：' + d.trim().slice(0, 80));
+            next();
+            return;
+          }
           try {
             const j = JSON.parse(d);
             const hit = (j.Answer || []).filter((a) => a.type === 1 && /^\d+\.\d+\.\d+\.\d+$/.test(a.data))[0];

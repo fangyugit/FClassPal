@@ -291,7 +291,8 @@ let THEME_LABEL = Object.assign({}, BUILTIN_LABEL);
 let THEME_ACCENT = Object.assign({}, BUILTIN_ACCENT);
 let FIXED_PALETTE_THEMES = BUILTIN_FIXED.slice();
 let THEME_ACCENT_LIST = Object.keys(THEME_ACCENT).map((k) => THEME_ACCENT[k].toUpperCase());
-/* 已安装主题包的 CSS（id → 文本），统一注入一个 <style id="themePackCss"> */
+/* 已安装主题包的 CSS（id → 文本）；注入时**一包一个** `<style data-theme-pack="<id>">`，
+ * 见 injectThemePackCss 上方的说明（拼成一份会被单点语法错误连坐）。 */
 let themePackCss = {};
 /* 主题管理弹窗的最近一次清单（排序/装/删之后重画用） */
 let themeInv = null;
@@ -2680,7 +2681,8 @@ $('themeSelect').addEventListener('change', (e) => {
  *   ① 启动时把注册表（THEMES / LABEL / ACCENT / 固定配色）和主题包 CSS 拉下来；
  *   ② 主题管理弹窗：切换 / 排序（箭头 + 拖动）/ 删除 / 导入 / 一键装离线包。
  * 三条硬规矩：
- *   · 主题包的 CSS 统一注入 <style id="themePackCss">，包里选择器都带
+ *   · 主题包的 CSS 按包分别注入 `<style data-theme-pack="<id>">`（一包一表，
+ *     免得一个包的语法错误把后面的全带走），包里选择器都带
  *     body.theme-<id>，靠树序赢，**不改 builtin 的样式文件**；
  *   · 主题名/作者来自 manifest.json（别人写的），进 innerHTML 一律先转义；
  *   · 顺序只在主进程落盘（config.themeOrder），渲染层不留第二份真相。
@@ -2716,14 +2718,36 @@ function applyThemeRegistry(cards) {
   renderThemeOptions();
 }
 
+/* 一个主题包一个 <style>，绝不拼成一份。
+ *
+ * 起因（2026-10 真事故）：以前是 THEMES.map(id => themePackCss[id]).join('\n')
+ * 塞进同一个 <style id="themePackCss">。CSS 的语法错误在 Blink 里不是"只作废
+ * 出错的那条规则"，而是**从出错点往后整份样式表全部丢弃**。于是 ling 的
+ * `--t-veil: linear-gradient(...` 少了一个右括号，直接把排在它后面的
+ * melody / miku / milk / pochacco / purin / sanrio / teto / tianyi / whale
+ * 八套主题的样式一起带走了 —— 用户看到的就是"有些主题点了没反应、贴图全没了"，
+ * 而坏掉的那一份自己反倒看起来最正常（它前面的规则都还在）。
+ *
+ * 一包一表之后，坏包只坏自己，排查范围立刻缩小到一套主题。
+ * 元素用 data-theme-pack="<id>" 标记，探针按这个属性找。 */
 function injectThemePackCss() {
-  let el = document.getElementById('themePackCss');
-  if (!el) {
-    el = document.createElement('style');
-    el.id = 'themePackCss';
-    document.head.appendChild(el);
-  }
-  el.textContent = THEMES.map((id) => themePackCss[id] || '').join('\n');
+  const head = document.head;
+  const want = THEMES.filter((id) => themePackCss[id]);
+  /* 包被删掉 / 被卸载：把它那份表摘掉，别留着旧样式继续生效 */
+  Array.from(head.querySelectorAll('style[data-theme-pack]')).forEach((el) => {
+    if (want.indexOf(el.getAttribute('data-theme-pack')) < 0) el.remove();
+  });
+  want.forEach((id) => {
+    const key = 'style[data-theme-pack="' + id + '"]';
+    let el = head.querySelector(key);
+    if (!el) {
+      el = document.createElement('style');
+      el.setAttribute('data-theme-pack', id);
+      head.appendChild(el);           // 追加到 head 尾部 → 排在 style.css 之后，同权重时包赢
+    }
+    /* 内容没变就别重写：重写会整份重新解析，切主题时白掉一帧 */
+    if (el.textContent !== themePackCss[id]) el.textContent = themePackCss[id];
+  });
 }
 
 /** 没有主进程（安卓壳 / 预览模式）时的兜底清单：只有内置五套，库存为空 */

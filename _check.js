@@ -941,7 +941,29 @@ const checks = [
   ['v2.4.6: exe 体积优化（最大压缩 + 只留中英语言包）',
     srcPkg.build.win.compression === 'maximum' &&
     Array.isArray(srcPkg.build.electronLanguages) &&
-    srcPkg.build.electronLanguages.join(',') === 'zh-CN,en-US']
+    srcPkg.build.electronLanguages.join(',') === 'zh-CN,en-US'],
+  /* 2026-10 真事故：8 个包的 `--t-veil: linear-gradient(...` 少了右括号，渲染层
+   * 又把 13 个包拼成一个 <style>，Blink 从出错点往后整份丢弃 —— 一个字符带走了
+   * 8 套主题。括号不配平这种错肉眼看着是配平的，必须机器数（_rt/_csslint.js，
+   * 先剥注释和字符串再数，_packthemes.js 打包前也用同一份体检拦一道）。 */
+  ['主题包: CSS 语法体检 —— 圆括号/大括号/注释配平，13 个包全部干净',
+    (function () {
+      const lint = require('./_rt/_csslint').lintCss;
+      let ok = true;
+      PACK_IDS.forEach((t) => {
+        const ps = lint(packCss[t] || '', t);
+        if (ps.length) {
+          ok = false;
+          console.log('      · ' + t + '：' +
+            ps.map((x) => '第' + (x.line || '?') + '行 ' + x.msg).join('；'));
+        }
+      });
+      return ok;
+    })()],
+  ['主题包: 渲染层一包一表注入（一个包写坏不许连坐其它主题）',
+    app.includes("setAttribute('data-theme-pack'") &&
+    app.includes("querySelectorAll('style[data-theme-pack]')") &&
+    !app.includes("getElementById('themePackCss')")]
 ];
 let bad = 0;
 checks.forEach((c) => {
