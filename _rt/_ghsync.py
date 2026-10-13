@@ -287,7 +287,8 @@ def push(message, only=None, all_files=False):
 
 # ---------------------------------------------------------------- Release
 
-def release(tag, name=None, notes_file=None, notes=None, asset=None, prerelease=False):
+def release(tag, name=None, notes_file=None, notes=None, asset=None, prerelease=False,
+            make_latest=None):
     token = _token()
     if notes_file:
         with open(notes_file, 'r', encoding='utf-8') as fh:
@@ -296,6 +297,9 @@ def release(tag, name=None, notes_file=None, notes=None, asset=None, prerelease=
         raise SystemExit('release 需要 --notes-file 或 --notes')
     body = {'tag_name': tag, 'name': name or tag, 'body': notes,
             'draft': False, 'prerelease': bool(prerelease), 'target_commitish': BRANCH}
+    # 历史版本归档：必须 make_latest=false，否则老版本会抢走仓库首页的 Latest 标记
+    if make_latest is not None:
+        body['make_latest'] = 'true' if make_latest else 'false'
     rel = api('POST', '/repos/%s/%s/releases' % (OWNER, REPO), body, token=token,
               ok=(200, 201))
     print('release %s 已建 %s' % (tag, rel['html_url']))
@@ -374,6 +378,8 @@ def main():
     p_rel.add_argument('--asset', action='append',
                        help='要上传的产物文件，可重复给多个（注意：不给就只建 Release）')
     p_rel.add_argument('--prerelease', action='store_true')
+    p_rel.add_argument('--no-latest', dest='no_latest', action='store_true',
+                       help='make_latest=false（历史版本归档用，别抢 Latest 标记）')
 
     args = ap.parse_args()
     if args.cmd == 'status':
@@ -382,7 +388,8 @@ def main():
         push(args.message, only=args.only, all_files=args.all)
     elif args.cmd == 'release':
         release(args.tag, name=args.name, notes_file=args.notes_file,
-                notes=args.notes, asset=args.asset, prerelease=args.prerelease)
+                notes=args.notes, asset=args.asset, prerelease=args.prerelease,
+                make_latest=(False if getattr(args, 'no_latest', False) else None))
 
 
 if __name__ == '__main__':

@@ -3,6 +3,7 @@ name: build-multiplatform
 # 多平台产物构建（本机是 Windows，出不了 macOS 包；这条流水线补上）。
 #   - 手动触发（Actions 页签 Run workflow）
 #   - 或推送 v* 标签时自动跑，并把产物直接挂到对应 Release 上
+#     · 仅当 tag 等于当前 package.json 版本时才跑；历史存档 tag 一律跳过（见 gate 任务）
 # 产物：
 #   macOS   FClassPal-<version>-mac-{x64,arm64}.dmg / .zip（未签名，首次打开需右键->打开）
 #   Android FClassPal-<version>-android-debug.apk（debug 签名，装上就能用）
@@ -17,8 +18,32 @@ permissions:
   contents: write   # 往 Release 传附件需要
 
 jobs:
+  # 版本闸门：tag 必须与当前 package.json 版本一致，才算「本轮正式发布」。
+  # 历史存档 tag（v1.5.0 / v2.0.0 …）同样命中 v* 触发器，但它们 checkout 到的
+  # 是当前 main —— 于是会把 2.5.0 的安装包挂到 v1.5.0 的存档页上。这里先把
+  # 这种 tag 挡在构建之前。
+  gate:
+    name: 版本闸门
+    runs-on: ubuntu-latest
+    outputs:
+      current: ${{ steps.check.outputs.current }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME}" = "v${PKG}" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+            echo "tag ${GITHUB_REF_NAME} 与 package.json 版本一致，正常构建"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "tag ${GITHUB_REF_NAME} != v${PKG}（历史存档 tag），跳过构建与上传"
+          fi
+
   macos:
     name: macOS (x64 + arm64)
+    needs: gate
+    if: github.event_name == 'workflow_dispatch' || needs.gate.outputs.current == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,6 +78,8 @@ jobs:
 
   android:
     name: Android (debug apk)
+    needs: gate
+    if: github.event_name == 'workflow_dispatch' || needs.gate.outputs.current == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

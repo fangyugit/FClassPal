@@ -33,6 +33,8 @@ _rt/*
 !_rt/_e2e_export.js
 !_rt/_genthemes.py
 !_rt/_kitty_tpl.css
+!_rt/_archive_old.py
+!_rt/_arch_probe.py
 !_rt/probe.html
 !_rt/crop_chars.py
 !_rt/fetch_chars.py
