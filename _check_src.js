@@ -854,8 +854,14 @@ const checks = [
   ['v2.4.4: README / CHANGELOG 已同步到本版（防"发版忘了改文档"）',
     /2\.4\.4/.test(readme) && /CHANGELOG\.md/.test(readme) &&
     /##\s*v2\.4\.4/.test(changelog) && /2\.4\.4/.test(changelog)],
-  ['v2.4.5: README / CHANGELOG 已同步到本版（防"发版忘了改文档"）',
-    /2\.4\.5/.test(readme) && /##\s*v2\.4\.5/.test(changelog)],
+  /* v2.4.5 那条原本是「README 里能搜到 2.4.5」——纯粹的历史字面量，v2.5.2 清理 README
+   * 下载表时（原来那几行还写着"FClassPal-2.4.5-linux-*.deb 沿用上一版"）它必然变红。
+   * 真正值得守的是"下载表指向当前版本"，所以改成查这个 —— 断言不删，换到正确的位置查。 */
+  ['v2.4.5: README 下载表指向当前版本（别再留"沿用上一版"的陈旧行）',
+    readme.includes('releases/tag/v' + srcPkg.version) &&
+    !/沿用上一版/.test(readme) &&
+    new RegExp('FClassPal-' + srcPkg.version.replace(/\./g, '\\.') + '-linux-loong64').test(readme) &&
+    /##\s*v2\.4\.5/.test(changelog)],
   ['v2.4.5: CHANGELOG 只写新增/改变（本版没有"测试"小节，规范改了）',
     /##\s*v2\.4\.5[\s\S]*?(?=\n##\s|\n*$)/.test(changelog) &&
     !/##\s*v2\.4\.5[\s\S]*?###\s*测试/.test(changelog)],
