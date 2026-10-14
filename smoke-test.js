@@ -51,7 +51,7 @@ function ruleBlock(sel) {
  * ==========================================================================*/
 const PACK_ROOT = 'D:/workb/FClassPal-theme/themes';
 const PACK_IDS = ['kitty', 'dog', 'kuromi', 'melody', 'sanrio', 'pochacco', 'purin',
-  'milk', 'tianyi', 'ling', 'teto', 'whale', 'miku'];
+  'NaiWa', 'tianyi', 'ling', 'teto', 'whale', 'miku'];
 const packCss = {}, packNC = {}, packManifest = {};
 PACK_IDS.forEach((t) => {
   try { packCss[t] = fs.readFileSync(path.join(PACK_ROOT, t, 'theme.css'), 'utf-8'); } catch (e) { packCss[t] = ''; }

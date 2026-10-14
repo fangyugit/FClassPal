@@ -47,6 +47,20 @@ const srcPkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 // README / CHANGELOG 不在 asar 里（不是运行时文件），从磁盘读，用来防"发版忘了同步文档"
 const readme = (() => { try { return fs.readFileSync('README.md', 'utf8'); } catch (e) { return ''; } })();
 const changelog = (() => { try { return fs.readFileSync('CHANGELOG.md', 'utf8'); } catch (e) { return ''; } })();
+/* 主题包 id 清单在三个探针里各存一份（_check / smoke-test / _rt/_palettecheck），
+ * 必须同步 —— 改 id 时漏掉一个，那个探针会读不到包文件、断言整片变红
+ * （2026-10-14 milk → NaiWa 时 smoke-test 与 _palettecheck 就漏了）。
+ * 后两个不在 asar 里，直接从磁盘抠出 PACK_IDS 数组字面量来比对。 */
+const probeIds = (file) => {
+  try {
+    const src = fs.readFileSync(file, 'utf8');
+    const m = src.match(/const PACK_IDS = \[([\s\S]*?)\]/);
+    if (!m) return [];
+    return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+  } catch (e) { return []; }
+};
+const smokeIds = probeIds('smoke-test.js');
+const paletteIds = probeIds(path.join('_rt', '_palettecheck.js'));
 /* ============================================================================
  * v2.5.0：应用本体与主题分离
  *   本体只留五套内置皮肤（glass / md3 / fluent / miuix / harmony），
@@ -747,6 +761,21 @@ const checks = [
     /iconFit: 'cover',/.test(mainNC) && /iconBorder: 'glass',/.test(mainNC) &&
     /iconShape: 'auto',/.test(mainNC) && /iconRadius: 22,/.test(mainNC) &&
     /iconRingColor: '',/.test(mainNC)],
+  /* v2.5.2：奶蛙 id 'milk' → 'NaiWa'。老配置里 theme / themeOrder 还写着 'milk'，
+   * 而随包附带的旧 milk.fcpt 已经不在包里了 —— 不迁移的话升级用户会停在
+   * "主题指向一个不存在的包"，界面直接退回玻璃底；老包目录也得清掉，
+   * 否则它是 1.0.0（没有深色层），会和 NaiWa 一起出现在主题管理里。 */
+  ['v2.5.2 配置迁移：老配置的 milk → NaiWa（单个标记键位，跑一次即止）',
+    /themeMigratedToNaiWa/.test(mainNC) &&
+    /if \(config\.theme === 'milk'\) config\.theme = 'NaiWa';/.test(mainNC) &&
+    /id === 'milk' \? 'NaiWa' : id/.test(mainNC) &&
+    /path\.join\(CONFIG_DIR, 'themes', 'milk'\)/.test(mainNC)],
+  ['v2.5.2 主题名表跟着改名（.fcps 方案导出不该把 NaiWa 显示成裸 id）',
+    /NaiWa: '奶蛙'/.test(mainNC) && !/\bmilk:/.test(mainNC)],
+  ['v2.5.2 主题包 id 清单三处同步（_check / smoke-test / _palettecheck 都不许留 milk）',
+    PACK_IDS.indexOf('NaiWa') >= 0 && PACK_IDS.indexOf('milk') < 0 &&
+    smokeIds.indexOf('NaiWa') >= 0 && smokeIds.indexOf('milk') < 0 &&
+    paletteIds.indexOf('NaiWa') >= 0 && paletteIds.indexOf('milk') < 0],
   ['v2.4.2/3 配置项：渲染层只做"非法值收回默认"，不另立一套默认值（避免两边打架）',
     /if \(config\.iconFit !== 'contain'\) config\.iconFit = 'cover';/.test(app) &&
     /\['glass', 'auto', 'theme', 'none'\]\.indexOf\(config\.iconBorder\) < 0\) config\.iconBorder = 'glass';/.test(app) &&

@@ -644,6 +644,28 @@ function createWindow() {
     config.theme = 'glass';
     saveConfig(config);
   }
+  // v2.5.2：奶蛙主题 id 由 'milk' 更名为 'NaiWa'（包 1.1.0）。老配置里 theme /
+  // themeOrder 还写着 'milk'，而随包附带的旧 milk.fcpt 已经不在包里 —— 不迁移的话
+  // 升级后用户会停在"主题指向一个已经不存在的包"，界面直接退回玻璃底。
+  // 同时把老包目录清掉：它是 1.0.0（没有深色层），留着会和 NaiWa 同时出现在主题管理里，
+  // 用户很容易点回那套"暗色模式下仍是浅色"的旧包。
+  if (!config.themeMigratedToNaiWa) {
+    config.themeMigratedToNaiWa = true;
+    if (config.theme === 'milk') config.theme = 'NaiWa';
+    if (Array.isArray(config.themeOrder) && config.themeOrder.indexOf('milk') >= 0) {
+      const seen = new Set();
+      config.themeOrder = config.themeOrder
+        .map((id) => (id === 'milk' ? 'NaiWa' : id))
+        .filter((id) => (seen.has(id) ? false : seen.add(id)));
+    }
+    try {
+      const legacy = path.join(CONFIG_DIR, 'themes', 'milk');
+      if (fs.existsSync(legacy)) fs.rmSync(legacy, { recursive: true, force: true });
+    } catch (e) {
+      console.error('清理旧 milk 主题包失败（不影响启动）', e);
+    }
+    saveConfig(config);
+  }
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: sw, height: sh } = primaryDisplay.workAreaSize;
 
@@ -1838,7 +1860,7 @@ ipcMain.handle('export-theme', async () => {
       glass: '液态玻璃', md3: 'Material You 3', fluent: 'Fluent', miuix: 'MIUIX',
       harmony: '鸿蒙', kitty: 'Hello Kitty', dog: '玉桂狗', kuromi: '库洛米',
       melody: '美乐蒂', sanrio: '三丽鸥',
-      pochacco: '帕恰狗', purin: '布丁狗', milk: '奶蛙', tianyi: '洛天依',
+      pochacco: '帕恰狗', purin: '布丁狗', NaiWa: '奶蛙', tianyi: '洛天依',
       ling: '乐正绫', miku: '初音未来', teto: '重音Teto', whale: 'DS鲸鱼娘'
     };
     const lines = [];

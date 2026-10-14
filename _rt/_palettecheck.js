@@ -66,7 +66,7 @@ let calls = [];
  * 让 applyTheme 类切换 + 固定配色联动的断言能覆盖真实链路（不是只测内置五套）。 */
 const PACK_ROOT = 'D:/workb/FClassPal-theme/themes';
 const PACK_IDS = ['kitty', 'dog', 'kuromi', 'melody', 'sanrio', 'pochacco', 'purin',
-  'milk', 'tianyi', 'ling', 'teto', 'whale', 'miku'];
+  'NaiWa', 'tianyi', 'ling', 'teto', 'whale', 'miku'];
 const packMf = {}, packCssText = {};
 PACK_IDS.forEach((id) => {
   try { packMf[id] = JSON.parse(fs.readFileSync(path.join(PACK_ROOT, id, 'manifest.json'), 'utf8')); } catch (e) { packMf[id] = {}; }
