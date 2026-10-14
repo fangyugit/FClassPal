@@ -1776,7 +1776,7 @@ body.is-resizing .lg-border {
   box-shadow: 0 0 0 2px var(--md3-surface, #fff), 0 0 0 4px var(--md3-primary, #6750a4);
 }
 
-/* ====== 主题下拉栏（v2.2.2：10 套主题用 9 个按钮的分段控件太挤）====== */
+/* 界面风格已换自绘 .tselect（上面）；这个类还服务于「背景填充方式」等原生 select */
 .theme-select {
   appearance: none;
   -webkit-appearance: none;
@@ -1787,8 +1787,8 @@ body.is-resizing .lg-border {
   color: var(--text);
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 9.5l6 6 6-6' fill='none' stroke='%23999aa8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center / 12px,
-    rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(70, 90, 160, 0.22);
+    var(--t-surface-2, rgba(255, 255, 255, 0.78));
+  border: 1px solid var(--t-line, rgba(70, 90, 160, 0.22));
   border-radius: 12px;
   max-width: 150px;
   cursor: pointer;
@@ -1796,6 +1796,241 @@ body.is-resizing .lg-border {
 }
 .theme-select:hover { border-color: var(--accent); }
 .theme-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ====== 界面风格选择（v2.5.2 自绘下拉）======
+ * 原生 <select> 在触屏上弹系统菜单、行高小、间距挤。自绘：按钮显示
+ * 当前主题（色点 + 名字 + 箭头），弹出行高 44px+ 的选项列表，选中打勾。
+ * 颜色全部走 token，随主题 / 明暗自动适配。 */
+.tselect {
+  position: relative;
+  display: inline-block;
+  max-width: 170px;
+}
+.tselect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 34px 6px 10px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--t-surface-2, rgba(255, 255, 255, 0.78));
+  border: 1px solid var(--t-line, rgba(70, 90, 160, 0.22));
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+.tselect-btn:hover { border-color: var(--accent); }
+.tselect-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tselect-btn[aria-expanded="true"] .tselect-caret { transform: rotate(180deg); }
+.tselect-caret {
+  position: absolute;
+  right: 10px;
+  width: 13px;
+  height: 13px;
+  color: var(--text-soft);
+  transition: transform 0.18s ease;
+}
+.tselect-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tselect-dot {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--c, var(--accent));
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+.tselect-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  min-width: max-content;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  background: var(--t-surface, #fff);
+  border: 1px solid var(--t-line, rgba(70, 90, 160, 0.22));
+  border-radius: 14px;
+  box-shadow: var(--t-shadow-menu, 0 14px 38px -14px rgb(0 0 0 / 0.35));
+}
+.tselect-pop.hidden { display: none; }
+.tselect-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;               /* 触控目标：手指按得住 */
+  padding: 8px 12px 8px 10px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.14s ease;
+}
+.tselect-item:hover { background: var(--t-surface-3, rgb(0 0 0 / 0.06)); }
+.tselect-item:active { transform: scale(0.98); }
+.tselect-item .tselect-label { flex: 1 1 auto; }
+.tselect-item[aria-selected="true"] {
+  background: var(--t-surface-3, rgb(0 0 0 / 0.06));
+  color: var(--accent);
+}
+.tselect-check { width: 14px; height: 14px; color: var(--accent); flex: 0 0 auto; }
+
+/* ====== 主题管理弹窗（v2.5.2 重做）======
+ * 卡片：预览图（120×68 圆角）+ 名称/描述/版本·作者 + 右侧操作钮。
+ * 行高 68px 起步、卡片间距 10px —— 触摸友好；颜色走 token，深浅色自动适配。 */
+.theme-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.theme-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 68px;
+  padding: 8px 10px;
+  border-radius: var(--t-r-card, 16px);
+  border: 2px solid var(--t-line, rgb(0 0 0 / 0.10));
+  background: var(--t-surface, #fff);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: border-color var(--t-dur, 0.2s) var(--t-ease, ease),
+              box-shadow var(--t-dur, 0.2s) var(--t-ease, ease);
+}
+.theme-card:hover { border-color: var(--accent-border, var(--accent)); }
+.theme-card.is-current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft, rgb(103 80 164 / 0.15));
+}
+.theme-card.is-dragging { opacity: 0.55; }
+.theme-thumb {
+  width: 96px;
+  height: 60px;
+  flex: 0 0 auto;
+  border-radius: calc(var(--t-r-small, 12px));
+  overflow: hidden;
+  border: 1px solid var(--t-line, rgb(0 0 0 / 0.08));
+  background: var(--t-surface-2, #f3f3f6);
+}
+.theme-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+.theme-thumb-ph {
+  background:
+    linear-gradient(135deg, var(--c, var(--accent)) 0%, var(--t-surface-3, #eee) 130%);
+}
+.theme-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.theme-line1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.theme-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.theme-tag {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--t-surface-3, rgb(0 0 0 / 0.06));
+  color: var(--text-soft);
+}
+.theme-tag.current {
+  background: var(--accent);
+  color: var(--t-on-accent, #fff);
+}
+.theme-desc {
+  font-size: 0.76rem;
+  color: var(--text-soft);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.theme-meta {
+  font-size: 0.68rem;
+  color: var(--text-soft);
+  opacity: 0.85;
+}
+.theme-card-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.theme-mini {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--t-line, rgb(0 0 0 / 0.12));
+  border-radius: 9px;
+  background: var(--t-surface-2, #fff);
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+.theme-mini .ic { width: 14px; height: 14px; }
+.theme-mini:hover:not(:disabled) {
+  background: var(--accent-soft, rgb(103 80 164 / 0.12));
+  color: var(--accent);
+  border-color: var(--accent-border, var(--accent));
+}
+.theme-mini.danger:hover:not(:disabled) {
+  background: var(--danger, #d33);
+  color: #fff;
+  border-color: var(--danger, #d33);
+}
+.theme-mini:disabled { opacity: 0.35; cursor: default; }
+.theme-group {
+  margin-top: 14px;
+}
+.theme-group-title {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  margin-bottom: 8px;
+}
+.theme-card.broken { cursor: default; opacity: 0.8; }
 
 /* ====== 分段控件：基础款（液态玻璃用；各主题各自覆盖） ====== */
 .seg {

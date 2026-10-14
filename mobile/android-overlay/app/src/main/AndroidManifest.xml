@@ -7,8 +7,13 @@
           空列表，不是报错——更难排查）。
        2. windowSoftInputMode=adjustResize：设置面板底部有输入框，键盘弹出时把
           面板顶上来，别盖住。
-       3. 不申请任何存储/定位权限：界面里没有需要权限的能力（壁纸是公开 API，
-          应用列表走 queries 声明）。
+       3. SYSTEM_ALERT_WINDOW（v2.5.2 补）：不声明它，应用就**不会出现在**系统
+          设置的「显示在其他应用上层」列表里 —— overlayGranted 永远是 false、
+          用户想授权都没地方点。声明后悬浮窗授权入口才找得到本应用。
+       4. 存储权限（v2.5.2 补）：主题包等文件落在应用专属目录
+          Android/data/com.fclasspal.widget/files/themes（本应用免权限可写），
+          READ/WRITE_EXTERNAL_STORAGE 只为 SAF 之外的旧路径/文件管理器兜底；
+          SAF 选包（ACTION_OPEN_DOCUMENT）本身不需要这两个权限。
      ==========================================================================-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -62,6 +67,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- v2.5.2：悬浮窗（「显示在其他应用上层」）+ 存储兜底。
+         SYSTEM_ALERT_WINDOW 不写，系统设置列表里根本找不到本应用（v2.5.0 的教训）。
+         存储权限只在 API ≤32 生效（33+ 分区存储下 Android/data 目录本应用免权限）。 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <!-- Android 11+ 包可见性：只声明"桌面类应用"这一种 Intent，
          覆盖所有有入口的 App，不需要 QUERY_ALL_PACKAGES 这个敏感权限 -->

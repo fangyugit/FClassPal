@@ -33,6 +33,7 @@
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
     <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
     <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4.6A1.6 1.6 0 0 1 9.6 3h4.8A1.6 1.6 0 0 1 16 4.6V6"/><path d="M18.4 6l-.9 13.2a1.9 1.9 0 0 1-1.9 1.8H8.4a1.9 1.9 0 0 1-1.9-1.8L5.6 6"/><path d="M10.4 10.6v6.6M13.6 10.6v6.6"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7.4 10.4L12 15l4.6-4.6"/><path d="M4.5 20h15"/></symbol>
 
@@ -227,9 +228,19 @@
         <span>锁定位置</span>
         <input type="checkbox" id="setLock" />
       </label>
+      <!-- 界面风格（v2.5.2 自绘下拉）：原生 select 触控行高小、弹系统菜单，
+           与主题语言不搭。按钮 + 48px 行高的选项列表，数据源仍是注册表。 -->
       <div class="row">
         <span>界面风格</span>
-        <select id="themeSelect" class="theme-select" aria-label="界面风格"></select>
+        <div class="tselect" id="themeSelect">
+          <button type="button" class="tselect-btn" id="themeSelectBtn"
+            aria-haspopup="listbox" aria-expanded="false" aria-label="界面风格">
+            <span class="tselect-dot" id="themeSelectDot"></span>
+            <span class="tselect-label" id="themeSelectLabel"></span>
+            <svg class="ic tselect-caret" aria-hidden="true"><use href="#i-down"/></svg>
+          </button>
+          <div class="tselect-pop hidden" id="themeSelectPop" role="listbox" aria-label="界面风格"></div>
+        </div>
       </div>
       <div class="row">
         <span>明暗模式</span>
@@ -575,7 +586,6 @@
         <button class="panel-close" id="btnThemeModalClose"><svg class="ic"><use href="#i-x"/></svg></button>
       </div>
       <div class="modal-body">
-        <p class="row-hint" id="themeManageHint">点一下卡片就能换风格；用箭头或直接拖动调整顺序；主题包可以删除，内置五套删不掉。</p>
         <div class="theme-list" id="themeList"></div>
         <div class="theme-group hidden" id="themeBundledBox">
           <span class="theme-group-title">随包附带 · 点一下装进来</span>

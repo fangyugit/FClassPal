@@ -142,30 +142,55 @@ def _token():
     raise SystemExit('找不到 token：设 GH_TOKEN，或把 PAT 写进 .git/_tok')
 
 
-def api(method, path, body=None, host='api.github.com', token=None, ok=(200, 201)):
-    """发一个 REST 请求。path 形如 /repos/o/r/git/blobs。"""
-    conn = PinnedHTTPSConnection(host, ip_of(host))
-    try:
-        payload = json.dumps(body).encode('utf-8') if body is not None else None
-        headers = {
-            'Host': host,
-            'Accept': 'application/vnd.github+json',
-            'User-Agent': 'FClassPal-ghsync',
-            'X-GitHub-Api-Version': '2022-11-28',
-        }
-        if token:
-            headers['Authorization'] = 'Bearer ' + token
-        if payload is not None:
-            headers['Content-Type'] = 'application/json'
-        conn.request(method, path, body=payload, headers=headers)
-        resp = conn.getresponse()
-        raw = resp.read()
-        if resp.status not in ok:
-            raise SystemExit('%s %s -> %s\n%s' % (method, path, resp.status,
-                                                  raw[:800].decode('utf-8', 'replace')))
-        return json.loads(raw.decode('utf-8')) if raw else {}
-    finally:
-        conn.close()
+def api(method, path, body=None, host='api.github.com', token=None, ok=(200, 201),
+        retries=0):
+    """发一个 REST 请求。path 形如 /repos/o/r/git/blobs。
+
+    retries>0 时对 5xx / 网络抖动做指数退避重试（2026-10-14：GitHub 偶发 502
+    Server Error，30 个 blob 传到第 29 个整轮白跑）。只给幂等或内容寻址的调用点加，
+    创建 release 这类 POST 保持 retries=0，避免 502 后重复建条目。
+    """
+    last = None
+    for attempt in range(retries + 1):
+        conn = PinnedHTTPSConnection(host, ip_of(host))
+        try:
+            payload = json.dumps(body).encode('utf-8') if body is not None else None
+            headers = {
+                'Host': host,
+                'Accept': 'application/vnd.github+json',
+                'User-Agent': 'FClassPal-ghsync',
+                'X-GitHub-Api-Version': '2022-11-28',
+            }
+            if token:
+                headers['Authorization'] = 'Bearer ' + token
+            if payload is not None:
+                headers['Content-Type'] = 'application/json'
+            conn.request(method, path, body=payload, headers=headers)
+            resp = conn.getresponse()
+            raw = resp.read()
+            if resp.status not in ok:
+                if 500 <= resp.status < 600 and attempt < retries:
+                    wait = 2 * (2 ** attempt)
+                    print('   ! %s %s -> %s，%ds 后重试（%d/%d）'
+                          % (method, path, resp.status, wait, attempt + 1, retries))
+                    time.sleep(wait)
+                    continue
+                raise SystemExit('%s %s -> %s\n%s' % (method, path, resp.status,
+                                                      raw[:800].decode('utf-8', 'replace')))
+            return json.loads(raw.decode('utf-8')) if raw else {}
+        except SystemExit:
+            raise
+        except (OSError, http.client.HTTPException) as exc:
+            last = exc
+            if attempt >= retries:
+                raise
+            wait = 2 * (2 ** attempt)
+            print('   ! %s %s -> %r，%ds 后重试（%d/%d）'
+                  % (method, path, exc, wait, attempt + 1, retries))
+            time.sleep(wait)
+        finally:
+            conn.close()
+    raise SystemExit('%s %s 重试耗尽：%r' % (method, path, last))
 
 
 # ---------------------------------------------------------------- 本地 / 远端比对
@@ -210,7 +235,7 @@ def remote_tree(token):
     """远端整个树：path -> (sha, size)。空仓库（404/409）按没有文件处理。"""
     out = {}
     data = api('GET', '/repos/%s/%s/git/trees/heads/%s?recursive=1' % (OWNER, REPO, BRANCH),
-               ok=(200, 404, 409), token=token)
+               ok=(200, 404, 409), token=token, retries=3)
     for ent in data.get('tree', []):
         if ent.get('type') == 'blob':
             out[ent['path']] = (ent['sha'], ent.get('size', 0))
@@ -256,11 +281,11 @@ def push(message, only=None, all_files=False, prune=False):
 
     # 空仓库没有分支：走根提交；否则正常以当前 main 为基线
     ref = api('GET', '/repos/%s/%s/git/ref/heads/%s' % (OWNER, REPO, BRANCH),
-              ok=(200, 404, 409), token=token)
+              ok=(200, 404, 409), token=token, retries=3)
     if ref.get('object'):
         base_commit = ref['object']['sha']
         base_tree = api('GET', '/repos/%s/%s/git/commits/%s' % (OWNER, REPO, base_commit),
-                        token=token)['tree']['sha']
+                        token=token, retries=3)['tree']['sha']
         print('基线 commit %s（tree %s）' % (base_commit[:8], base_tree[:8]))
     else:
         base_commit, base_tree = None, None
@@ -282,7 +307,7 @@ def push(message, only=None, all_files=False, prune=False):
         data = local[path]
         blob = api('POST', '/repos/%s/%s/git/blobs' % (OWNER, REPO),
                    {'content': base64.b64encode(data).decode('ascii'),
-                    'encoding': 'base64'}, token=token)
+                    'encoding': 'base64'}, token=token, retries=3)
         entries.append({'path': path, 'mode': '100644', 'type': 'blob',
                         'sha': blob['sha']})
         print('  [%2d/%2d] %-42s %8d B  blob %s' % (i, len(targets), path, len(data),
@@ -296,19 +321,20 @@ def push(message, only=None, all_files=False, prune=False):
                        for p in sorted(removed))
         print('  prune 远端多余文件 %d 个' % len(removed))
 
+    # tree/commit/ref 三连：中途 502 会白跑整轮，且重复创建只是产生无人引用的对象，安全重试
     tree = api('POST', '/repos/%s/%s/git/trees' % (OWNER, REPO),
                ({'tree': entries} if base_tree is None else
-                {'base_tree': base_tree, 'tree': entries}), token=token)
+                {'base_tree': base_tree, 'tree': entries}), token=token, retries=3)
     commit = api('POST', '/repos/%s/%s/git/commits' % (OWNER, REPO),
                  {'message': message, 'tree': tree['sha'],
                   'parents': ([] if base_commit is None else [base_commit])},
-                 token=token)
+                 token=token, retries=3)
     if base_commit is None:
         api('POST', '/repos/%s/%s/git/refs' % (OWNER, REPO),
-            {'ref': 'refs/heads/%s' % BRANCH, 'sha': commit['sha']}, token=token)
+            {'ref': 'refs/heads/%s' % BRANCH, 'sha': commit['sha']}, token=token, retries=3)
     else:
         api('PATCH', '/repos/%s/%s/git/refs/heads/%s' % (OWNER, REPO, BRANCH),
-            {'sha': commit['sha'], 'force': False}, token=token)
+            {'sha': commit['sha'], 'force': False}, token=token, retries=3)
     url = 'https://github.com/%s/%s/commit/%s' % (OWNER, REPO, commit['sha'])
     print('\n提交完成 ' + commit['sha'][:8] + '\n' + url)
     return commit['sha']

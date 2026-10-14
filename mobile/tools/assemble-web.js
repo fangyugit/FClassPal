@@ -77,6 +77,30 @@ function main() {
   const nWeb = copyTree(SRC_WEB, OUT);
   log('叠加 web/ -> www/：' + nWeb + ' 个文件');
 
+  // ②.5 随包赠送的主题包（v2.5.2）：以本体 package.json 的 build.files 为准
+  //     （themes/*.fcpt 条目），复制进 www/themes/ —— cap sync 后落在 APK assets 的
+  //     public/themes/，PalBridge.themeInstallBundled 从这里读。
+  //     v2.5.2 起只随赠三丽鸥角色主题，其余主题用户自行从主题仓库导入。
+  const SRC_PKG = JSON.parse(fs.readFileSync(path.resolve(ROOT, '..', 'package.json'), 'utf8'));
+  const bundledFiles = (SRC_PKG.build && SRC_PKG.build.files || [])
+    .map((f) => String(f))
+    .filter((f) => f.startsWith('themes/') && f.endsWith('.fcpt'));
+  const SRC_THEMES = path.resolve(ROOT, '..', 'themes');
+  if (bundledFiles.length && fs.existsSync(SRC_THEMES)) {
+    const outThemes = path.join(OUT, 'themes');
+    fs.mkdirSync(outThemes, { recursive: true });
+    let nPacks = 0;
+    for (const f of bundledFiles) {
+      const src = path.join(SRC_THEMES, path.basename(f));
+      if (!fs.existsSync(src)) die('build.files 里的随包主题不存在：' + f);
+      fs.copyFileSync(src, path.join(outThemes, path.basename(f)));
+      nPacks += 1;
+    }
+    log('复制随包主题包 -> www/themes/：' + nPacks + ' 个 .fcpt');
+  } else {
+    log('警告：build.files 里没有随包主题，APK 里不会有离线主题库存');
+  }
+
   // ③ index.html 注入
   const idxPath = path.join(OUT, 'index.html');
   let html = fs.readFileSync(idxPath, 'utf8');

@@ -1930,10 +1930,16 @@ function themeInventory() {
   ok.forEach((t) => { byId[t.id] = t; });
   const cards = order.map((id) => {
     const b = themes.BUILTIN.filter((t) => t.id === id)[0];
-    if (b) return Object.assign({}, b, { builtin: true, installed: true, removable: false });
+    if (b) return Object.assign({}, b, { builtin: true, installed: true, removable: false, author: 'YU' });
     const t = byId[id];
     // 内置的不能删；主题包能删。宽高比 / 主色都在 cards 里，UI 不用再查表。
-    return Object.assign({}, t, { builtin: false, installed: true, removable: true });
+    const card = Object.assign({}, t, { builtin: false, installed: true, removable: true });
+    // 预览图：manifest.preview 指向包内文件 → file:// URL 直接喂 <img>（渲染层是 file:// 页面）
+    if (t.previewName) {
+      const pv = path.join(t.dir, t.previewName);
+      if (fs.existsSync(pv)) card.previewUrl = require('url').pathToFileURL(pv).href;
+    }
+    return card;
   });
   return {
     spec: themes.SPEC_VERSION,

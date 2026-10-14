@@ -2,7 +2,7 @@
 
 > FClassPal是一个主要为班级大屏打造的桌面快捷方式启动器小部件 可用于替代希沃管家助手/桌面助手
 
-![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-922%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.5.0-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
+![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-922%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.5.2-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **FClassPal**是一个常驻桌面的启动器小部件，用于替代希沃管家助手/桌面助手 把常用的应用、文件、文件夹和网页钉在桌面一角，顺手管理 U 盘的弹出。无任务栏图标——右键或长按唤醒菜单，其余时间安静地贴在桌面上。
 

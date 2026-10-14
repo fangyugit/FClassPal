@@ -309,7 +309,8 @@ function applyTheme(theme) {
    * 只按注册表 toggle 的话它会永远挂在 body 上，皮肤继续生效。 */
   const all = new Set(FLAT_THEMES);
   document.body.className.split(/\s+/).forEach((c) => {
-    if (/^theme-[a-z]/.test(c) && c !== 'theme-glass') all.add(c.slice(6));
+    /* v2.5.2：id 允许大写（NaiWa），正则放宽到字母 */
+    if (/^theme-[a-zA-Z]/.test(c) && c !== 'theme-glass') all.add(c.slice(6));
   });
   all.forEach((n) => document.body.classList.toggle('theme-' + n, n === t));
   /* glass 也要一个标记类（v2.3.1）—— 它有自己的专属覆盖（苹果风滑块、
@@ -322,8 +323,7 @@ function applyTheme(theme) {
    * 黑暗模式下它们的 --md3-* 角色由主进程的 Monet 暗色方案整份给出，CSS 层
    * 必须"别插手"—— body.dark:not(.dyn) 才去压表面角色。 */
   document.body.classList.toggle('dyn', isDynamicTheme(t));
-  const sel = $('themeSelect');
-  if (sel && sel.value !== t) sel.value = t;
+  syncThemeSelect();   /* v2.5.2 自绘下拉：不再有原生 <select> 可设 value */
   /* 图标外观要跟着主题"重算几何"（v2.4.3）：形状选「跟随主题」时，「内部」的内缩量
    * 是从主题给的圆角半径实测出来的 —— 换了主题不重测，MD3 会沿用玻璃的 14.65%
    * （多留一圈白）、玻璃会沿用 MD3 的 10.98%（圆角处切掉一点点）。
@@ -2671,9 +2671,6 @@ function switchTheme(t) {
     : '已切换到 ' + (THEME_LABEL[currentTheme] || currentTheme) + ' 风格');
   if (prev !== currentTheme) motionReflowItems();
 }
-$('themeSelect').addEventListener('change', (e) => {
-  if (e.target.value) switchTheme(e.target.value);
-});
 
 /* ==================== 主题包（.fcpt）管理（v2.5.0）====================
  * 本体只带五套内置皮肤（BUILTIN_THEMES），其余主题以 .fcpt 独立分发。
@@ -2689,14 +2686,67 @@ $('themeSelect').addEventListener('change', (e) => {
  */
 const THEME_REPO_URL = 'https://github.com/fangyugit/FClassPal-theme';
 
-/** 下拉栏选项：由注册表生成（装/删/排序后也要重画，所以抽成函数） */
+/* ---------- 界面风格选择（v2.5.2 自绘下拉）----------
+ * 原生 <select> 在触屏上弹的是系统菜单，行高小、间距挤，与主题语言完全不搭。
+ * 自绘一条：按钮显示当前主题（色点 + 名字），弹出层是 48px 行高的选项列表，
+ * 选中项打勾；触摸目标、间距都按触控标准做。数据源仍是 THEMES/THEME_LABEL/
+ * THEME_ACCENT 注册表，装/删/排序后 applyThemeRegistry → renderThemeOptions 重画。 */
 function renderThemeOptions() {
-  const sel = $('themeSelect');
-  if (!sel) return;
-  sel.innerHTML = THEMES.map((t) =>
-    '<option value="' + escapeHtml(t) + '">' + escapeHtml(THEME_LABEL[t] || t) + '</option>').join('');
-  sel.value = THEMES.indexOf(currentTheme) >= 0 ? currentTheme : 'glass';
+  const pop = $('themeSelectPop');
+  if (!pop) return;
+  const cur = THEMES.indexOf(currentTheme) >= 0 ? currentTheme : 'glass';
+  pop.innerHTML = THEMES.map((t) =>
+    '<button type="button" class="tselect-item" role="option" data-value="' + escapeHtml(t) + '"' +
+    ' aria-selected="' + (t === cur ? 'true' : 'false') + '">' +
+    '<span class="tselect-dot" style="--c:' + escapeHtml(THEME_ACCENT[t] || '#6750A4') + '"></span>' +
+    '<span class="tselect-label">' + escapeHtml(THEME_LABEL[t] || t) + '</span>' +
+    (t === cur ? '<svg class="ic tselect-check" aria-hidden="true"><use href="#i-check"/></svg>' : '') +
+    '</button>').join('');
+  syncThemeSelect();
 }
+
+/** 把当前主题同步到自绘下拉（applyTheme / 启动同步都会调） */
+function syncThemeSelect() {
+  const label = $('themeSelectLabel');
+  const dot = $('themeSelectDot');
+  if (!label || !dot) return;
+  const cur = THEMES.indexOf(currentTheme) >= 0 ? currentTheme : 'glass';
+  label.textContent = THEME_LABEL[cur] || cur;
+  dot.style.setProperty('--c', THEME_ACCENT[cur] || '#6750A4');
+}
+
+function themeSelectOpen(open) {
+  const wrap = $('themeSelect');
+  const pop = $('themeSelectPop');
+  const btn = $('themeSelectBtn');
+  if (!wrap || !pop || !btn) return;
+  pop.classList.toggle('hidden', !open);
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+(function bindThemeSelect() {
+  const btn = $('themeSelectBtn');
+  const pop = $('themeSelectPop');
+  if (!btn || !pop) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    themeSelectOpen(pop.classList.contains('hidden'));
+  });
+  pop.addEventListener('click', (e) => {
+    const item = e.target.closest && e.target.closest('.tselect-item');
+    if (!item || !item.dataset.value) return;
+    themeSelectOpen(false);
+    if (item.dataset.value !== currentTheme) switchTheme(item.dataset.value);
+  });
+  document.addEventListener('click', (e) => {
+    if (!(e.target.closest && e.target.closest('#themeSelect'))) themeSelectOpen(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('themeSelectPop').classList.contains('hidden')) {
+      themeSelectOpen(false);
+    }
+  });
+})();
 
 /** 主进程给的卡片列表 → 注册表（顺序就是用户排的顺序；内置五套缺了就补在末尾） */
 function applyThemeRegistry(cards) {
@@ -2786,7 +2836,17 @@ async function loadThemeRegistry() {
   }
 }
 
-/* ---------- 弹窗渲染 ---------- */
+/* ---------- 弹窗渲染（v2.5.2 重做：预览图 / 描述 / 版本 / 作者直接上卡片） ---------- */
+function themeThumbHTML(t) {
+  const acc = escapeHtml(t.accent || THEME_ACCENT[t.id] || '#6750A4');
+  if (t.previewUrl) {
+    return '<span class="theme-thumb"><img class="theme-thumb-img" src="' +
+      escapeHtml(t.previewUrl) + '" alt="" loading="lazy" draggable="false" /></span>';
+  }
+  /* 内置五套 / 没带预览图的包：主色渐变占位块，不空着 */
+  return '<span class="theme-thumb theme-thumb-ph" style="--c:' + acc + '"></span>';
+}
+
 function themeCardHTML(t, idx, total) {
   const cur = t.id === currentTheme;
   const btns = [];
@@ -2798,11 +2858,18 @@ function themeCardHTML(t, idx, total) {
     btns.push('<button class="theme-mini danger" type="button" data-act="del" title="删除这个主题包">' +
       svgIcon('i-trash') + '</button>');
   }
+  const meta = [];
+  meta.push(t.builtin ? '内置' : 'v' + (t.version || '1.0.0'));
+  if (t.author) meta.push('作者 ' + t.author);
   return '<div class="theme-card' + (cur ? ' is-current' : '') + '" data-id="' + escapeHtml(t.id) + '"' +
     ' role="button" tabindex="0" title="' + escapeHtml(t.desc || t.name || t.id) + '">' +
-    '<span class="theme-dot" style="--c:' + escapeHtml(t.accent || '#6750A4') + '"></span>' +
-    '<span class="theme-name">' + escapeHtml(t.name || t.id) + '</span>' +
-    '<span class="theme-tag">' + escapeHtml(t.builtin ? '内置' : '包 ' + (t.version || '1.0.0')) + '</span>' +
+    themeThumbHTML(t) +
+    '<span class="theme-info">' +
+      '<span class="theme-line1"><span class="theme-name">' + escapeHtml(t.name || t.id) + '</span>' +
+      (cur ? '<span class="theme-tag current">使用中</span>' : '') + '</span>' +
+      (t.desc ? '<span class="theme-desc">' + escapeHtml(t.desc) + '</span>' : '') +
+      '<span class="theme-meta">' + escapeHtml(meta.join(' · ')) + '</span>' +
+    '</span>' +
     '<span class="theme-card-btns">' + btns.join('') + '</span>' +
     '</div>';
 }
@@ -2810,9 +2877,14 @@ function themeCardHTML(t, idx, total) {
 function bundledCardHTML(b) {
   return '<div class="theme-card" data-bundled="' + escapeHtml(b.file) + '" role="button" tabindex="0"' +
     ' title="' + escapeHtml(b.desc || b.name) + '">' +
-    '<span class="theme-dot" style="--c:#8794B4"></span>' +
-    '<span class="theme-name">' + escapeHtml(b.name) + '</span>' +
-    '<span class="theme-tag">' + escapeHtml(b.id || '离线包') + '</span>' +
+    (b.accent
+      ? '<span class="theme-thumb theme-thumb-ph" style="--c:' + escapeHtml(b.accent) + '"></span>'
+      : '<span class="theme-thumb theme-thumb-ph"></span>') +
+    '<span class="theme-info">' +
+      '<span class="theme-line1"><span class="theme-name">' + escapeHtml(b.name) + '</span></span>' +
+      (b.desc ? '<span class="theme-desc">' + escapeHtml(b.desc) + '</span>' : '') +
+      '<span class="theme-meta">' + escapeHtml(b.id || '离线包') + '</span>' +
+    '</span>' +
     '<span class="theme-card-btns"><button class="theme-mini" type="button" data-act="install"' +
     ' title="装进来">' + svgIcon('i-download') + '</button></span>' +
     '</div>';
@@ -2842,11 +2914,6 @@ function renderThemeModal() {
         '<div class="theme-card broken"><span class="theme-name">' + escapeHtml(b.id) + '</span>' +
         '<span class="theme-tag" title="' + escapeHtml(b.error) + '">读不出来</span></div>').join('');
     }
-  }
-  const hint = $('themeManageHint');
-  if (hint) {
-    hint.textContent = '点一下卡片就能换风格；用箭头或直接拖动调整顺序；主题包可以删除，内置五套删不掉。' +
-      (typeof API.themesInstall === 'function' ? '' : '（这个版本不能导入主题包）');
   }
   // 宿主没有主进程（安卓壳）时，导入/文件夹按钮直接禁掉，别让用户点了没反应
   const canInstall = typeof API.themesInstall === 'function';
@@ -4047,7 +4114,7 @@ if (typeof API.onTrayAction === 'function') {
   /* 配置里记的主题已经不在本机（包被删了、或从别的机器同步过来的配置）→ 收回基线，
    * 顺手落盘，别让"配置说是 kitty、界面却是玻璃"这种状态一直挂着 */
   if (THEMES.indexOf(config.theme) < 0) config.theme = 'glass';
-  if ($('themeSelect')) $('themeSelect').value = config.theme;
+  syncThemeSelect();   /* 启动时把自绘下拉对到配置里的主题 */
   applyRadius(config.cornerRadius ?? null, false);
   API.setBounds(bounds);
   enableLiquidGlass();   // 能力探测通过后点亮 .lg-ready

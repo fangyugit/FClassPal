@@ -41,15 +41,23 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import org.json.JSONObject;
+
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /* ============================================================================
  * FClassPal 安卓壳 · 原生桥（PalBridge）
@@ -536,7 +544,16 @@ public class PalBridgePlugin extends Plugin {
                 public void run() {
                     Rect r = new Rect(winRectPx);
                     String err = c.start(consentData, consentCode, r, 100);
-                    if (err != null) consentData = null;   // 令牌失效，下次重新授权
+                    if (err != null) {
+                        // ★ 令牌失效/服务起不来必须喊一嗓子：以前这里静默失败，
+                        // 渲染层拿着 ok:true 永远停在「等待录屏授权」——这就是
+                        // "给了录屏权限还一直卡在动态录屏授权"的真凶。
+                        consentData = null;
+                        JSObject o = new JSObject();
+                        o.put("ended", true);
+                        o.put("reason", captureErrorText(err));
+                        notifyListeners("realtimeEnded", o);
+                    }
                 }
             }).start();
             out.put("ok", true);   // 采集中/即将采集，帧随后推
@@ -621,13 +638,21 @@ public class PalBridgePlugin extends Plugin {
                         consentData = null;
                         JSObject o = new JSObject();
                         o.put("ended", true);
-                        o.put("reason", "fullscreen".equals(err)
-                                ? "窗口太大，退回壁纸底材" : "采集启动失败");
+                        o.put("reason", captureErrorText(err));
                         notifyListeners("realtimeEnded", o);
                     }
                 }
             }).start();
         }
+    }
+
+    /** 采集启动失败 → 用户看得懂的一句话（渲染层直接显示，然后退回静态壁纸） */
+    private static String captureErrorText(String err) {
+        if ("fullscreen".equals(err)) return "窗口太大，退回壁纸底材";
+        if ("fgs-denied".equals(err)) return "系统不允许启动屏幕采集服务（回到应用前台再开一次）";
+        if ("fgs-timeout".equals(err)) return "屏幕采集服务启动超时";
+        if ("denied".equals(err)) return "录屏授权已失效，请重新开启";
+        return "采集启动失败";
     }
 
     @PluginMethod
@@ -910,6 +935,434 @@ public class PalBridgePlugin extends Plugin {
                 call.resolve(out);
             }
         }).start();
+    }
+
+    /* ---------------------------------------------- 主题包（.fcpt，v2.5.2）
+     * 桌面版主题包引擎在 themes.js（主进程），安卓没有主进程，这里用 Java 实现
+     * 同一套最小能力：装（SAF 选包 → base64 进来）/ 删 / 列清单 / 投喂 CSS。
+     *
+     * 落盘位置：应用专属外部目录 getExternalFilesDir("themes")
+     *   = /storage/emulated/0/Android/data/com.fclasspal.widget/files/themes/
+     * 这个目录本应用可以自由读写（无需运行时权限），卸载应用即清空。
+     * 清单里声明的 READ/WRITE_EXTERNAL_STORAGE 是给 SAF 之外的旧路径兜底。
+     *
+     * 安全校验对齐 themes.js：zip-slip / 路径越界 / 24MB / 400 条目 / id 规则
+     * （[a-zA-Z][a-zA-Z0-9-]{1,23}，大小写敏感，内置 id 大小写变体也不许占）/
+     * theme.css 必须真的包含 body.theme-<id>。 */
+
+    private static final Pattern THEME_ID_RE = Pattern.compile("^[a-zA-Z][a-zA-Z0-9-]{1,23}$");
+    private static final String[] THEME_BUILTIN_IDS = { "glass", "md3", "fluent", "miuix", "harmony" };
+    private static final long THEME_MAX_BYTES = 24L * 1024 * 1024;
+    private static final int THEME_MAX_ENTRIES = 400;
+
+    /** 安卓随包附带的离线包在 APK assets 里（assemble-web 从本体 themes/ 复制）。 */
+    private static final String ASSET_THEMES_DIR = "public/themes";
+
+    private File themesRoot() {
+        File base = getContext().getExternalFilesDir(null);
+        if (base == null) base = getContext().getFilesDir();
+        return new File(base, "themes");
+    }
+
+    private String themesRootPath() {
+        try { return themesRoot().getCanonicalPath(); } catch (Throwable t) { return themesRoot().getAbsolutePath(); }
+    }
+
+    private static boolean isBuiltinThemeId(String id) {
+        for (String b : THEME_BUILTIN_IDS) {
+            if (b.equalsIgnoreCase(id)) return true;
+        }
+        return false;
+    }
+
+    /** 预览图 → data URL（超过 200KB 的先缩到 360px 宽 JPEG，省桥） */
+    private String previewToDataUrl(File dir, String name) {
+        try {
+            if (name == null || name.isEmpty()) return null;
+            File f = new File(dir, name);
+            if (!f.exists() || !f.isFile()) return null;
+            byte[] raw = readAll(new FileInputStream(f));
+            if (raw.length > 200 * 1024) {
+                android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.length, o);
+                int sample = 1;
+                while (o.outWidth / sample > 360) sample *= 2;
+                o = new android.graphics.BitmapFactory.Options();
+                o.inSampleSize = sample;
+                android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.length, o);
+                if (bmp == null) return null;
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, bos);
+                bmp.recycle();
+                return "data:image/jpeg;base64," + Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP);
+            }
+            return "data:image/png;base64," + Base64.encodeToString(raw, Base64.NO_WRAP);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 包内 theme.css 的 url("assets/x") → data URL（WebView 按 https://localhost 起源，
+     *  file:/// 相对路径与绝对路径都会被拦，直接内嵌最稳）。 */
+    private String cssWithEmbeddedAssets(File dir, String css) {
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("url\\(\\s*(['\"]?)assets/([^'\")]+)\\1\\s*\\)").matcher(css);
+            StringBuffer sb = new StringBuffer();
+            while (m.find()) {
+                String rep = "none";
+                try {
+                    String rel = m.group(2);
+                    if (rel.indexOf("..") < 0 && !rel.startsWith("/")) {
+                        File f = new File(dir, "assets" + File.separator + rel.replace('/', File.separatorChar));
+                        if (f.exists() && f.isFile()) {
+                            byte[] b = readAll(new FileInputStream(f));
+                            String mime = rel.toLowerCase().endsWith(".jpg") || rel.toLowerCase().endsWith(".jpeg")
+                                    ? "image/jpeg" : "image/png";
+                            rep = "url(\"data:" + mime + ";base64,"
+                                    + Base64.encodeToString(b, Base64.NO_WRAP) + "\")";
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+                m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(rep));
+            }
+            m.appendTail(sb);
+            return sb.toString();
+        } catch (Throwable t) {
+            return css;
+        }
+    }
+
+    /** 扫安装目录 → 渲染层 themeInventory 同形的清单（顺序由 JS 层按用户排序整理） */
+    private JSObject themeInventoryData() {
+        JSObject data = new JSObject();
+        com.getcapacitor.JSArray cards = new com.getcapacitor.JSArray();
+        com.getcapacitor.JSArray broken = new com.getcapacitor.JSArray();
+        File root = themesRoot();
+        File[] dirs = root.listFiles();
+        if (dirs != null) {
+            List<File> list = new ArrayList<File>(Arrays.asList(dirs));
+            Collections.sort(list, new Comparator<File>() {
+                @Override public int compare(File a, File b) { return a.getName().compareToIgnoreCase(b.getName()); }
+            });
+            for (File dir : list) {
+                if (!dir.isDirectory()) continue;
+                try {
+                    File mf = new File(dir, "manifest.json");
+                    File css = new File(dir, "theme.css");
+                    if (!mf.isFile() || !css.isFile()) {
+                        JSObject o = new JSObject();
+                        o.put("id", dir.getName());
+                        o.put("broken", "缺少 manifest.json 或 theme.css");
+                        broken.put(o);
+                        continue;
+                    }
+                    JSONObject j = new JSONObject(readAllText(new FileInputStream(mf)));
+                    String id = j.optString("id", dir.getName()).trim();
+                    if (!THEME_ID_RE.matcher(id).matches() || isBuiltinThemeId(id)) {
+                        JSObject o = new JSObject();
+                        o.put("id", dir.getName());
+                        o.put("broken", "主题 id 不合法");
+                        broken.put(o);
+                        continue;
+                    }
+                    JSObject card = new JSObject();
+                    card.put("id", id);
+                    card.put("name", j.optString("name", id));
+                    card.put("version", j.optString("version", "1.0.0"));
+                    card.put("author", j.optString("author", "未署名"));
+                    card.put("desc", j.optString("description", j.optString("desc", "")));
+                    String acc = j.optString("accent", "");
+                    card.put("accent", acc.matches("^#[0-9a-fA-F]{6}$") ? acc : "");
+                    card.put("fixedPalette", !"false".equals(j.optString("fixedPalette", "true")));
+                    card.put("builtin", false);
+                    card.put("installed", true);
+                    card.put("removable", true);
+                    String previewUrl = previewToDataUrl(dir, j.optString("preview", ""));
+                    if (previewUrl != null) card.put("previewUrl", previewUrl);
+                    cards.put(card);
+                } catch (Throwable t) {
+                    try {
+                        JSObject o = new JSObject();
+                        o.put("id", dir.getName());
+                        o.put("broken", String.valueOf(t.getMessage()));
+                        broken.put(o);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+        }
+        data.put("spec", 1);
+        data.put("themes", cards);
+        data.put("broken", broken);
+        data.put("bundled", bundledThemeList());
+        data.put("hasBundled", true);
+        data.put("themesDir", themesRootPath());
+        JSObject out = new JSObject();
+        out.put("success", true);
+        out.put("data", data);
+        return out;
+    }
+
+    /** APK assets 里随包附带的离线主题包清单（装进来后从 themes 清单里走） */
+    private com.getcapacitor.JSArray bundledThemeList() {
+        com.getcapacitor.JSArray arr = new com.getcapacitor.JSArray();
+        try {
+            String[] files = getContext().getAssets().list(ASSET_THEMES_DIR);
+            if (files == null) return arr;
+            Arrays.sort(files);
+            for (String f : files) {
+                if (!f.toLowerCase().endsWith(".fcpt")) continue;
+                JSObject item = new JSObject();
+                item.put("file", f);
+                item.put("name", f.substring(0, f.length() - 5));
+                item.put("id", "");
+                item.put("desc", "");
+                item.put("accent", "");
+                item.put("version", "");
+                item.put("author", "");
+                try {
+                    InputStream is = getContext().getAssets().open(ASSET_THEMES_DIR + "/" + f);
+                    JSONObject j = zipFindManifest(is);
+                    is.close();
+                    if (j != null) {
+                        item.put("id", j.optString("id", ""));
+                        item.put("name", j.optString("name", item.getString("name")));
+                        item.put("desc", j.optString("description", j.optString("desc", "")));
+                        String acc = j.optString("accent", "");
+                        item.put("accent", acc.matches("^#[0-9a-fA-F]{6}$") ? acc : "");
+                        item.put("version", j.optString("version", ""));
+                        item.put("author", j.optString("author", ""));
+                    }
+                } catch (Throwable ignored) {
+                    item.put("broken", "包损坏");
+                }
+                arr.put(item);
+            }
+        } catch (Throwable ignored) {
+        }
+        return arr;
+    }
+
+    /** 顺序扫 zip 条目直到抓到 manifest.json（AssetManager 的流只能顺序读） */
+    private JSONObject zipFindManifest(InputStream is) throws Exception {
+        ZipInputStream zis = new ZipInputStream(is);
+        ZipEntry e;
+        while ((e = zis.getNextEntry()) != null) {
+            String name = e.getName().replace('\\', '/');
+            if (e.isDirectory()) continue;
+            if (name.equals("manifest.json")) {
+                return new JSONObject(readAllText(zis));
+            }
+            zis.closeEntry();
+        }
+        return null;
+    }
+
+    @PluginMethod
+    public void themesList(PluginCall call) {
+        try {
+            call.resolve(themeInventoryData());
+        } catch (Throwable t) {
+            JSObject o = new JSObject();
+            o.put("success", false);
+            o.put("error", String.valueOf(t.getMessage()));
+            call.resolve(o);
+        }
+    }
+
+    /** 已安装主题包的 CSS（assets/ 引用改写成 data URL） */
+    @PluginMethod
+    public void themesCss(PluginCall call) {
+        JSObject out = new JSObject();
+        JSObject css = new JSObject();
+        try {
+            File root = themesRoot();
+            File[] dirs = root.listFiles();
+            if (dirs != null) {
+                for (File dir : dirs) {
+                    if (!dir.isDirectory()) continue;
+                    try {
+                        File mf = new File(dir, "manifest.json");
+                        File cssF = new File(dir, "theme.css");
+                        if (!mf.isFile() || !cssF.isFile()) continue;
+                        JSONObject j = new JSONObject(readAllText(new FileInputStream(mf)));
+                        String id = j.optString("id", dir.getName()).trim();
+                        if (!THEME_ID_RE.matcher(id).matches() || isBuiltinThemeId(id)) continue;
+                        css.put(id, cssWithEmbeddedAssets(dir, readAllText(new FileInputStream(cssF))));
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+            out.put("success", true);
+            out.put("css", css);
+        } catch (Throwable t) {
+            out.put("success", false);
+            out.put("error", String.valueOf(t.getMessage()));
+            out.put("css", css);
+        }
+        call.resolve(out);
+    }
+
+    /** zip 字节 → 校验 → 落盘 themes/<id>/。返回 {installed, data} 或抛 fail */
+    private JSObject themeInstallBytes(byte[] buf) throws Exception {
+        if (buf.length > THEME_MAX_BYTES) throw new Exception("主题包太大（上限 24MB）");
+        java.util.LinkedHashMap<String, byte[]> entries = new java.util.LinkedHashMap<String, byte[]>();
+        ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(buf));
+        ZipEntry e;
+        while ((e = zis.getNextEntry()) != null) {
+            String name = e.getName().replace('\\', '/');
+            if (e.isDirectory()) { zis.closeEntry(); continue; }
+            if (entries.size() >= THEME_MAX_ENTRIES) throw new Exception("主题包内文件过多（上限 400）");
+            if (name.startsWith("/") || name.indexOf(':') == 1 || hasParentRef(name)) {
+                throw new Exception("主题包里有非法路径：" + e.getName());
+            }
+            entries.put(name, readAll(zis));
+            zis.closeEntry();
+        }
+        zis.close();
+        byte[] mfRaw = entries.get("manifest.json");
+        byte[] cssRaw = entries.get("theme.css");
+        if (mfRaw == null || cssRaw == null) throw new Exception("包里没有 manifest.json / theme.css，不是主题包");
+        JSONObject mf = new JSONObject(readAllText(new ByteArrayInputStream(mfRaw)));
+        String id = mf.optString("id", "").trim();
+        if (!THEME_ID_RE.matcher(id).matches()) throw new Exception("主题 id 不合法：" + id);
+        if (isBuiltinThemeId(id)) throw new Exception("id「" + id + "」是本体内置主题，主题包不能占用");
+        String cssText = readAllText(new ByteArrayInputStream(cssRaw));
+        if (!Pattern.compile("body\\.theme-" + Pattern.quote(id) + "\\b").matcher(cssText).find()) {
+            throw new Exception("theme.css 里没有 body.theme-" + id + " 规则，选择器必须带主题 id");
+        }
+        File dest = new File(themesRoot(), id);
+        String rootAbs = themesRoot().getCanonicalPath();
+        ArrayList<String[]> planned = new ArrayList<String[]>();   // [相对路径, ] → bytes 单独存
+        ArrayList<byte[]> plannedBytes = new ArrayList<byte[]>();
+        for (String name : entries.keySet()) {
+            File target = new File(dest, name);
+            if (!target.getCanonicalPath().startsWith(new File(rootAbs, id).getCanonicalPath() + File.separator)) {
+                throw new Exception("主题包路径越界：" + name);
+            }
+            planned.add(new String[] { name });
+            plannedBytes.add(entries.get(name));
+        }
+        // 先清旧装新（覆盖安装）；写一半失败会把目录整个删掉，不留幽灵包
+        if (dest.exists()) deleteTree(dest);
+        for (int i = 0; i < planned.size(); i++) {
+            File target = new File(dest, planned.get(i)[0]);
+            target.getParentFile().mkdirs();
+            FileOutputStream fos = new FileOutputStream(target);
+            fos.write(plannedBytes.get(i));
+            fos.close();
+        }
+        JSObject installed = new JSObject();
+        installed.put("id", id);
+        installed.put("name", mf.optString("name", id));
+        installed.put("version", mf.optString("version", "1.0.0"));
+        JSObject out = new JSObject();
+        out.put("success", true);
+        out.put("installed", installed);
+        JSObject inv = themeInventoryData();
+        out.put("data", inv.get("data"));
+        return out;
+    }
+
+    private static boolean hasParentRef(String name) {
+        String[] parts = name.split("/");
+        for (String p : parts) {
+            if ("..".equals(p)) return true;
+        }
+        return false;
+    }
+
+    private static void deleteTree(File f) {
+        if (f == null || !f.exists()) return;
+        File[] kids = f.listFiles();
+        if (kids != null) {
+            for (File k : kids) deleteTree(k);
+        }
+        f.delete();
+    }
+
+    private static byte[] readAll(InputStream is) throws Exception {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buf = new byte[16384];
+        int n;
+        while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+        is.close();
+        return bos.toByteArray();
+    }
+
+    private static String readAllText(InputStream is) throws Exception {
+        return new String(readAll(is), "UTF-8");
+    }
+
+    /** 渲染层 themesInstall()：SAF 选包（packPicked 事件）→ base64 进来装 */
+    @PluginMethod
+    public void themeInstall(final PluginCall call) {
+        JSObject out = new JSObject();
+        out.put("success", false);
+        try {
+            String b64 = call.getString("base64", "");
+            byte[] buf = Base64.decode(b64 == null ? "" : b64, Base64.DEFAULT);
+            if (buf.length == 0) {
+                out.put("error", "bad-data");
+                call.resolve(out);
+                return;
+            }
+            call.resolve(themeInstallBytes(buf));
+        } catch (Throwable t) {
+            out.put("error", String.valueOf(t.getMessage()));
+            call.resolve(out);
+        }
+    }
+
+    @PluginMethod
+    public void themesRemove(PluginCall call) {
+        JSObject out = new JSObject();
+        out.put("success", false);
+        try {
+            String id = call.getString("id", "");
+            if (!THEME_ID_RE.matcher(id).matches() || isBuiltinThemeId(id)) {
+                out.put("error", "主题 id 不合法");
+            } else {
+                File dir = new File(themesRoot(), id);
+                String rootAbs = themesRoot().getCanonicalPath();
+                if (!dir.getCanonicalPath().startsWith(rootAbs + File.separator)) {
+                    out.put("error", "路径越界");
+                } else if (!dir.exists()) {
+                    out.put("error", "主题没安装：" + id);
+                } else {
+                    deleteTree(dir);
+                    out.put("success", true);
+                }
+            }
+        } catch (Throwable t) {
+            out.put("error", String.valueOf(t.getMessage()));
+        }
+        call.resolve(out);
+    }
+
+    /** 装随包离线包：file 只认 assets public/themes/ 下的纯文件名（.fcpt） */
+    @PluginMethod
+    public void themeInstallBundled(final PluginCall call) {
+        JSObject out = new JSObject();
+        out.put("success", false);
+        try {
+            String file = call.getString("file", "");
+            String base = new File(file == null ? "" : file).getName();
+            if (!base.toLowerCase().endsWith(".fcpt")) {
+                out.put("error", "离线包路径不合法");
+                call.resolve(out);
+                return;
+            }
+            InputStream is = getContext().getAssets().open(ASSET_THEMES_DIR + "/" + base);
+            byte[] buf = readAll(is);
+            call.resolve(themeInstallBytes(buf));
+        } catch (Throwable t) {
+            out.put("error", "离线包不存在或损坏：" + String.valueOf(t.getMessage()));
+            call.resolve(out);
+        }
     }
 
     /* ------------------------------------------------------------ 杂项 */

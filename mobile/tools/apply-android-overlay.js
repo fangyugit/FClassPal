@@ -46,7 +46,7 @@ function main() {
   log('应用 overlay：' + n + ' 个文件');
 
   // ② 版本号从 package.json 同步（versionCode = major*10000 + minor*100 + patch）
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, '..', 'package.json'), 'utf8'));
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(pkg.version || '');
   if (!m) die('package.json 的 version 不是 x.y.z 形式：' + pkg.version);
   const code = Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]);

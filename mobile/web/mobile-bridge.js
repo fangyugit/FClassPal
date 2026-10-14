@@ -27,7 +27,7 @@
 
   var MOBILE_KEY = 'fclasspal-mobile-config';
   var FALLBACK_ACCENT = '#6750A4';   // 与桌面版 DEFAULT_CONFIG.accentColor 一致
-  var APP_VERSION = '2.5.0';
+  var APP_VERSION = '2.5.2';
 
   /* ---------------------------------------------------------------- 原生插件 */
   function plugin() {
@@ -844,6 +844,96 @@
         return { success: true, theme: cfg.theme };
       });
     },
+
+    /* ================================================================ 主题包 .fcpt 管理（v2.5.2）
+     * 桌面版引擎在 themes.js（主进程）；安卓没有主进程，落盘/校验/zip 解包在
+     * 原生 themeInstall 里做，包落在应用专属目录
+     * Android/data/com.fclasspal.widget/files/themes/（免运行时权限，卸载即清）。
+     * 顺序存在本机配置（themeOrder），themesList 按它排 —— 与桌面 config.themeOrder 等价。 */
+    themesList: function () {
+      return call('themesList', {}).then(function (r) {
+        if (!r || !r.success || !r.data) return { success: false };
+        var order = (cfg && cfg.themeOrder) || [];
+        var known = {};
+        (r.data.themes || []).forEach(function (t) { known[t.id] = t; });
+        var sorted = [];
+        order.forEach(function (id) {
+          if (known[id]) { sorted.push(known[id]); delete known[id]; }
+        });
+        Object.keys(known).forEach(function (id) { sorted.push(known[id]); });
+        r.data.themes = sorted;
+        // 随包离线库存：已装上过的标记 installed，UI 就不再重复展示
+        var have = {};
+        sorted.forEach(function (t) { have[String(t.id).toLowerCase()] = 1; });
+        (r.data.bundled || []).forEach(function (b) {
+          b.installed = !!have[String(b.id || '').toLowerCase()];
+        });
+        return r;
+      }, function () { return { success: false }; });
+    },
+    themesCss: function () {
+      return call('themesCss', {}).then(function (r) {
+        return (r && r.success) ? r : { success: false, css: {} };
+      }, function () { return { success: false, css: {} }; });
+    },
+    themesInstall: function () {
+      // SAF 选包 → packPicked 事件带 base64 → 原生解 zip、校验、落盘
+      return new Promise(function (resolve) {
+        var p = plugin();
+        if (!p || typeof p.addListener !== 'function' || typeof p.pickPack !== 'function' ||
+            typeof p.themeInstall !== 'function') {
+          resolve({ success: false, canceled: true });
+          return;
+        }
+        var done = false;
+        var off = function () { };
+        var timer = setTimeout(function () {
+          if (!done) { done = true; try { off(); } catch (e) { } resolve({ success: false, error: '选择超时' }); }
+        }, 180000);
+        Promise.resolve(p.addListener('packPicked', function (r) {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          try { off(); } catch (e) { }
+          if (!r || r.canceled) { resolve({ success: false, canceled: true }); return; }
+          Promise.resolve(p.themeInstall({ base64: r.base64 })).then(resolve, function (e) {
+            resolve({ success: false, error: String((e && e.message) || e) });
+          });
+        })).then(function (h) {
+          if (h && typeof h.remove === 'function') off = function () { try { h.remove(); } catch (e) { } };
+          Promise.resolve(soft('pickPack', {}, null)).then(function (r2) {
+            if (!r2 || !r2.started) {
+              if (!done) { done = true; clearTimeout(timer); try { off(); } catch (e) { } resolve({ success: false, canceled: true }); }
+            }
+          });
+        });
+      });
+    },
+    themesInstallBundled: function (file) {
+      return call('themeInstallBundled', { file: file })
+        .catch(function () { return { success: false, error: '原生不支持' }; });
+    },
+    themesRemove: function (id) {
+      return call('themesRemove', { id: id }).then(function (r) {
+        if (r && r.success) {
+          cfg = cfg || loadCfg();
+          if (cfg.theme === id) { cfg.theme = 'glass'; persist(cfg); }   // 删的是在用的 → 退回玻璃
+          r.theme = cfg.theme;
+        }
+        return r;
+      }, function () { return { success: false, error: '原生不支持' }; });
+    },
+    themesReorder: function (ids) {
+      cfg = cfg || loadCfg();
+      cfg.themeOrder = ids;
+      persist(cfg);
+      return Promise.resolve({ success: true, order: ids });
+    },
+    themesOpenFolder: function () {
+      return soft('toast', { text: '主题包目录：Android/data/com.fclasspal.widget/files/themes' }, null)
+        .then(function () { return { success: true }; });
+    },
+
     /* ---- 悬浮窗权限（v2.5.0） ---- */
     overlayGranted: function () {
       return soft('overlayGranted', {}, { granted: false }).then(function (r) { return !!(r && r.granted); });

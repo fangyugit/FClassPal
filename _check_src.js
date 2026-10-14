@@ -57,7 +57,7 @@ const changelog = (() => { try { return fs.readFileSync('CHANGELOG.md', 'utf8');
  * ==========================================================================*/
 const PACK_ROOT = 'D:/workb/FClassPal-theme/themes';
 const PACK_IDS = ['kitty', 'dog', 'kuromi', 'melody', 'sanrio', 'pochacco', 'purin',
-  'milk', 'tianyi', 'ling', 'teto', 'whale', 'miku'];
+  'NaiWa', 'tianyi', 'ling', 'teto', 'whale', 'miku'];
 const packCss = {}, packNC = {}, packManifest = {};
 PACK_IDS.forEach((t) => {
   try { packCss[t] = fs.readFileSync(path.join(PACK_ROOT, t, 'theme.css'), 'utf8'); } catch (e) { packCss[t] = ''; }
@@ -312,18 +312,20 @@ const checks = [
     ((cssNC + packsAll()).match(/backwards/g) || []).length >= 19 &&
     /animation-delay:\s*calc\(var\(--i, 0\) \* var\(--t-stagger\)\)/.test(cssNC) &&
     !/animation:\s*t-(?:in|panel|toast)-[\w-]+[^;]*\b(?:both|forwards)\b/.test(cssNC + packsAll())],
-  ['css: 入场动画名各套互不相同（内置在本体、角色主题在各自包里）',
+  ['css: 入场动画名各套互不相同（内置在本体、角色主题在各自包里；keyframes 前缀统一小写）',
     ['md3', 'fluent', 'miuix', 'harmony'].every((t) =>
       new RegExp('@keyframes t-in-' + t + '\\b').test(cssNC)) &&
-    PACK_IDS.every((t) => new RegExp('@keyframes t-in-' + t + '\\b').test(packNC[t]))],
+    PACK_IDS.every((t) => new RegExp('@keyframes t-in-' + t.toLowerCase() + '\\b').test(packNC[t]))],
   ['css: reduced-motion 让路', /@media \(prefers-reduced-motion: reduce\)/.test(css)],
   ['css: 预设色板样式', /\.swatch\s*\{/.test(css) && /\.swatch\[aria-pressed="true"\]/.test(css)],
   ['多主题: 已彻底移除 theme-flat 共底（十套风格各自自足）',
     !/theme-flat/.test(cssNC) && !/theme-flat/.test(app) &&
     !/md3-enter/.test(cssNC) && !/md3-enter/.test(app)],
-  ['多主题 v2.5.0: 主题选择为下拉栏 + 主题管理弹窗（都由注册表驱动；分段按钮已移除）',
-    html.includes('<select id="themeSelect"') && !/data-theme="/.test(html) &&
-    /function renderThemeOptions\(\)/.test(app) && /sel\.innerHTML = THEMES\.map/.test(app) &&
+  ['多主题 v2.5.0: 主题选择为自绘下拉（v2.5.2 弃原生 select）+ 主题管理弹窗（都由注册表驱动）',
+    html.includes('id="themeSelectBtn"') && html.includes('id="themeSelectPop"') &&
+    !/<select id="themeSelect"/.test(html) && !/data-theme="/.test(html) &&
+    /function renderThemeOptions\(\)/.test(app) && /pop\.innerHTML = THEMES\.map/.test(app) &&
+    /function syncThemeSelect\(\)/.test(app) &&
     html.includes('id="themeModal"') && /function openThemeModal\(\)/.test(app) &&
     html.includes('id="btnThemeManage"')],
   ['多主题 v2.5.0: 内置五套 + 运行时可刷新注册表（装/删/排序后不用改代码）',
@@ -885,9 +887,9 @@ const checks = [
     app.includes("localeCompare") && app.includes('zh-Hans-CN') &&
     html.includes('data-act="sortAsc"') && html.includes('data-act="sortDesc"')],
   ['v2.4.6: 编辑模式菜单项只在编辑态露出', css.includes('body.edit-mode .ctx-menu .ctx-sort')],
-  ['v2.4.6: 设置面板描述文字已清空（只留 JS 回填的 fixedPaletteHint；v2.5.0 主题管理弹窗的提示是第二个例外）',
-    (html.match(/class="row-hint/g) || []).length === 2 &&
-    html.includes('id="fixedPaletteHint"') && html.includes('id="themeManageHint"')],
+  ['v2.4.6: 设置面板描述文字已清空（只留 JS 回填的 fixedPaletteHint；v2.5.2 主题管理提示句按需求删除）',
+    (html.match(/class="row-hint/g) || []).length === 1 &&
+    html.includes('id="fixedPaletteHint"') && !html.includes('themeManageHint')],
   ['v2.4.6: 占用程序弹窗（三键：关闭占用并重试 / 直接重试 / 取消）',
     app.includes('showOccupiedDialog') && main.includes("'close-drive-occupants'") &&
     pre.includes('closeDriveOccupants') && css.includes('occupied-menu')],

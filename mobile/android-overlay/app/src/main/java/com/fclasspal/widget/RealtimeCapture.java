@@ -117,12 +117,19 @@ public class RealtimeCapture {
         if (!computeSrcRect()) return "fullscreen";   // 找不到不与自己相交的邻域 ≈ 全屏
         if (interval > 0) intervalMs = interval;
 
-        // ① 先起前台服务（Android 14+ 的硬性前置条件），最多等 4s
+        // ① 先起前台服务（Android 14+ 的硬性前置条件），最多等 4s。
+        //    悬浮窗模式（窗口类型被改成 TYPE_APPLICATION_OVERLAY）下部分 ROM
+        //    把应用当成"在后台"，startForegroundService 会直接抛异常 ——
+        //    必须接住并报告，否则调用线程带异常死掉、UI 永远卡在授权等待。
         Intent svc = new Intent(app, ScreenCaptureService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            app.startForegroundService(svc);
-        } else {
-            app.startService(svc);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                app.startForegroundService(svc);
+            } else {
+                app.startService(svc);
+            }
+        } catch (Throwable t) {
+            return "fgs-denied";
         }
         long deadline = SystemClock.uptimeMillis() + 4000;
         while (!ScreenCaptureService.ready && SystemClock.uptimeMillis() < deadline) {
@@ -133,7 +140,7 @@ public class RealtimeCapture {
             }
         }
         if (!ScreenCaptureService.ready) {
-            app.stopService(new Intent(app, ScreenCaptureService.class));
+            try { app.stopService(new Intent(app, ScreenCaptureService.class)); } catch (Throwable ignored) { }
             return "fgs-timeout";
         }
 
@@ -143,11 +150,11 @@ public class RealtimeCapture {
         try {
             projection = mpm.getMediaProjection(resultCode, consentData);
         } catch (Throwable t) {
-            app.stopService(new Intent(app, ScreenCaptureService.class));
+            try { app.stopService(new Intent(app, ScreenCaptureService.class)); } catch (Throwable ignored) { }
             return "denied";
         }
         if (projection == null) {
-            app.stopService(new Intent(app, ScreenCaptureService.class));
+            try { app.stopService(new Intent(app, ScreenCaptureService.class)); } catch (Throwable ignored) { }
             return "denied";
         }
 

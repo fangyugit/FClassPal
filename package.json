@@ -1,6 +1,6 @@
 {
   "name": "FClassPal",
-  "version": "2.5.0",
+  "version": "2.5.2",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -21,7 +21,14 @@
       "preload.js",
       "pack.js",
       "themes.js",
-      "themes/**/*",
+      "themes/kitty.fcpt",
+      "themes/dog.fcpt",
+      "themes/kuromi.fcpt",
+      "themes/melody.fcpt",
+      "themes/sanrio.fcpt",
+      "themes/pochacco.fcpt",
+      "themes/purin.fcpt",
+      "themes/NaiWa.fcpt",
       "renderer/**/*",
       "!renderer/theme/**/*",
       "vendor/**/*",
@@ -38,13 +45,6 @@
     "linux": {
       "target": [
         {
-          "target": "deb",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
           "target": "tar.gz",
           "arch": [
             "x64",
@@ -55,7 +55,7 @@
       "category": "Utility",
       "icon": "build/icon.png",
       "maintainer": "YU",
-      "synopsis": "轻量桌面快捷面板（液态玻璃 / 十套主题）",
+      "synopsis": "轻量桌面快捷面板（液态玻璃 / 主题包生态）",
       "description": "FClassPal：无边框桌面小部件，右键 / 长按呼出菜单，支持触摸屏、透明度与尺寸调节、自定义快捷键、U 盘弹出。",
       "artifactName": "FClassPal-${version}-linux-${arch}.${ext}"
     },

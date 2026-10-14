@@ -1,4 +1,4 @@
-/* ---------- 主题包引擎（v2.5.0）----------
+/* ---------- 主题包引擎（v2.5.0，v2.5.2 放宽 id 规则）----------
  * 本体只带五套内置主题（glass / md3 / fluent / miuix / harmony），
  * 其余角色主题一律以 .fcpt 主题包形式分发，用户导入后落在
  * `~/.desktop-widget/themes/<id>/`，启动时由主进程读出来注入渲染层。
@@ -10,7 +10,8 @@
  *
  * 三条安全底线（导入的是别人给的 zip，不能盲信）：
  *   ① 目录项名不许出现绝对路径 / `..`（zip slip）；
- *   ② id 必须 `[a-z][a-z0-9-]{1,23}` 且不能占用内置 id；
+ *   ② id 必须 `[a-zA-Z][a-zA-Z0-9-]{1,23}` 且不能占用内置 id
+ *     （大小写敏感——v2.5.2 起允许大写，例如 NaiWa）；
  *   ③ theme.css 里必须真的出现 `body.theme-<id>`，否则视为无效包。
  */
 'use strict';
@@ -20,7 +21,7 @@ const { pathToFileURL } = require('url');
 const { readZip } = require('./pack');
 
 const SPEC_VERSION = 1;
-const ID_RE = /^[a-z][a-z0-9-]{1,23}$/;
+const ID_RE = /^[a-zA-Z][a-zA-Z0-9-]{1,23}$/;
 const MAX_BYTES = 24 * 1024 * 1024;   // 单个包上限 24MB
 const MAX_ENTRIES = 400;
 
@@ -50,9 +51,12 @@ function themesDir(configDir) {
 }
 
 function normalizeManifest(raw, dir) {
-  const id = String(raw.id || '').trim().toLowerCase();
-  if (!ID_RE.test(id)) throw fail('主题 id 不合法（只允许小写字母、数字、连字符，2-24 位）：' + (raw.id || '空'));
-  if (BUILTIN_IDS.indexOf(id) >= 0) throw fail('id「' + id + '」是本体内置主题，主题包不能占用');
+  const id = String(raw.id || '').trim();
+  if (!ID_RE.test(id)) throw fail('主题 id 不合法（只允许字母、数字、连字符，2-24 位，字母开头）：' + (raw.id || '空'));
+  /* 内置 id 大小写不敏感地拦（NaiWa/naiwa 都不许再当包 id 用，防 css 类撞车） */
+  if (BUILTIN_IDS.some((b) => b.toLowerCase() === id.toLowerCase())) {
+    throw fail('id「' + id + '」是本体内置主题，主题包不能占用');
+  }
   const name = String(raw.name || id).trim().slice(0, 40);
   return {
     id,
@@ -64,6 +68,7 @@ function normalizeManifest(raw, dir) {
     fixedPalette: raw.fixedPalette !== false,
     spec: parseInt(raw.spec, 10) || SPEC_VERSION,
     minApp: String(raw.minApp || '').trim().slice(0, 20),
+    previewName: String(raw.preview || '').trim().slice(0, 60),
     dir,
   };
 }
@@ -116,15 +121,18 @@ function listBundled(bundledDir, installedIds) {
   for (const f of fs.readdirSync(bundledDir)) {
     if (!f.toLowerCase().endsWith('.fcpt')) continue;
     const full = path.join(bundledDir, f);
-    const item = { file: full, name: f.replace(/\.fcpt$/i, ''), installed: false, id: '', desc: '' };
+    const item = { file: full, name: f.replace(/\.fcpt$/i, ''), installed: false, id: '', desc: '', accent: '', version: '', author: '' };
     try {
       const buf = fs.readFileSync(full);
       const byName = entriesToMap(readZip(buf));
       const raw = JSON.parse(byName['manifest.json'].toString('utf8'));
-      item.id = String(raw.id || '').toLowerCase();
+      item.id = String(raw.id || '').trim();
       item.name = String(raw.name || item.name);
       item.desc = String(raw.description || raw.desc || '').slice(0, 80);
-      item.installed = installedIds.indexOf(item.id) >= 0;
+      item.accent = /^#[0-9a-fA-F]{6}$/.test(String(raw.accent || '')) ? String(raw.accent) : '';
+      item.version = String(raw.version || '');
+      item.author = String(raw.author || '');
+      item.installed = installedIds.some((x) => x.toLowerCase() === item.id.toLowerCase());
     } catch (e) {
       item.broken = (e && e.message) || '包损坏';
     }
@@ -160,7 +168,7 @@ function installFromBuffer(configDir, buf) {
   } catch (e) {
     throw fail('manifest.json 不是合法 JSON');
   }
-  const dest = path.join(themesDir(configDir), String(mfRaw.id || '').toLowerCase());
+  const dest = path.join(themesDir(configDir), String(mfRaw.id || '').trim());
   const t = normalizeManifest(mfRaw, dest);
   if (!new RegExp('body\\.theme-' + t.id + '\\b').test(rawCss.toString('utf8'))) {
     throw fail('theme.css 里没有 body.theme-' + t.id + ' 规则，选择器必须带主题 id');
