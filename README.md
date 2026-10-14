@@ -104,15 +104,19 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 
 | 平台 | 产物 | 处理器架构 |
 |---|---|---|
-| Windows | [FClassPal-2.5.0.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.5.0/FClassPal-2.5.0.exe)（免安装便携版，约 62MB） | x64 |
-| Linux | `FClassPal-2.4.5-linux-amd64.deb` / `FClassPal-2.4.5-linux-x64.tar.gz`（沿用上一版） | x64 |
-| Linux | `FClassPal-2.4.5-linux-arm64.deb` / `FClassPal-2.4.5-linux-arm64.tar.gz`（沿用上一版） | arm64 |
-| Linux | [FClassPal-2.5.0-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.5.0/FClassPal-2.5.0-linux-loong64.tar.gz)（龙芯新世界，解压即可运行） | LoongArch64 |
-| macOS | `FClassPal-2.5.0-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
-| macOS | `FClassPal-2.5.0-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
-| Android | `FClassPal-2.5.0-android.apk`（正式签名，可直接覆盖安装升级） | arm64 / armv7 / x86_64 |
+| Windows | [FClassPal-2.5.2.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.5.2/FClassPal-2.5.2.exe)（免安装便携版，约 63MB） | x64 |
+| Linux | `FClassPal-2.5.2-linux-x64.tar.gz`（解压即可运行） | x64 |
+| Linux | `FClassPal-2.5.2-linux-arm64.tar.gz` | arm64 |
+| Linux | [FClassPal-2.5.2-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.5.2/FClassPal-2.5.2-linux-loong64.tar.gz)（龙芯新世界，解压即可运行） | LoongArch64 |
+| macOS | `FClassPal-2.5.2-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
+| macOS | `FClassPal-2.5.2-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
+| Android | `FClassPal-2.5.2-android.apk`（正式签名，可直接覆盖安装升级） | arm64 / armv7 / x86_64 |
+| Android | `FClassPal-2.5.2-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
 
-- 产物名都带平台与架构，下载时一眼看清装的是哪一份；[全部版本](https://github.com/fangyugit/FclassPal/releases)
+以上都在 [v2.5.2 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.5.2)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
+
+- 龙芯包解压后执行 `FClassPal-linux-loong64/electron` 即可（这一份的可执行文件仍叫
+  `electron`，顶层目录名也沿用它，与其它平台不同）
 - 安卓版的用法与能力取舍见 [docs/ANDROID.md](docs/ANDROID.md)（界面与桌面版同源；v2.4.6 起
   支持全屏 / 悬浮窗两种窗口模式，悬浮窗下可用录屏权限做实时屏幕模糊；U 盘弹出为桌面专有）
 
@@ -129,8 +133,14 @@ npm start
 # 打包 Windows 便携版（产物：dist/FClassPal-<version>.exe）
 npm run build:portable
 
-# 打包 Linux（deb + tar.gz，x64 与 arm64；产物名带架构）
+# 打包 Linux（tar.gz，x64 与 arm64；产物名带架构）
+# 注：deb 需要 fpm、AppImage 需要 Linux 原生的 mksquashfs，在 Windows 上都出不来
 npm run build:linux
+
+# 打包龙芯（LoongArch64 / loong64）
+# electron-builder 的 schema 不认 loong64、官方 Electron 也没有这个架构，
+# 所以这一份是把 LoongArch 的 Electron 运行时 + 本应用的 app.asar 拼起来（见 make-loong64.js）
+npm run build:loong64
 
 # 打包 macOS（dmg + zip，x64 与 arm64，需要在 macOS 上跑）
 npm run build:mac
