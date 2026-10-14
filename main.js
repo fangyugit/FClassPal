@@ -647,22 +647,35 @@ function createWindow() {
   // v2.5.2：奶蛙主题 id 由 'milk' 更名为 'NaiWa'（包 1.1.0）。老配置里 theme /
   // themeOrder 还写着 'milk'，而随包附带的旧 milk.fcpt 已经不在包里 —— 不迁移的话
   // 升级后用户会停在"主题指向一个已经不存在的包"，界面直接退回玻璃底。
-  // 同时把老包目录清掉：它是 1.0.0（没有深色层），留着会和 NaiWa 同时出现在主题管理里，
-  // 用户很容易点回那套"暗色模式下仍是浅色"的旧包。
+  //
+  // 顺序很关键：**先把新包装上，再改指向，最后才删旧包**。
+  // 随包主题不是开机自动安装的（要用户点"一键装随包"），所以如果直接改 id，
+  // 用户手上还没有 NaiWa 这套包，等于把他从奶蛙踹回玻璃底——比不迁移更糟。
+  // 拿不到新包就维持原样（宁可留在旧包上，也不要让用户掉主题）。
   if (!config.themeMigratedToNaiWa) {
     config.themeMigratedToNaiWa = true;
-    if (config.theme === 'milk') config.theme = 'NaiWa';
+    const wasOnMilk = config.theme === 'milk';
+    let naiReady = fs.existsSync(path.join(CONFIG_DIR, 'themes', 'NaiWa'));
+    if (wasOnMilk && !naiReady) {
+      naiReady = installBundledPack('NaiWa');
+    }
+    if (wasOnMilk && naiReady) config.theme = 'NaiWa';
     if (Array.isArray(config.themeOrder) && config.themeOrder.indexOf('milk') >= 0) {
       const seen = new Set();
       config.themeOrder = config.themeOrder
         .map((id) => (id === 'milk' ? 'NaiWa' : id))
         .filter((id) => (seen.has(id) ? false : seen.add(id)));
     }
-    try {
-      const legacy = path.join(CONFIG_DIR, 'themes', 'milk');
-      if (fs.existsSync(legacy)) fs.rmSync(legacy, { recursive: true, force: true });
-    } catch (e) {
-      console.error('清理旧 milk 主题包失败（不影响启动）', e);
+    /* 旧包目录清掉：它是 1.0.0（没有深色层），留着会和 NaiWa 一起出现在主题管理里，
+     * 用户很容易点回那套"暗色模式下仍是浅色"的旧包。
+     * 只有在已经不再指向 milk 时才删——否则就是把用户唯一的在用的包删了。 */
+    if (config.theme !== 'milk') {
+      try {
+        const legacy = path.join(CONFIG_DIR, 'themes', 'milk');
+        if (fs.existsSync(legacy)) fs.rmSync(legacy, { recursive: true, force: true });
+      } catch (e) {
+        console.error('清理旧 milk 主题包失败（不影响启动）', e);
+      }
     }
     saveConfig(config);
   }
@@ -2071,6 +2084,22 @@ ipcMain.handle('themes-open-folder', async () => {
   } catch (e) { return { success: false, error: e.message }; }
 });
 
+/** 从随包离线包装上一套主题包（app 内 themes/<id>.fcpt）。装成功返回 true。
+ *  两个调用点：升级兜底 autoInstallPreviousTheme()，以及 v2.5.2 的
+ *  milk → NaiWa id 迁移（迁移必须先有包再改指向，否则用户会掉回玻璃底）。 */
+function installBundledPack(id) {
+  try {
+    const file = path.join(BUNDLED_THEMES_DIR, id + '.fcpt');
+    if (!fs.existsSync(file)) return false;
+    const t = themes.installFromBuffer(CONFIG_DIR, fs.readFileSync(file));
+    console.log('[themes] 已从随包离线包装上主题：' + t.id + '（' + t.name + '）');
+    return true;
+  } catch (e) {
+    console.error('[themes] 安装随包主题 ' + id + ' 失败：', e && e.message);
+    return false;
+  }
+}
+
 /** 升级兜底：配置里记的主题已经不在本体里了（v2.5.0 把角色主题拆包），
  *  就从随包离线包把它装回来。用户不会一觉醒来发现变成基线紫。
  *  找不到对应离线包（比如用户自己装的第三方包、又把目录删了）才退回玻璃。 */
@@ -2080,15 +2109,10 @@ function autoInstallPreviousTheme() {
     const id = String(cfg.theme || '');
     if (!id || themes.BUILTIN_IDS.indexOf(id) >= 0) return;
     if (fs.existsSync(path.join(themes.themesDir(CONFIG_DIR), id))) return;
-    const file = path.join(BUNDLED_THEMES_DIR, id + '.fcpt');
-    if (!fs.existsSync(file)) {
-      console.log('[themes] 找不到主题包 ' + id + '，退回基线玻璃');
-      cfg.theme = 'glass';
-      saveConfig(cfg);
-      return;
-    }
-    const t = themes.installFromBuffer(CONFIG_DIR, fs.readFileSync(file));
-    console.log('[themes] 已从随包离线包装上主题：' + t.id + '（' + t.name + '）');
+    if (installBundledPack(id)) return;
+    console.log('[themes] 找不到主题包 ' + id + '，退回基线玻璃');
+    cfg.theme = 'glass';
+    saveConfig(cfg);
   } catch (e) {
     console.error('[themes] 自动安装随包主题失败：', e && e.message);
   }

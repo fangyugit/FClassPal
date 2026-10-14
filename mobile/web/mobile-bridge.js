@@ -156,6 +156,8 @@
     iconRadius: 22,
     iconRingColor: '',
     iconMono: false,
+    // v2.5.2：奶蛙主题 id 'milk' → 'NaiWa' 的一次性迁移标记（桌面版 main.js 同名键）
+    themeMigratedToNaiWa: false,
     // 首启种子：一个空分组，快捷方式由用户自己加（和桌面版同一条产品原则）
     groups: [{ id: 'group-1', name: '我的应用', items: [] }]
   };
@@ -178,6 +180,27 @@
     });
     if (!Array.isArray(base.groups) || !base.groups.length) base.groups = cloneDef().groups;
     base.keepBottom = false;
+    /* v2.5.2：奶蛙主题 id 'milk' → 'NaiWa'。安卓配置在 WebView 的 localStorage 里，
+     * 同样会带着旧 id 升级上来——不迁移的话用户会停在"指向一个包里已经没有的主题"。
+     * 桌面版在 main.js 的 createWindow() 里做同一件事，两边保持一致的语义：
+     * theme 单值映射、themeOrder 映射去重、只跑一次。
+     * 安卓不做"清理旧包目录"：主题包装在 Android/data/<包名>/files/themes 下，
+     * 是用户自己导进去的，不该由升级过程代删；这里只保证指向正确。 */
+    if (!base.themeMigratedToNaiWa) {
+      base.themeMigratedToNaiWa = true;
+      if (base.theme === 'milk') base.theme = 'NaiWa';
+      if (Array.isArray(base.themeOrder)) {
+        var seenOrder = {};
+        base.themeOrder = base.themeOrder.map(function (id) {
+          return id === 'milk' ? 'NaiWa' : id;
+        }).filter(function (id) {
+          if (seenOrder[id]) return false;
+          seenOrder[id] = 1;
+          return true;
+        });
+      }
+      try { localStorage.setItem(MOBILE_KEY, JSON.stringify(base)); } catch (e) { /* 配额满就下次再说 */ }
+    }
     return base;
   }
 

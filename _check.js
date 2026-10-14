@@ -63,6 +63,10 @@ const probeIds = (file) => {
 };
 const smokeIds = probeIds('smoke-test.js');
 const paletteIds = probeIds(path.join('_rt', '_palettecheck.js'));
+/* 安卓壳的桥接层也不在 asar 里（build.files 不收 mobile/），同样从磁盘读 */
+const bridge = (() => {
+  try { return fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8'); } catch (e) { return ''; }
+})();
 /* ============================================================================
  * v2.5.0：应用本体与主题分离
  *   本体只留五套内置皮肤（glass / md3 / fluent / miuix / harmony），
@@ -765,19 +769,34 @@ const checks = [
     /iconRingColor: '',/.test(mainNC)],
   /* v2.5.2：奶蛙 id 'milk' → 'NaiWa'。老配置里 theme / themeOrder 还写着 'milk'，
    * 而随包附带的旧 milk.fcpt 已经不在包里了 —— 不迁移的话升级用户会停在
-   * "主题指向一个不存在的包"，界面直接退回玻璃底；老包目录也得清掉，
-   * 否则它是 1.0.0（没有深色层），会和 NaiWa 一起出现在主题管理里。 */
+   * "主题指向一个不存在的包"，界面直接退回玻璃底。
+   * ★ 顺序是这条迁移的全部难点：随包主题**不是开机自动安装的**（要用户点"一键装随包"），
+   *   所以直接改 id 等于把用户从奶蛙踹回玻璃底，比不迁移更糟。必须先装包、再改指向、
+   *   最后才删旧包；拿不到新包就维持原样。 */
   ['v2.5.2 配置迁移：老配置的 milk → NaiWa（单个标记键位，跑一次即止）',
     /themeMigratedToNaiWa/.test(mainNC) &&
-    /if \(config\.theme === 'milk'\) config\.theme = 'NaiWa';/.test(mainNC) &&
+    /const wasOnMilk = config\.theme === 'milk';/.test(mainNC) &&
     /id === 'milk' \? 'NaiWa' : id/.test(mainNC) &&
     /path\.join\(CONFIG_DIR, 'themes', 'milk'\)/.test(mainNC)],
+  ['v2.5.2 迁移顺序：先装 NaiWa 包再改指向，且只在不再指向 milk 时才删旧包目录',
+    /if \(wasOnMilk && naiReady\) config\.theme = 'NaiWa';/.test(mainNC) &&
+    /if \(wasOnMilk && !naiReady\) \{\s*naiReady = installBundledPack\('NaiWa'\);/.test(mainNC) &&
+    /if \(config\.theme !== 'milk'\) \{/.test(mainNC)],
+  ['v2.5.2 随包安装抽成 installBundledPack()，升级兜底与 id 迁移共用一份实现',
+    /function installBundledPack\(id\) \{/.test(mainNC) &&
+    /if \(installBundledPack\(id\)\) return;/.test(mainNC)],
   ['v2.5.2 主题名表跟着改名（.fcps 方案导出不该把 NaiWa 显示成裸 id）',
     /NaiWa: '奶蛙'/.test(mainNC) && !/\bmilk:/.test(mainNC)],
   ['v2.5.2 主题包 id 清单三处同步（_check / smoke-test / _palettecheck 都不许留 milk）',
     PACK_IDS.indexOf('NaiWa') >= 0 && PACK_IDS.indexOf('milk') < 0 &&
     smokeIds.indexOf('NaiWa') >= 0 && smokeIds.indexOf('milk') < 0 &&
     paletteIds.indexOf('NaiWa') >= 0 && paletteIds.indexOf('milk') < 0],
+  /* 安卓侧同一件事：配置在 WebView 的 localStorage 里，loadCfg 里做同名迁移。
+   * 安卓不删旧包目录（主题包是用户自己导进 Android/data/<包名>/files/themes 的）。 */
+  ['v2.5.2 安卓侧同步迁移：mobile-bridge 的 loadCfg 有 themeMigratedToNaiWa 分支',
+    /themeMigratedToNaiWa/.test(bridge) &&
+    /if \(base\.theme === 'milk'\) base\.theme = 'NaiWa';/.test(bridge) &&
+    /if \(seenOrder\[id\]\) return false;/.test(bridge)],
   ['v2.4.2/3 配置项：渲染层只做"非法值收回默认"，不另立一套默认值（避免两边打架）',
     /if \(config\.iconFit !== 'contain'\) config\.iconFit = 'cover';/.test(app) &&
     /\['glass', 'auto', 'theme', 'none'\]\.indexOf\(config\.iconBorder\) < 0\) config\.iconBorder = 'glass';/.test(app) &&
