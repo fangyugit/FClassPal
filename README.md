@@ -34,31 +34,6 @@
 
 每套主题**不是同一套壳换色**——都有自己的形状语言、表面处理、按钮样式、圆角半径、模糊强度和按压动效：
 
-| 主题 | 设计语言 | 配色 |
-|---|---|---|
-| `glass` 液态玻璃（内置） | 四层玻璃结构 + SVG 位移贴图折射 | 跟随壁纸（Monet） |
-| `md3` Material You（内置） | Material Design 3，ripple 按压 | 跟随壁纸（Monet） |
-| `fluent` Fluent（内置） | Reveal 光斑、8px 小圆角 | 跟随壁纸（Monet） |
-| `miuix` MIUIX（内置） | HyperOS 缓动 + Sink 下沉按压 | 官方固定色 `#3482FF` |
-| `harmony` 鸿蒙（内置） | 「沉浸光感」边缘流光环 | 官方固定色 `#0A59F7` |
-| `.fcpt` 主题包 ×13 | Hello Kitty / 玉桂狗 / 库洛米 / 美乐蒂 / 三丽鸥混合 / 帕恰狗 / 布丁狗 / 奶蛙 / 洛天依 / 乐正绫 / 初音未来 / 重音Teto / DS鲸鱼娘 | 各自的固定角色配色 + 真实裁剪贴纸 |
-
-五套内置主题都能切明亮 / 暗色，主题包自带自己的深浅两态；窗口圆角也可以在 8–40px 之间单独调（默认跟随主题）。
-
-| glass | md3 | fluent | miuix | harmony |
-|---|---|---|---|---|
-| ![glass](docs/screenshots/glass.png) | ![md3](docs/screenshots/md3.png) | ![fluent](docs/screenshots/fluent.png) | ![miuix](docs/screenshots/miuix.png) | ![harmony](docs/screenshots/harmony.png) |
-
-| kitty | dog | kuromi | melody | sanrio |
-|---|---|---|---|---|
-| ![kitty](docs/screenshots/kitty.png) | ![dog](docs/screenshots/dog.png) | ![kuromi](docs/screenshots/kuromi.png) | ![melody](docs/screenshots/melody.png) | ![sanrio](docs/screenshots/sanrio.png) |
-
-液态玻璃的折射效果（左：无折射；右：standard 模式位移贴图，边缘 3× 放大）：
-
-| 无折射 | 折射后 | 边缘 3× |
-|---|---|---|
-| ![before](docs/screenshots/glass-refraction-before.png) | ![after](docs/screenshots/glass-refraction-after.png) | ![edge](docs/screenshots/glass-refraction-edge-3x.png) |
-
 图标外观（v2.4.2–v2.4.4 的合力）——「内部」填充 + 圆形 + 边框跟随主题 + 统一图标风格（所有图标统一成主题强调色，Pixel 风格）：
 
 ![icon-look](docs/screenshots/icon-look.png)
@@ -104,13 +79,13 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 
 | 平台 | 产物 | 处理器架构 |
 |---|---|---|
-| Windows | [FClassPal-2.5.3.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.5.3/FClassPal-2.5.3.exe)（免安装便携版，约 63MB） | x64 |
-| Linux | `FClassPal-2.5.3-linux-x64.tar.gz`（解压即可运行） | x64 |
+| Windows | [FClassPal-2.5.3.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.5.3/FClassPal-2.5.3.exe)（单文件版，约 63MB） | x64 |
+| Linux | `FClassPal-2.5.3-linux-x64.tar.gz`| x64 |
 | Linux | `FClassPal-2.5.3-linux-arm64.tar.gz` | arm64 |
-| Linux | [FClassPal-2.5.3-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.5.3/FClassPal-2.5.3-linux-loong64.tar.gz)（龙芯新世界，解压即可运行） | LoongArch64 |
+| Linux | [FClassPal-2.5.3-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.5.3/FClassPal-2.5.3-linux-loong64.tar.gz)（适配龙芯架构） | LoongArch64 |
 | macOS | `FClassPal-2.5.3-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
 | macOS | `FClassPal-2.5.3-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
-| Android | `FClassPal-2.5.3-android.apk`（正式签名，可直接覆盖安装升级） | arm64 / armv7 / x86_64 |
+| Android | `FClassPal-2.5.3-android.apk`| arm64 / armv7 / x86_64 |
 | Android | `FClassPal-2.5.3-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
 
 以上都在 [v2.5.3 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.5.3)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
@@ -193,7 +168,7 @@ OrionYU
 ### 提示
 
 - Windows版本仅支持 Windows 10/11（依赖 DWM 模糊、WMI、Cfgmgr32）
-- 安卓/Linux/MacOS版本均测试是否可用
+- 安卓/Linux/MacOS版本均未测试是否可用
 - 开启「实时桌面模糊」后，系统截图/录屏会看不到本窗口（Windows 采集排除机制所致）
 - 「自定义背景图」的白蒙版可以替代模糊达到「虚化但不透出桌面」的效果，两者也能叠加
 - `renderer/theme/` 中的三丽鸥角色图片版权归 © Sanrio 及原权利方所有，仅供学习与个人使用，请勿商用
