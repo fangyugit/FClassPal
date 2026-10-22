@@ -228,18 +228,12 @@
         <span>锁定位置</span>
         <input type="checkbox" id="setLock" />
       </label>
-      <!-- 界面风格（v2.5.2 自绘下拉）：原生 select 触控行高小、弹系统菜单，
-           与主题语言不搭。按钮 + 48px 行高的选项列表，数据源仍是注册表。 -->
-      <div class="row">
-        <span>界面风格</span>
-        <div class="tselect" id="themeSelect">
-          <button type="button" class="tselect-btn" id="themeSelectBtn"
-            aria-haspopup="listbox" aria-expanded="false" aria-label="界面风格">
-            <span class="tselect-dot" id="themeSelectDot"></span>
-            <span class="tselect-label" id="themeSelectLabel"></span>
-            <svg class="ic tselect-caret" aria-hidden="true"><use href="#i-down"/></svg>
-          </button>
-          <div class="tselect-pop hidden" id="themeSelectPop" role="listbox" aria-label="界面风格"></div>
+      <!-- 主题管理（v2.5.3）：原「界面风格」自绘下拉撤下 —— 内置皮肤与 .fcpt 主题包的
+           切换/排序/删除/导入全在主题管理弹窗里，设置面板一个入口就够，不再两处改主题。 -->
+      <div class="row" id="rowThemeManage">
+        <span>主题管理</span>
+        <div class="btn-row">
+          <button id="btnThemeManage" class="text-btn" type="button">切换 / 排序 / 导入</button>
         </div>
       </div>
       <div class="row">
@@ -423,15 +417,8 @@
           <button id="btnCfgImport" class="text-btn">导入 .fcpc</button>
         </div>
       </div>
-      <!-- 主题管理（v2.5.0）：本体只带五套内置皮肤，其余主题是 .fcpt 主题包。
-           这里只管入口，弹窗在页面底部（README 里讲清了 .fcps / .fcpt 的区别）。 -->
-      <div class="row" id="rowThemes">
-        <span>主题</span>
-        <div class="btn-row">
-          <button id="btnThemeManage" class="text-btn" type="button">管理主题</button>
-          <button id="btnThemeRepo" class="text-btn" type="button">获取更多主题</button>
-        </div>
-      </div>
+      <!-- v2.5.3：原「主题」行（管理主题 / 获取更多主题）已并入上面的「主题管理」入口
+           —— 弹窗里自带「主题仓库」按钮，获取更多主题不必单列。 -->
       <div class="row" id="rowThemePack">
         <span>主题方案</span>
         <div class="btn-row">

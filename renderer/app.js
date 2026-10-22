@@ -323,7 +323,6 @@ function applyTheme(theme) {
    * 黑暗模式下它们的 --md3-* 角色由主进程的 Monet 暗色方案整份给出，CSS 层
    * 必须"别插手"—— body.dark:not(.dyn) 才去压表面角色。 */
   document.body.classList.toggle('dyn', isDynamicTheme(t));
-  syncThemeSelect();   /* v2.5.2 自绘下拉：不再有原生 <select> 可设 value */
   /* 图标外观要跟着主题"重算几何"（v2.4.3）：形状选「跟随主题」时，「内部」的内缩量
    * 是从主题给的圆角半径实测出来的 —— 换了主题不重测，MD3 会沿用玻璃的 14.65%
    * （多留一圈白）、玻璃会沿用 MD3 的 10.98%（圆角处切掉一点点）。
@@ -2686,67 +2685,9 @@ function switchTheme(t) {
  */
 const THEME_REPO_URL = 'https://github.com/fangyugit/FClassPal-theme';
 
-/* ---------- 界面风格选择（v2.5.2 自绘下拉）----------
- * 原生 <select> 在触屏上弹的是系统菜单，行高小、间距挤，与主题语言完全不搭。
- * 自绘一条：按钮显示当前主题（色点 + 名字），弹出层是 48px 行高的选项列表，
- * 选中项打勾；触摸目标、间距都按触控标准做。数据源仍是 THEMES/THEME_LABEL/
- * THEME_ACCENT 注册表，装/删/排序后 applyThemeRegistry → renderThemeOptions 重画。 */
-function renderThemeOptions() {
-  const pop = $('themeSelectPop');
-  if (!pop) return;
-  const cur = THEMES.indexOf(currentTheme) >= 0 ? currentTheme : 'glass';
-  pop.innerHTML = THEMES.map((t) =>
-    '<button type="button" class="tselect-item" role="option" data-value="' + escapeHtml(t) + '"' +
-    ' aria-selected="' + (t === cur ? 'true' : 'false') + '">' +
-    '<span class="tselect-dot" style="--c:' + escapeHtml(THEME_ACCENT[t] || '#6750A4') + '"></span>' +
-    '<span class="tselect-label">' + escapeHtml(THEME_LABEL[t] || t) + '</span>' +
-    (t === cur ? '<svg class="ic tselect-check" aria-hidden="true"><use href="#i-check"/></svg>' : '') +
-    '</button>').join('');
-  syncThemeSelect();
-}
-
-/** 把当前主题同步到自绘下拉（applyTheme / 启动同步都会调） */
-function syncThemeSelect() {
-  const label = $('themeSelectLabel');
-  const dot = $('themeSelectDot');
-  if (!label || !dot) return;
-  const cur = THEMES.indexOf(currentTheme) >= 0 ? currentTheme : 'glass';
-  label.textContent = THEME_LABEL[cur] || cur;
-  dot.style.setProperty('--c', THEME_ACCENT[cur] || '#6750A4');
-}
-
-function themeSelectOpen(open) {
-  const wrap = $('themeSelect');
-  const pop = $('themeSelectPop');
-  const btn = $('themeSelectBtn');
-  if (!wrap || !pop || !btn) return;
-  pop.classList.toggle('hidden', !open);
-  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-}
-
-(function bindThemeSelect() {
-  const btn = $('themeSelectBtn');
-  const pop = $('themeSelectPop');
-  if (!btn || !pop) return;
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    themeSelectOpen(pop.classList.contains('hidden'));
-  });
-  pop.addEventListener('click', (e) => {
-    const item = e.target.closest && e.target.closest('.tselect-item');
-    if (!item || !item.dataset.value) return;
-    themeSelectOpen(false);
-    if (item.dataset.value !== currentTheme) switchTheme(item.dataset.value);
-  });
-  document.addEventListener('click', (e) => {
-    if (!(e.target.closest && e.target.closest('#themeSelect'))) themeSelectOpen(false);
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('themeSelectPop').classList.contains('hidden')) {
-      themeSelectOpen(false);
-    }
-  });
-})();
+/* ---------- 界面风格选择（v2.5.3 已撤下）----------
+ * 原 v2.5.2 的界面风格自绘下拉被「主题管理」弹窗取代：内置皮肤与 .fcpt 主题包的
+ * 切换/排序/删除/导入都在弹窗里，设置面板只留一个入口。相关函数与绑定一并移除。 */
 
 /** 主进程给的卡片列表 → 注册表（顺序就是用户排的顺序；内置五套缺了就补在末尾） */
 function applyThemeRegistry(cards) {
@@ -2765,7 +2706,6 @@ function applyThemeRegistry(cards) {
   THEME_ACCENT = accent;
   FIXED_PALETTE_THEMES = fixed;
   THEME_ACCENT_LIST = Object.keys(THEME_ACCENT).map((k) => THEME_ACCENT[k].toUpperCase());
-  renderThemeOptions();
 }
 
 /* 一个主题包一个 <style>，绝不拼成一份。
@@ -3086,7 +3026,7 @@ if ($('btnThemeFolder')) {
     if (r && !r.success) toast('打不开主题文件夹：' + (r.error || '未知错误'));
   });
 }
-['btnThemeRepo', 'btnThemeRepoLink'].forEach((id) => {
+['btnThemeRepoLink'].forEach((id) => {
   const b = $(id);
   if (b) b.addEventListener('click', () => API.openExternal(THEME_REPO_URL));
 });
@@ -4110,11 +4050,9 @@ if (typeof API.onTrayAction === 'function') {
    * 主题包还没读进来就会被退回基线（用户看到的就是"升级完主题没了"）。
    * 主进程在建窗前其实已经自动装过随包离线包，这里是渲染层的第二道保险。 */
   await loadThemeRegistry();
-  renderThemeOptions();
   /* 配置里记的主题已经不在本机（包被删了、或从别的机器同步过来的配置）→ 收回基线，
    * 顺手落盘，别让"配置说是 kitty、界面却是玻璃"这种状态一直挂着 */
   if (THEMES.indexOf(config.theme) < 0) config.theme = 'glass';
-  syncThemeSelect();   /* 启动时把自绘下拉对到配置里的主题 */
   applyRadius(config.cornerRadius ?? null, false);
   API.setBounds(bounds);
   enableLiquidGlass();   // 能力探测通过后点亮 .lg-ready

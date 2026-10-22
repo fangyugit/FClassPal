@@ -150,13 +150,12 @@ const isHidden = (el) => !el || el.classList.contains('hidden');
   check('存在取色面板 #md3ColorBox', !!box);
   check('【glass 主题下取色面板也可见（旧版隐藏→用户找不到选色）】', !isHidden(box),
     'class="' + (box ? box.className : '') + '"');
-  const themeSel = $('themeSelect');
-  check('主题下拉栏存在且选项 = 18（v2.5.0 起含八套角色主题）', !!themeSel && themeSel.options.length === 18,
-    'options=' + (themeSel ? themeSel.options.length : 'null'));
-  /* 下拉切换助手：设值 + 派发 change（v2.2.2 起主题切换走 select） */
+  /* v2.5.3：界面风格下拉已撤（切换统一走主题管理弹窗），探针直接调页面全局
+   * switchTheme —— 与弹窗卡片点击走的是同一条链路（弹窗探针 _packui 覆盖 UI 层）。 */
+  check('主题管理入口存在（下拉已撤）', !!$('btnThemeManage') && !$('themeSelect'));
   const pickTheme = async (t) => {
-    themeSel.value = t;
-    themeSel.dispatchEvent(new window.Event('change', { bubbles: true }));
+    /* eslint-disable no-undef */
+    switchTheme(t);
     await wait(140);
   };
   await pickTheme('md3');

@@ -404,8 +404,8 @@ function hasPackAsset(theme, file) {
   check('main.js: 默认配置含 theme / colorMode / accentColor（v2.4.0 默认主题回到液态玻璃）',
     /theme:\s*'glass'/.test(mainJs) && /colorMode:\s*'auto'/.test(mainJs) &&
     /accentColor:\s*'#6750A4'/.test(mainJs));
-  check('html: 设置面板有主题下拉栏（v2.2.2：10 套主题不再用分段按钮）',
-    html.includes('id="themeSelect"') && !html.includes('id="themeSeg"'));
+  check('html: 设置面板有主题管理入口（v2.5.3：界面风格下拉撤下，切换统一走弹窗）',
+    html.includes('id="btnThemeManage"') && !html.includes('id="themeSelect"') && !html.includes('id="themeSeg"'));
   check('app.js: applyTheme 按注册表 toggle theme-<name>（v2.5.0：注册表可变，含已安装主题包）',
     /* v2.5.0：主题清单不再是编译期字面量 —— 内置五套 + 已安装 .fcpt 主题包，
      * 运行期由 themes-list 注入。所以 applyTheme 遍历的是 FLAT_THEMES（可变注册表），
@@ -538,9 +538,9 @@ function hasPackAsset(theme, file) {
     /function loadThemeRegistry\(\)/.test(js) &&
     /let FIXED_PALETTE_THEMES = BUILTIN_FIXED\.slice\(\)/.test(js) &&
     !/transparent/.test(js.slice(js.indexOf('const BUILTIN_THEMES'), js.indexOf('let THEMES = BUILTIN_THEMES'))));
-  check('app.js: 主题下拉栏选项由注册表 THEMES / THEME_LABEL 生成（新增主题只改注册表一处）',
-    /function renderThemeOptions\(\)/.test(js) &&
-    /sel\.innerHTML = THEMES\.map/.test(js) && /THEME_LABEL\[t\] \|\| t/.test(js));
+  check('app.js: 主题管理弹窗清单由注册表生成（renderThemeModal + themeCardHTML，新增主题只改注册表一处）',
+    /function renderThemeModal/.test(js) &&
+    /themeCardHTML\(t, i, themes\.length\)/.test(js));
   check('app.js: 每套风格各有默认推荐主色（用户没手挑过才套用）',
     /* v2.5.0：角色主题的推荐色随 manifest.accent 一起来，本体内只剩内置五套；
      * 逐包核对 manifest 里确实写了 accent（否则界面只能回退基线紫）。 */
@@ -557,12 +557,13 @@ function hasPackAsset(theme, file) {
     /label\[c\.id\] = c\.name \|\| BUILTIN_LABEL\[c\.id\] \|\| c\.id/.test(js) &&
     /harmony: '鸿蒙'/.test(js) &&
     PACK_IDS.every((t) => typeof packManifest[t].name === 'string' && packManifest[t].name.length > 0));
-  check('app.js: 主题经下拉栏切换（change 事件 → switchTheme，不再用分段按钮点击）',
-    /\$\('themeSelect'\)\.addEventListener\('change'/.test(js) &&
+  check('app.js: 主题经主题管理弹窗切换（openThemeModal + switchTheme，v2.5.3 下拉已撤）',
+    /function openThemeModal/.test(js) &&
     /function switchTheme/.test(js) &&
-    !/\$\('themeSeg'\)/.test(js));
-  check('html: 主题用下拉栏（9 个 data-theme 按钮已移除）',
-    !/data-theme="/.test(html) && /<select id="themeSelect"/.test(html));
+    !/\$\('themeSelect'\)/.test(js));
+  check('html: 无原生主题下拉（9 个 data-theme 按钮与 v2.5.2 自绘下拉都已移除）',
+    !/data-theme="/.test(html) && !/<select id="themeSelect"/.test(html) &&
+    !/tselect/.test(html));
   check('css: 已彻底移除 theme-flat 共底（每套主题自足，不再是"平面系共用结构"）',
     !/theme-flat/.test(css) && !/theme-flat/.test(js) && !/md3-enter/.test(css) && !/md3-enter/.test(js));
   check('css: 十七套皮肤各自定义同一份表面清单 token（本体 4 套 + 主题包 13 套）',

@@ -1776,7 +1776,7 @@ body.is-resizing .lg-border {
   box-shadow: 0 0 0 2px var(--md3-surface, #fff), 0 0 0 4px var(--md3-primary, #6750a4);
 }
 
-/* 界面风格已换自绘 .tselect（上面）；这个类还服务于「背景填充方式」等原生 select */
+/* 原生 select（界面风格入口 v2.5.3 起由「主题管理」弹窗取代）；这个类还服务于「背景填充方式」等 */
 .theme-select {
   appearance: none;
   -webkit-appearance: none;
@@ -1797,99 +1797,9 @@ body.is-resizing .lg-border {
 .theme-select:hover { border-color: var(--accent); }
 .theme-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* ====== 界面风格选择（v2.5.2 自绘下拉）======
- * 原生 <select> 在触屏上弹系统菜单、行高小、间距挤。自绘：按钮显示
- * 当前主题（色点 + 名字 + 箭头），弹出行高 44px+ 的选项列表，选中打勾。
- * 颜色全部走 token，随主题 / 明暗自动适配。 */
-.tselect {
-  position: relative;
-  display: inline-block;
-  max-width: 170px;
-}
-.tselect-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 40px;
-  padding: 6px 34px 6px 10px;
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 600;
-  color: var(--text);
-  background: var(--t-surface-2, rgba(255, 255, 255, 0.78));
-  border: 1px solid var(--t-line, rgba(70, 90, 160, 0.22));
-  border-radius: 12px;
-  cursor: pointer;
-  transition: border-color 0.16s, box-shadow 0.16s;
-}
-.tselect-btn:hover { border-color: var(--accent); }
-.tselect-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.tselect-btn[aria-expanded="true"] .tselect-caret { transform: rotate(180deg); }
-.tselect-caret {
-  position: absolute;
-  right: 10px;
-  width: 13px;
-  height: 13px;
-  color: var(--text-soft);
-  transition: transform 0.18s ease;
-}
-.tselect-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tselect-dot {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--c, var(--accent));
-  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
-}
-.tselect-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 60;
-  min-width: max-content;
-  max-height: 260px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 5px;
-  background: var(--t-surface, #fff);
-  border: 1px solid var(--t-line, rgba(70, 90, 160, 0.22));
-  border-radius: 14px;
-  box-shadow: var(--t-shadow-menu, 0 14px 38px -14px rgb(0 0 0 / 0.35));
-}
-.tselect-pop.hidden { display: none; }
-.tselect-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 44px;               /* 触控目标：手指按得住 */
-  padding: 8px 12px 8px 10px;
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 600;
-  color: var(--text);
-  background: transparent;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.14s ease;
-}
-.tselect-item:hover { background: var(--t-surface-3, rgb(0 0 0 / 0.06)); }
-.tselect-item:active { transform: scale(0.98); }
-.tselect-item .tselect-label { flex: 1 1 auto; }
-.tselect-item[aria-selected="true"] {
-  background: var(--t-surface-3, rgb(0 0 0 / 0.06));
-  color: var(--accent);
-}
-.tselect-check { width: 14px; height: 14px; color: var(--accent); flex: 0 0 auto; }
+/* ====== 界面风格选择（v2.5.3 已撤下）======
+ * 原 v2.5.2 自绘下拉 .tselect 随「界面风格」入口一起下岗 —— 内置皮肤与主题包
+ * 的切换统一走「主题管理」弹窗（见下一个区块），这里不再保留下拉样式。 */
 
 /* ====== 主题管理弹窗（v2.5.2 重做）======
  * 卡片：预览图（120×68 圆角）+ 名称/描述/版本·作者 + 右侧操作钮。
@@ -3220,8 +3130,14 @@ body.bg-custom .env-layer {
 /* ============================================================
  * 黑暗模式（v2.4.0）——盖在所有主题之上的深色层
  * ------------------------------------------------------------
- * 机制：各主题的 token 块写在前面，这里用同优先级的 body.dark 选择器 + 更靠后的
- * 源码位置压过去（同权重看先后）。三条铁律：
+ * 机制（v2.5.3 修订）：主题包 CSS 由 injectThemePackCss 以 <style data-theme-pack>
+ * 追加到 <head> 尾部（在本文件之后），所以「同优先级靠后赢」对包规则不成立 ——
+ * 包浅色规则（body.theme-x .ctx-menu 等）会和这里的深色规则同特异性，反而压过深色层
+ * （v2.5.2 深色模式下菜单浅底浅字、面纱丢内阴影结构，就是这条）。因此深色层的选择器
+ * 一律升一档特异性：token 用 html body.dark（0,1,2），元素规则用 html body.dark .x
+ * （0,2,2）—— 赢过包浅色（0,1,1 / 0,2,1）、输给包自带深色层（0,2,1 / 0,3,1）。
+ * 例外：body.dark:not(.dyn)（0,2,1）本来就能赢包浅色 token（0,1,1），**不许加 html**
+ * ——加了变 0,2,2 会反过来压过包深色 token，把主题的暗色 tint 换成通用蓝黑。
  *   1. **绝不动强调色**（--md3-primary/--t-accent/--accent）—— 每套主题的个性
  *      全押在强调色上，压暗它就不是那套主题了；
  *   2. 动态配色主题（body.dyn：glass/md3/fluent）的 --md3-* 由主进程用 Monet
@@ -3229,7 +3145,7 @@ body.bg-custom .env-layer {
  *      只在 :not(.dyn) 时补固定配色主题的表面角色；
  *   3. 只碰颜色类属性 —— 定位/尺寸一律不动（v2.2.1 主题事故的教训）。
  * ============================================================ */
-body.dark {
+html body.dark {
   --text: #F2F4F8;
   --text-soft: #A6AEC0;
   --t-surface: rgb(20 23 31 / 0.72);
@@ -3261,7 +3177,7 @@ body.dark:not(.dyn) {
   --md3-on-secondary-container: #D7DCE6; --md3-on-secondary-container-rgb: 215 220 230;
 }
 /* 玻璃面纱：白纱换黑纱（玻璃的厚度感/内高光结构照旧，只是不再往白里走） */
-body.dark .glass-veil {
+html body.dark .glass-veil {
   border-color: var(--glass-edge);
   background:
     radial-gradient(130% 70% at 50% -18%,
@@ -3281,37 +3197,37 @@ body.dark .glass-veil {
 }
 /* 基线里硬编码成白底的部件（面板/菜单/弹窗/USB 卡片/输入框）—— 各主题只覆盖了
  * 一部分，这里统一再压一层，否则黑暗模式下打开设置就是一片惨白。 */
-body.dark .panel,
-body.dark .modal-card,
-body.dark .ctx-menu {
+html body.dark .panel,
+html body.dark .modal-card,
+html body.dark .ctx-menu {
   background: var(--t-surface-2);
   border: 1px solid rgb(255 255 255 / 0.13);
   box-shadow: var(--t-shadow-menu);
 }
-body.dark .usb-item,
-body.dark .group-list li,
-body.dark .item,
-body.dark .toast {
+html body.dark .usb-item,
+html body.dark .group-list li,
+html body.dark .item,
+html body.dark .toast {
   background: var(--t-surface);
   border-color: rgb(255 255 255 / 0.12);
 }
-body.dark .panel input[type="text"],
-body.dark .modal-card input[type="text"],
-body.dark .add-group-row input,
-body.dark .size-controls button,
-body.dark select,
-body.dark .seg {
+html body.dark .panel input[type="text"],
+html body.dark .modal-card input[type="text"],
+html body.dark .add-group-row input,
+html body.dark .size-controls button,
+html body.dark select,
+html body.dark .seg {
   background: var(--t-surface-3);
   border-color: rgb(255 255 255 / 0.12);
   color: var(--text);
 }
-body.dark .titlebar {
+html body.dark .titlebar {
   border-bottom: 1px solid var(--t-line);
   box-shadow: none;
 }
-body.dark .row-hint,
-body.dark .about-line,
-body.dark .about-ver {
+html body.dark .row-hint,
+html body.dark .about-line,
+html body.dark .about-ver {
   color: var(--text-soft);
 }
 

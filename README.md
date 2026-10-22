@@ -2,7 +2,7 @@
 
 > FClassPal是一个主要为班级大屏打造的桌面快捷方式启动器小部件 可用于替代希沃管家助手/桌面助手
 
-![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-922%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.5.2-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
+![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-922%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.5.3-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **FClassPal**是一个常驻桌面的启动器小部件，用于替代希沃管家助手/桌面助手 把常用的应用、文件、文件夹和网页钉在桌面一角，顺手管理 U 盘的弹出。无任务栏图标——右键或长按唤醒菜单，其余时间安静地贴在桌面上。
 
@@ -104,16 +104,16 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 
 | 平台 | 产物 | 处理器架构 |
 |---|---|---|
-| Windows | [FClassPal-2.5.2.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.5.2/FClassPal-2.5.2.exe)（免安装便携版，约 63MB） | x64 |
-| Linux | `FClassPal-2.5.2-linux-x64.tar.gz`（解压即可运行） | x64 |
-| Linux | `FClassPal-2.5.2-linux-arm64.tar.gz` | arm64 |
-| Linux | [FClassPal-2.5.2-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.5.2/FClassPal-2.5.2-linux-loong64.tar.gz)（龙芯新世界，解压即可运行） | LoongArch64 |
-| macOS | `FClassPal-2.5.2-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
-| macOS | `FClassPal-2.5.2-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
-| Android | `FClassPal-2.5.2-android.apk`（正式签名，可直接覆盖安装升级） | arm64 / armv7 / x86_64 |
-| Android | `FClassPal-2.5.2-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
+| Windows | [FClassPal-2.5.3.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.5.3/FClassPal-2.5.3.exe)（免安装便携版，约 63MB） | x64 |
+| Linux | `FClassPal-2.5.3-linux-x64.tar.gz`（解压即可运行） | x64 |
+| Linux | `FClassPal-2.5.3-linux-arm64.tar.gz` | arm64 |
+| Linux | [FClassPal-2.5.3-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.5.3/FClassPal-2.5.3-linux-loong64.tar.gz)（龙芯新世界，解压即可运行） | LoongArch64 |
+| macOS | `FClassPal-2.5.3-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
+| macOS | `FClassPal-2.5.3-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
+| Android | `FClassPal-2.5.3-android.apk`（正式签名，可直接覆盖安装升级） | arm64 / armv7 / x86_64 |
+| Android | `FClassPal-2.5.3-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
 
-以上都在 [v2.5.2 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.5.2)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
+以上都在 [v2.5.3 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.5.3)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
 
 - 龙芯包解压后执行 `FClassPal-linux-loong64/electron` 即可（这一份的可执行文件仍叫
   `electron`，顶层目录名也沿用它，与其它平台不同）

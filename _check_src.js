@@ -294,8 +294,9 @@ const checks = [
   ['打包白名单放行 vendor/**（漏了就无法 require）',
     (srcPkg.build && srcPkg.build.files || []).includes('vendor/**/*')],
   ['asar: 位移贴图随包（无 JPEG 残留）', /LG_DISPLACEMENT_MAP\s*=\s*'data:image\/png;base64,/.test(mapJs) && !/data:image\/jpeg/.test(mapJs)],
-  ['html: 风格分段选择器（glass / md3）',
-    html.includes('id="themeSelect"') && !html.includes('id="themeSeg"')],
+  ['html: 主题管理入口（v2.5.3 界面风格下拉撤下，一个入口管全部主题）',
+    html.includes('id="rowThemeManage"') && html.includes('id="btnThemeManage"') &&
+    !html.includes('id="themeSelect"') && !html.includes('tselect')],
   ['html: MD3 取色方式（莫奈取色 / 手动指定）',
     html.includes('id="colorModeSeg"') && /data-mode="auto"/.test(html) &&
     /data-mode="manual"/.test(html)],
@@ -339,13 +340,13 @@ const checks = [
   ['多主题: 已彻底移除 theme-flat 共底（十套风格各自自足）',
     !/theme-flat/.test(cssNC) && !/theme-flat/.test(app) &&
     !/md3-enter/.test(cssNC) && !/md3-enter/.test(app)],
-  ['多主题 v2.5.0: 主题选择为自绘下拉（v2.5.2 弃原生 select）+ 主题管理弹窗（都由注册表驱动）',
-    html.includes('id="themeSelectBtn"') && html.includes('id="themeSelectPop"') &&
-    !/<select id="themeSelect"/.test(html) && !/data-theme="/.test(html) &&
-    /function renderThemeOptions\(\)/.test(app) && /pop\.innerHTML = THEMES\.map/.test(app) &&
-    /function syncThemeSelect\(\)/.test(app) &&
-    html.includes('id="themeModal"') && /function openThemeModal\(\)/.test(app) &&
-    html.includes('id="btnThemeManage"')],
+  ['多主题 v2.5.3: 主题管理弹窗唯一入口（自绘下拉已撤，注册表驱动不变）',
+    html.includes('id="themeModal"') && html.includes('id="btnThemeManage"') &&
+    !html.includes('id="themeSelectBtn"') && !/<select id="themeSelect"/.test(html) &&
+    !/data-theme="/.test(html) &&
+    /function openThemeModal\(\)/.test(app) &&
+    !/renderThemeOptions/.test(app) && !/syncThemeSelect/.test(app) &&
+    !/themeSelect/.test(app) && !/\.tselect/.test(app)],
   ['多主题 v2.5.0: 内置五套 + 运行时可刷新注册表（装/删/排序后不用改代码）',
     /const BUILTIN_THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony'\]/.test(app) &&
     /let THEMES = BUILTIN_THEMES\.slice\(\)/.test(app) &&
