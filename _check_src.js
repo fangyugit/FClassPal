@@ -986,8 +986,12 @@ const checks = [
     fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8').includes('onRealtimeFrame')],
   ['v2.4.6: 渲染层外部帧模式（onRealtimeFrame 在则走原生帧，不走 getDisplayMedia）',
     app.includes('startExternalRealtime') && app.includes('onRealtimeFrame')],
-  ['v2.4.6: 安卓版本号与桌面同源（package.json 是唯一版本源）',
-    fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8').includes("APP_VERSION = '" + srcPkg.version + "'") &&
+  ['v2.4.6: 安卓版本号与桌面同源（package.json 是唯一版本源；"-fix" 后缀 = 安卓热修豁免）',
+    (() => {
+      const v = srcPkg.version;
+      const mb = fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8');
+      return mb.includes("APP_VERSION = '" + v + "'") || mb.includes("APP_VERSION = '" + v + "-fix'");
+    })() &&
     JSON.parse(fs.readFileSync('mobile/package.json', 'utf8')).version === srcPkg.version],
   ['v2.4.6: 应用图标 = 加号卡片（重绘源 + 安卓满幅前景层修圆角）',
     fs.existsSync('build/icon_fullsquare.png') &&

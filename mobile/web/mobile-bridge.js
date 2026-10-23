@@ -27,7 +27,7 @@
 
   var MOBILE_KEY = 'fclasspal-mobile-config';
   var FALLBACK_ACCENT = '#6750A4';   // 与桌面版 DEFAULT_CONFIG.accentColor 一致
-  var APP_VERSION = '2.5.3';
+  var APP_VERSION = '2.5.3-fix';
 
   /* ---------------------------------------------------------------- 原生插件 */
   function plugin() {
@@ -683,6 +683,38 @@
     getAppVersion: function () {
       return info().then(function (i) { return i.versionName || APP_VERSION; });
     },
+    /* ---- 检测更新（v2.5.3-fix 补）：此前安卓没实现这条，点「检测更新」必报
+     * "检测失败：API.checkUpdate is not a function"。桌面版走主进程（带 DoH 兜底），
+     * 安卓 WebView 里直接 fetch GitHub API（api.github.com 允许跨域），拿不到就
+     * 明确说网络问题，不装死。 */
+    checkUpdate: function () {
+      var cur = APP_VERSION;
+      var core = function (s) {
+        var m = /(\d+)\.(\d+)\.(\d+)/.exec(String(s || ''));
+        return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+      };
+      var c = core(cur);
+      return new Promise(function (resolve) {
+        var done = false;
+        var fin = function (r) { if (!done) { done = true; resolve(r); } };
+        var timer = setTimeout(function () { fin({ success: false, error: '网络超时，稍后再试' }); }, 12000);
+        fetch('https://api.github.com/repos/fangyugit/FclassPal/releases/latest', { cache: 'no-store' })
+          .then(function (res) { return res.json(); })
+          .then(function (j) {
+            var tag = String((j && j.tag_name) || '').replace(/^v/i, '');
+            var n = core(tag);
+            if (!n) { clearTimeout(timer); return fin({ success: false, error: '远端版本信息异常' }); }
+            var newer = !c || n[0] > c[0] ||
+              (n[0] === c[0] && (n[1] > c[1] || (n[1] === c[1] && n[2] > c[2])));
+            clearTimeout(timer);
+            fin({ success: true, current: cur, latest: tag, update: newer });
+          })
+          .catch(function () {
+            clearTimeout(timer);
+            fin({ success: false, error: '网络不可达（GitHub 访问受限或无网络）' });
+          });
+      });
+    },
     getDisplayInfo: function () { return Promise.resolve(null); },
 
     /* ---- 壁纸 / 配色 ---- */
@@ -942,6 +974,13 @@
           cfg = cfg || loadCfg();
           if (cfg.theme === id) { cfg.theme = 'glass'; persist(cfg); }   // 删的是在用的 → 退回玻璃
           r.theme = cfg.theme;
+          /* 渲染层 afterThemeMutation 需要 r.data（删后完整清单）。桌面版主进程会带，
+           * 原生 themesRemove 只回 success —— 这里补拉一次 themesList，否则删包必崩
+           * （TypeError: Cannot read properties of undefined）。 */
+          return call('themesList', {}).then(function (li) {
+            if (li && li.success && li.data) r.data = li.data;
+            return r;
+          }, function () { return r; });
         }
         return r;
       }, function () { return { success: false, error: '原生不支持' }; });

@@ -2878,8 +2878,11 @@ function closeThemeModal() {
 /* ---------- 变更：导入 / 装离线包 / 删除 / 排序 ---------- */
 async function afterThemeMutation(r, okMsg) {
   if (!r || !r.success) { toast((r && r.error) || '操作失败'); return; }
-  themeInv = r.data;
-  applyThemeRegistry(r.data.themes);
+  /* v2.5.3-fix 加固：宿主返回短了（安卓原生删包不带 data）也不许把弹窗打崩 ——
+   * 清单拿不到就沿用现状，主题功能至少保持可用。 */
+  if (r.data && r.data.themes) themeInv = r.data;
+  else themeInv = themeInv || localThemeInventory();
+  applyThemeRegistry(themeInv.themes || []);
   if (typeof API.themesCss === 'function') {
     const c = await API.themesCss();
     themePackCss = (c && c.css) || {};
