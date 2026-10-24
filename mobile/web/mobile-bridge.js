@@ -297,17 +297,38 @@
       var vw = window.innerWidth || 400, vh = window.innerHeight || 800;
       var dpr = window.devicePixelRatio || 1;
       return averageLuminance(r.dataUrl).then(function (lum) {
-        return {
-          url: r.dataUrl,
-          // 全屏铺满：底材尺寸就用视口像素，坐标 0,0（桌面版这里的 x/y 是窗口屏幕坐标）
-          w: Math.round(vw * dpr),
-          h: Math.round(vh * dpr),
-          x: 0, y: 0,
-          luminance: lum,
-          desktop: false,
-          bg: null
-        };
+        return computePalette({}).then(function (palette) {
+          return {
+            url: r.dataUrl,
+            // 全屏铺满：底材尺寸就用视口像素，坐标 0,0（桌面版这里的 x/y 是窗口屏幕坐标）
+            w: Math.round(vw * dpr),
+            h: Math.round(vh * dpr),
+            x: 0, y: 0,
+            luminance: lum,
+            desktop: false,
+            bg: null,
+            /* v2.5.3-fix：必须带 palette —— 桌面版由主进程附上，这里之前漏了，
+             * openSettings 的 describePalette 读 wallInfo.palette 得到 undefined，
+             * 设置面板"当前主色"永远显示"取色失败"。 */
+            palette: palette
+          };
+        });
       });
+    });
+  }
+
+  /** 当前调色板（getPalette 与 loadWallpaperInfo 共用）。 */
+  function computePalette(patch) {
+    var p = patch || {};
+    var mode = p.colorMode || (cfg && cfg.colorMode) || 'auto';
+    var seed = (cfg && cfg.accentColor) || FALLBACK_ACCENT;
+    if (mode === 'manual' && p.accentColor) seed = p.accentColor;
+    var dark = resolveDark(p.appearance);
+    if (mode === 'manual') return Promise.resolve(buildPalette(seed, dark));
+    // 自动模式：先问安卓 12+ 要系统动态色（从壁纸来，和 Material You 同源）
+    return soft('systemAccent', {}, null).then(function (r) {
+      var got = r && r.color;
+      return buildPalette(got || seed, dark);
     });
   }
 
@@ -730,17 +751,7 @@
       };
     },
     getPalette: function (patch) {
-      var p = patch || {};
-      var mode = p.colorMode || (cfg && cfg.colorMode) || 'auto';
-      var seed = (cfg && cfg.accentColor) || FALLBACK_ACCENT;
-      if (mode === 'manual' && p.accentColor) seed = p.accentColor;
-      var dark = resolveDark(p.appearance);
-      if (mode === 'manual') return Promise.resolve(buildPalette(seed, dark));
-      // 自动模式：先问安卓 12+ 要系统动态色（从壁纸来，和 Material You 同源）
-      return soft('systemAccent', {}, null).then(function (r) {
-        var got = r && r.color;
-        return buildPalette(got || seed, dark);
-      });
+      return computePalette(patch);
     },
 
     /* ---- 明暗 ---- */
@@ -951,6 +962,9 @@
           clearTimeout(timer);
           try { off(); } catch (e) { }
           if (!r || r.canceled) { resolve({ success: false, canceled: true }); return; }
+          /* v2.5.3-fix：原生明确报错（如系统没回传所选文件）要冒泡成 toast，
+           * 不许静默 —— 用户分不清"没点上"和"坏了"。 */
+          if (r.error) { resolve({ success: false, error: r.error }); return; }
           Promise.resolve(p.themeInstall({ base64: r.base64 })).then(resolve, function (e) {
             resolve({ success: false, error: String((e && e.message) || e) });
           });
@@ -1156,8 +1170,11 @@
           }, null);
         }
         soft('toast', { text: want === 'float' ? '已切换为悬浮窗' : '已切换为全屏' }, null);
-        // 采集链路和布局都按新窗口重启，延迟重载一次最干净
-        setTimeout(function () { try { location.reload(); } catch (e) { } }, 600);
+        /* v2.5.3-fix：不能 reload！真机实测（Flyme）：切到悬浮窗后 reload 会把刚
+         * 套上的小窗整个打没（WebView 重建时窗口属性被重置/进程直接退出），用户
+         * 看到"悬浮窗一闪而过就没"。所有状态在上面已经活着应用完了：cfg 已存、
+         * float 类已挂、原生 setWindowMode 已调、录屏采集的窗口矩形由原生侧
+         * capture.setWindowRect 同步 —— 没有任何一步需要重启页面。 */
       });
     });
   }

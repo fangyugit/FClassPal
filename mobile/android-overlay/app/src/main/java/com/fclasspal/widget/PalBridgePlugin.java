@@ -587,6 +587,18 @@ public class PalBridgePlugin extends Plugin {
             }
             try {
                 Uri uri = data.getData();
+                /* v2.5.3-fix：部分 ROM（实测 Flyme「安全访问」隐私选择器）RESULT_OK 但
+                 * getData() 为 null，所选文件放在 clipData 里 —— 不兜这一层导入就是
+                 * 静默无反应（渲染层把 canceled 当用户取消，一声不吭）。 */
+                if (uri == null && data.getClipData() != null && data.getClipData().getItemCount() > 0) {
+                    uri = data.getClipData().getItemAt(0).getUri();
+                }
+                if (uri == null) {
+                    o.put("canceled", false);
+                    o.put("error", "系统没有回传所选文件（文件选择器兼容问题），请重试一次");
+                    notifyListeners("packPicked", o);
+                    return;
+                }
                 InputStream is = getContext().getContentResolver().openInputStream(uri);
                 ByteArrayOutputStream bos = new ByteArrayOutputStream();
                 byte[] buf = new byte[8192];
