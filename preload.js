@@ -63,8 +63,11 @@ contextBridge.exposeInMainWorld('widgetAPI', {
   themesReorder: (ids) => ipcRenderer.invoke('themes-reorder', ids),
   themesOpenFolder: () => ipcRenderer.invoke('themes-open-folder'),
   /* v2.5.0：检测更新 + 恢复出厂（关于界面） */
-  checkUpdate: () => ipcRenderer.invoke('check-update'),
+  // v2.6.2：可传 { apiBase } 指定自定义更新服务器（调试模式）
+  checkUpdate: (opts) => ipcRenderer.invoke('check-update', opts),
   factoryReset: () => ipcRenderer.invoke('factory-reset'),
+  // v2.6.2：调试台用 —— 在文件管理器里打开配置目录
+  openConfigDir: () => ipcRenderer.invoke('open-config-dir'),
   // U 盘列表变化（插入/拔出）时回调，参数为驱动数组
   onUsbChange: (callback) => {
     const handler = (_e, drives) => callback(drives);

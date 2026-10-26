@@ -33,10 +33,13 @@ const BUILTIN = [
     desc: 'Material Design 3 / Material You，跟随壁纸取色。' },
   { id: 'fluent', name: 'Fluent', accent: '#0B57D0', fixedPalette: false,
     desc: 'Windows 11 Fluent 亚克力质感，跟随壁纸取色。' },
-  { id: 'miuix', name: 'MIUI', accent: '#3482FF', fixedPalette: true,
-    desc: '小米 HyperOS / compose-miuix-ui 规范浅色方案。' },
-  { id: 'harmony', name: '鸿蒙', accent: '#0A59F7', fixedPalette: true,
-    desc: 'HarmonyOS 品牌蓝，圆角与控件沿用系统语言。' },
+  /* v2.6.2：用户要求改名 —— MIUI → 渐色、鸿蒙 → 经典；两套都开放主色自定义
+   * （fixedPalette: false）。中性表面与形状规范仍是它们自己的，只是不再钉死品牌色。
+   * id 一律不动：配置文件、主题包、探针断言都按 id 认。 */
+  { id: 'miuix', name: '渐色', accent: '#3482FF', fixedPalette: false,
+    desc: '小米 HyperOS 规范：超大圆角 + 彩色渐变表面 + 回弹动效。' },
+  { id: 'harmony', name: '经典', accent: '#0A59F7', fixedPalette: false,
+    desc: '中性表面 + 胶囊按钮 + 主色焦点环，圆角与控件沿用系统语言。' },
 ];
 const BUILTIN_IDS = BUILTIN.map((t) => t.id);
 

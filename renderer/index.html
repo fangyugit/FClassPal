@@ -211,7 +211,26 @@
       <span>设置</span>
       <button class="panel-close" id="btnSettingsClose"><svg class="ic"><use href="#i-x"/></svg></button>
     </div>
-    <div class="panel-body">
+    <div class="panel-main">
+    <!-- v2.6.2：左侧分区栏。点一下滚到对应分区，滚动时高亮自动跟着走。
+         触摸与鼠标用同一套：rail 是普通按钮，44px 起步的命中区。 -->
+    <nav class="panel-rail" id="panelRail" aria-label="设置分区">
+      <button type="button" class="rail-btn" data-sec="secFunction" aria-pressed="true">
+        <svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>
+        <span>功能</span>
+      </button>
+      <button type="button" class="rail-btn" data-sec="secPersonal" aria-pressed="false">
+        <svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>
+        <span>个性化</span>
+      </button>
+      <button type="button" class="rail-btn" data-sec="secAbout" aria-pressed="false">
+        <svg class="ic" aria-hidden="true"><use href="#i-book"/></svg>
+        <span>关于</span>
+      </button>
+    </nav>
+      <div class="panel-body" id="panelBody">
+        <section class="psec" id="secFunction">
+          <h4 class="psec-title">功能设置</h4>
       <label class="row">
         <span>窗口标题</span>
         <input type="text" id="setTitle" maxlength="12" />
@@ -257,71 +276,7 @@
           <button id="btnLayoutReset" class="text-btn" type="button">恢复默认</button>
         </div>
       </div>
-      <!-- 主题风格（v2.5.4 换回老样式）——
-           安卓真机上"只靠主题管理弹窗切换"这条路不稳，而且少了直观的快速切换：
-           设置面板这里直接给一个自绘下拉，点开是 44px 行高的列表，手指按得住，
-           内置皮肤和已装的主题包都在同一份清单里，点一下就换（数据源仍是注册表）。
-           管理（安装/导入/排序/删除）依旧走下面的「主题管理」。 -->
-      <div class="row" id="rowThemePick">
-        <span>主题风格</span>
-        <div class="tselect" id="themeSelect">
-          <button type="button" class="tselect-btn" id="themeSelectBtn"
-            aria-haspopup="listbox" aria-expanded="false" aria-label="主题风格">
-            <span class="tselect-dot" id="themeSelectDot"></span>
-            <span class="tselect-label" id="themeSelectLabel"></span>
-            <svg class="ic tselect-caret" aria-hidden="true"><use href="#i-down"/></svg>
-          </button>
-          <div class="tselect-pop hidden" id="themeSelectPop" role="listbox" aria-label="主题风格"></div>
-        </div>
-      </div>
-      <!-- 主题管理（v2.5.0）：本体只带五套内置皮肤，其余主题是 .fcpt 主题包。
-           这里只管安装/导入/排序/删除，页面底部的弹窗承担全部管理操作。 -->
-      <div class="row" id="rowThemeManage">
-        <span>主题管理</span>
-        <div class="btn-row">
-          <button id="btnThemeManage" class="text-btn" type="button">安装 / 排序 / 导入</button>
-        </div>
-      </div>
-      <div class="row">
-        <span>明暗模式</span>
-        <div class="seg" id="appearanceSeg" role="group" aria-label="明暗模式">
-          <button type="button" class="seg-btn" data-appearance="light" aria-pressed="true">明亮</button>
-          <button type="button" class="seg-btn" data-appearance="dark" aria-pressed="false">黑暗</button>
-          <button type="button" class="seg-btn" data-appearance="auto" aria-pressed="false">跟随系统</button>
-        </div>
-      </div>
-                        <div id="md3ColorBox">
-        <div class="row">
-          <span>主色来源</span>
-          <div class="seg" id="colorModeSeg" role="group" aria-label="主色来源">
-            <button type="button" class="seg-btn" data-mode="auto" aria-pressed="true">壁纸取色</button>
-            <button type="button" class="seg-btn" data-mode="manual" aria-pressed="false">手动指定</button>
-          </div>
-        </div>
-        <div class="row">
-          <span>当前主色</span>
-          <span id="paletteInfo" class="val blur-info">检测中…</span>
-        </div>
-        <div class="row" id="manualRow">
-          <span>指定主色</span>
-          <div class="color-pick">
-            <input type="color" id="accentColor" value="#6750a4" aria-label="指定主色" />
-            <span id="accentHex" class="val">#6750A4</span>
-          </div>
-        </div>
-        <div class="swatches" id="swatches" role="group" aria-label="推荐主色">
-          <button type="button" class="swatch" data-color="#6750A4" style="--c:#6750A4" aria-label="基线紫"></button>
-          <button type="button" class="swatch" data-color="#0B57D0" style="--c:#0B57D0" aria-label="宝石蓝"></button>
-          <button type="button" class="swatch" data-color="#00696E" style="--c:#00696E" aria-label="湖水青"></button>
-          <button type="button" class="swatch" data-color="#3F7D4E" style="--c:#3F7D4E" aria-label="松林绿"></button>
-          <button type="button" class="swatch" data-color="#F26100" style="--c:#F26100" aria-label="落日橙"></button>
-          <button type="button" class="swatch" data-color="#C2185B" style="--c:#C2185B" aria-label="玫瑰红"></button>
-          <button type="button" class="swatch" data-color="#F2A0BE" style="--c:#F2A0BE" aria-label="樱花粉"></button>
-          <button type="button" class="swatch" data-color="#7D5260" style="--c:#7D5260" aria-label="藕荷粉"></button>
-          <button type="button" class="swatch" data-color="#4A6572" style="--c:#4A6572" aria-label="石板灰"></button>
-        </div>
-              </div>
-      <p class="row-hint hidden" id="fixedPaletteHint"></p>
+
       <div class="row">
         <span>毛玻璃</span>
         <span id="blurInfo" class="val blur-info">检测中…</span>
@@ -478,7 +433,87 @@
         <span>使用统计</span>
         <div class="usage-list" id="usageList"></div>
       </div>
+        </section>
 
+        <section class="psec" id="secPersonal">
+          <h4 class="psec-title">个性化</h4>
+      <!-- 主题风格（v2.5.4 换回老样式）——
+           安卓真机上"只靠主题管理弹窗切换"这条路不稳，而且少了直观的快速切换：
+           设置面板这里直接给一个自绘下拉，点开是 44px 行高的列表，手指按得住，
+           内置皮肤和已装的主题包都在同一份清单里，点一下就换（数据源仍是注册表）。
+           管理（安装/导入/排序/删除）依旧走下面的「主题管理」。 -->
+      <div class="row" id="rowThemePick">
+        <span>主题风格</span>
+        <div class="tselect" id="themeSelect">
+          <button type="button" class="tselect-btn" id="themeSelectBtn"
+            aria-haspopup="listbox" aria-expanded="false" aria-label="主题风格">
+            <span class="tselect-dot" id="themeSelectDot"></span>
+            <span class="tselect-label" id="themeSelectLabel"></span>
+            <svg class="ic tselect-caret" aria-hidden="true"><use href="#i-down"/></svg>
+          </button>
+          <div class="tselect-pop hidden" id="themeSelectPop" role="listbox" aria-label="主题风格"></div>
+        </div>
+      </div>
+      <!-- 主题管理（v2.5.0）：本体只带五套内置皮肤，其余主题是 .fcpt 主题包。
+           这里只管安装/导入/排序/删除，页面底部的弹窗承担全部管理操作。 -->
+      <div class="row" id="rowThemeManage">
+        <span>主题管理</span>
+        <div class="btn-row">
+          <button id="btnThemeManage" class="text-btn" type="button">安装 / 排序 / 导入</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>明暗模式</span>
+        <div class="seg" id="appearanceSeg" role="group" aria-label="明暗模式">
+          <button type="button" class="seg-btn" data-appearance="light" aria-pressed="true">明亮</button>
+          <button type="button" class="seg-btn" data-appearance="dark" aria-pressed="false">黑暗</button>
+          <button type="button" class="seg-btn" data-appearance="auto" aria-pressed="false">跟随系统</button>
+        </div>
+      </div>
+                        <div id="md3ColorBox">
+        <div class="row">
+          <span>主色来源</span>
+          <div class="seg" id="colorModeSeg" role="group" aria-label="主色来源">
+            <button type="button" class="seg-btn" data-mode="auto" aria-pressed="true">壁纸取色</button>
+            <button type="button" class="seg-btn" data-mode="manual" aria-pressed="false">手动指定</button>
+          </div>
+        </div>
+        <div class="row">
+          <span>当前主色</span>
+          <span id="paletteInfo" class="val blur-info">检测中…</span>
+        </div>
+        <div class="row" id="manualRow">
+          <span>指定主色</span>
+          <div class="color-pick">
+            <input type="color" id="accentColor" value="#6750a4" aria-label="指定主色" />
+            <span id="accentHex" class="val">#6750A4</span>
+          </div>
+        </div>
+        <div class="swatches" id="swatches" role="group" aria-label="推荐主色">
+          <button type="button" class="swatch" data-color="#6750A4" style="--c:#6750A4" aria-label="基线紫"></button>
+          <button type="button" class="swatch" data-color="#0B57D0" style="--c:#0B57D0" aria-label="宝石蓝"></button>
+          <button type="button" class="swatch" data-color="#00696E" style="--c:#00696E" aria-label="湖水青"></button>
+          <button type="button" class="swatch" data-color="#3F7D4E" style="--c:#3F7D4E" aria-label="松林绿"></button>
+          <button type="button" class="swatch" data-color="#F26100" style="--c:#F26100" aria-label="落日橙"></button>
+          <button type="button" class="swatch" data-color="#C2185B" style="--c:#C2185B" aria-label="玫瑰红"></button>
+          <button type="button" class="swatch" data-color="#F2A0BE" style="--c:#F2A0BE" aria-label="樱花粉"></button>
+          <button type="button" class="swatch" data-color="#7D5260" style="--c:#7D5260" aria-label="藕荷粉"></button>
+          <button type="button" class="swatch" data-color="#4A6572" style="--c:#4A6572" aria-label="石板灰"></button>
+        </div>
+              </div>
+      <p class="row-hint hidden" id="fixedPaletteHint"></p>
+
+      <!-- 每日随机主题（v2.6.2）：每次启动按日期哈希挑一套已装主题，
+           同一天内启动多少次都是同一套（不会开一次换一次） -->
+      <label class="row toggle" id="rowDailyTheme">
+        <span>每日随机主题</span>
+        <input type="checkbox" id="setDailyTheme" />
+      </label>
+      <p class="row-hint">开启后每次启动按日期挑一套主题，同一天内保持不变；手动换主题会覆盖当天结果</p>
+        </section>
+
+        <section class="psec" id="secAbout">
+          <h4 class="psec-title">关于</h4>
       <!-- 关于：作者 / 版本号（连点 20 次触发重置）/ 检测更新 / GitHub 链接 -->
       <div class="about" id="aboutBlock">
         <div class="about-head">
@@ -491,6 +526,42 @@
           <button id="btnCheckUpdate" class="text-btn" type="button">检测更新</button>
           <button id="aboutGithub" class="text-btn about-link" type="button">GitHub 仓库</button>
         </div>
+      </div>
+
+      <!-- 调试模式（v2.6.2）：长按版本号 1.2 秒解锁，默认隐藏。
+           平台效果 = 让渲染层按指定平台跑（安卓会露出「主题风格」下拉；
+           Linux/macOS 用于预览各平台差异）；调试台 = 环境/配置/主题实况；
+           自定义更新服务器 = 填一个 GitHub API 兼容地址（自建镜像/内网）。 -->
+      <div class="debug-box hidden" id="debugBox">
+        <div class="debug-head"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>调试模式</div>
+        <div class="row">
+          <span>平台效果</span>
+          <div class="seg" id="simSeg" role="group" aria-label="平台效果预览">
+            <button type="button" class="seg-btn" data-sim="auto" aria-pressed="true">本机</button>
+            <button type="button" class="seg-btn" data-sim="android" aria-pressed="false">移动端</button>
+            <button type="button" class="seg-btn" data-sim="linux" aria-pressed="false">Linux</button>
+            <button type="button" class="seg-btn" data-sim="darwin" aria-pressed="false">macOS</button>
+          </div>
+        </div>
+        <div class="row">
+          <span>调试台</span>
+          <div class="btn-row">
+            <button id="btnDebugConsole" class="text-btn" type="button">打开调试台</button>
+          </div>
+        </div>
+        <div class="row">
+          <span>更新服务器</span>
+          <input type="text" id="setUpdateApi" placeholder="默认 GitHub API" />
+        </div>
+        <div class="row">
+          <span></span>
+          <div class="btn-row">
+            <button id="btnSaveUpdateApi" class="text-btn" type="button">保存服务器</button>
+            <button id="btnDebugExit" class="text-btn" type="button">退出调试模式</button>
+          </div>
+        </div>
+      </div>
+        </section>
       </div>
     </div>
   </div>
@@ -577,7 +648,9 @@
           </div>
         </div>
 
-        <!-- 自由布局参数（v2.6.0）：仅「自由」布局模式 + 编辑已有条目时出现 -->
+        <!-- 自由布局参数（v2.6.0）：仅「自由」布局模式 + 编辑已有条目时出现。
+             v2.6.2 扩展：图标在框内的显示大小 / 是否显示边框 / 是否显示文字，
+             三项都只作用于这一张卡片（存进 config.layout.items[key]）。 -->
         <div class="field hidden" id="itemLayoutField">
           <span>布局参数（自由模式）</span>
           <label class="layout-param">
@@ -589,6 +662,19 @@
             <span>高度</span>
             <input type="range" id="itemLayoutH" min="56" max="200" step="2" />
             <span id="itemLayoutHVal" class="val">84</span>
+          </label>
+          <label class="layout-param">
+            <span>图标大小</span>
+            <input type="range" id="itemIconScale" min="50" max="200" step="5" />
+            <span id="itemIconScaleVal" class="val">100%</span>
+          </label>
+          <label class="layout-param toggle-inline">
+            <span>显示边框</span>
+            <input type="checkbox" id="itemShowRing" />
+          </label>
+          <label class="layout-param toggle-inline">
+            <span>显示文字</span>
+            <input type="checkbox" id="itemShowLabel" />
           </label>
         </div>
 
@@ -668,6 +754,49 @@
           <button id="btnThemeInstall" class="text-btn" type="button">导入 .fcpt</button>
           <button id="btnThemeFolder" class="text-btn" type="button">打开主题文件夹</button>
           <button id="btnThemeRepoLink" class="text-btn" type="button">主题仓库</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 更新提示弹窗（v2.6.2）：检测到新版本时把该版本的更新日志摆出来，
+       两个出口 ——「忽略」记下这个版本不再提示，「更新」打开发布页/下载。
+       以前只 toast 一句"发现了新版本"就把人扔到浏览器，更新日志完全看不到。 -->
+  <div id="updateModal" class="modal hidden">
+    <div class="modal-card update-card">
+      <div class="modal-header">
+        <span>发现新版本</span>
+        <button class="panel-close" id="btnUpdateClose"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="update-head">
+          <span class="update-ver" id="updateVer">v0.0.0</span>
+          <span class="update-cur" id="updateCur"></span>
+        </div>
+        <div class="update-notes" id="updateNotes"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnUpdateIgnore" class="ghost-btn">忽略此版本</button>
+        <div class="spacer"></div>
+        <button id="btnUpdateGo" class="primary-btn">去更新</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 调试台（v2.6.2）：长按版本号进调试模式后从设置里打开。
+       只读展示环境/窗口/主题/配置摘要，外加几个救急按钮。 -->
+  <div id="debugModal" class="modal hidden">
+    <div class="modal-card debug-card">
+      <div class="modal-header">
+        <span>调试台</span>
+        <button class="panel-close" id="btnDebugClose"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="debug-grid" id="debugGrid"></div>
+        <div class="debug-actions btn-row">
+          <button id="btnDebugCopy" class="text-btn" type="button">复制配置</button>
+          <button id="btnDebugReload" class="text-btn" type="button">重载界面</button>
+          <button id="btnDebugOpenDir" class="text-btn" type="button">打开配置目录</button>
         </div>
       </div>
     </div>

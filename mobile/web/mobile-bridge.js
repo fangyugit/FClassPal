@@ -27,7 +27,7 @@
 
   var MOBILE_KEY = 'fclasspal-mobile-config';
   var FALLBACK_ACCENT = '#6750A4';   // 与桌面版 DEFAULT_CONFIG.accentColor 一致
-  var APP_VERSION = '2.6.0';
+  var APP_VERSION = '2.6.2';
 
   /* ---------------------------------------------------------------- 原生插件 */
   function plugin() {
@@ -714,18 +714,28 @@
      * "检测失败：API.checkUpdate is not a function"。桌面版走主进程（带 DoH 兜底），
      * 安卓 WebView 里直接 fetch GitHub API（api.github.com 允许跨域），拿不到就
      * 明确说网络问题，不装死。 */
-    checkUpdate: function () {
+    checkUpdate: function (opts) {
       var cur = APP_VERSION;
+      /* v2.6.2：桌面端的更新弹窗要展示更新日志，安卓这边同样带回来
+       * body / url（原来只回 latest + update，弹窗里就只剩"没有日志"）。 */
       var core = function (s) {
         var m = /(\d+)\.(\d+)\.(\d+)/.exec(String(s || ''));
         return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
       };
       var c = core(cur);
+      var base = 'https://api.github.com';
+      var apiBase = opts && typeof opts.apiBase === 'string' ? opts.apiBase.replace(/\/+$/, '') : '';
+      if (apiBase) {
+        if (!/^https?:\/\//i.test(apiBase)) {
+          return Promise.resolve({ success: false, error: '更新服务器地址无效' });
+        }
+        base = apiBase;
+      }
       return new Promise(function (resolve) {
         var done = false;
         var fin = function (r) { if (!done) { done = true; resolve(r); } };
         var timer = setTimeout(function () { fin({ success: false, error: '网络超时，稍后再试' }); }, 12000);
-        fetch('https://api.github.com/repos/fangyugit/FclassPal/releases/latest', { cache: 'no-store' })
+        fetch(base + '/repos/fangyugit/FclassPal/releases/latest', { cache: 'no-store' })
           .then(function (res) { return res.json(); })
           .then(function (j) {
             var tag = String((j && j.tag_name) || '').replace(/^v/i, '');
@@ -734,7 +744,11 @@
             var newer = !c || n[0] > c[0] ||
               (n[0] === c[0] && (n[1] > c[1] || (n[1] === c[1] && n[2] > c[2])));
             clearTimeout(timer);
-            fin({ success: true, current: cur, latest: tag, update: newer });
+            fin({
+              success: true, current: cur, latest: tag, update: newer,
+              body: String((j && j.body) || ''),
+              url: String((j && j.html_url) || '')
+            });
           })
           .catch(function () {
             clearTimeout(timer);

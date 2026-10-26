@@ -57,7 +57,9 @@ const DEFAULT_CONFIG = {
   // 壁纸本身，不随桌面内容变化。开启后才会逐帧采集窗口背后的桌面，但代价是
   // 系统截图/录屏看不到本窗口（setContentProtection 的副作用）。
   realtime: false,
-  theme: 'glass',      // 界面风格：'glass'=液态玻璃，'md3'=Material Design 3（壁纸取色）
+  /* v2.6.2：默认初始主题改为「经典」（原「鸿蒙」，id 仍是 harmony）。
+   * 老配置里已有 theme 字段的照旧生效，这里只影响全新安装。 */
+  theme: 'harmony',    // 界面风格：'harmony'=经典（默认）/ 'glass'=液态玻璃 / 'md3' / 'fluent' / 'miuix'=渐色
   // v2.5.0 起本体只带五套内置皮肤（glass/md3/fluent/miuix/harmony），
   // 角色主题全部拆成独立 .fcpt 主题包，落在 <配置目录>/themes/<id>/。
   // themeOrder 是「主题管理」里拖动排序的结果，只存 id 数组：内置五套永远在前，
@@ -2352,14 +2354,35 @@ async function githubApi(pathname) {
   }
 }
 
-ipcMain.handle('check-update', async () => {
+ipcMain.handle('check-update', async (_e, opts) => {
   const current = app.getVersion();
+  /* v2.6.2：调试模式允许自定义更新服务器（自建镜像 / 内网 GitHub API 代理）。
+   * 只接受 http(s) 形如 https://host[/prefix] 的地址，主机名 + 前缀都从 URL 里取，
+   * 这样 "https://ghproxy.example.com/api/v3" 这种也能用。 */
+  let host = GITHUB_API_HOST, prefix = '';
+  const raw = opts && typeof opts.apiBase === 'string' ? opts.apiBase.trim() : '';
+  if (raw) {
+    try {
+      const u = new URL(raw);
+      if (!/^https?:$/.test(u.protocol)) throw new Error('协议必须是 http/https');
+      host = u.host;
+      prefix = u.pathname.replace(/\/+$/, '');
+    } catch (err) {
+      return { success: false, error: '更新服务器地址无效：' + (err && err.message || err) };
+    }
+  }
+  const repoPath = prefix + '/repos/' + GITHUB_REPO + '/releases';
+  /* 默认服务器走 githubApi：它带 DoH over IP 的兜底（本机 hosts 把 github
+   * 钉到 127.0.0.1 时只有这条路能通）。自定义服务器没有这个兜底，直接打。 */
+  const call = (pathname) => (raw
+    ? httpsJson(host, pathname, null, null, 6000)
+    : githubApi(pathname));
   try {
     let list;
     try {
-      list = await githubApi('/repos/' + GITHUB_REPO + '/releases?per_page=30');
+      list = await call(repoPath + '?per_page=30');
     } catch (e) {
-      list = [await githubApi('/repos/' + GITHUB_REPO + '/releases/latest')];
+      list = [await call(repoPath + '/latest')];
     }
     if (!Array.isArray(list)) list = [list];
     const parse = (tag) => {
@@ -2384,9 +2407,27 @@ ipcMain.handle('check-update', async () => {
       const d = (best.v.num[i] || 0) - (cur.num[i] || 0);
       if (d) { update = d > 0; break; }
     }
-    return { success: true, update, latest: best.v.core, current };
+    /* v2.6.2：把更新日志与落地页一起带回去 —— 渲染层要用它做更新弹窗 */
+    return {
+      success: true, update, latest: best.v.core, current,
+      body: String(best.r.body || ''),
+      url: String(best.r.html_url || ''),
+      publishedAt: String(best.r.published_at || '')
+    };
   } catch (e) {
     return { success: false, error: friendlyNetError(e) };
+  }
+});
+
+/* ---------- 调试台：打开配置目录（v2.6.2） ----------
+ * 只开 <配置目录>，不开它的父目录，也不接受任何外部传入的路径。 */
+ipcMain.handle('open-config-dir', async () => {
+  try {
+    if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    await shell.openPath(CONFIG_DIR);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: String(e && e.message || e) };
   }
 });
 

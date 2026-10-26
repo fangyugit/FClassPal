@@ -2497,11 +2497,12 @@ body.theme-fluent .seg-btn[aria-pressed="true"] {
 body.theme-miuix {
   /* v2.1 对齐 compose-miuix-ui 规范（docs/zh_CN/guide/colors.md 浅色非 Monet 方案 +
    * ButtonDefaults/CardDefaults 的 CornerRadius=16dp）：
-   *   primary #3482FF / primaryContainer #5D9BFF / surface #F7F7F7 /
+   *   primary var(--t-accent) / primaryContainer #5D9BFF / surface #F7F7F7 /
    *   surfaceContainerHigh #E8E8E8 / outline #D9D9D9 / dividerLine #E0E0E0 / error #E94634。
    * ※ 与 kitty/dog 同机制——body 上直接覆盖配色中枢的 --md3-* 角色（body 的声明
    *   赢过从 :root 继承的值，Monet 取色到不了头上），MIUI 蓝从此不跟壁纸走。 */
-  --md3-primary: #3482FF;             --md3-primary-rgb: 52 130 255;
+  --t-accent-rgb: 52 130 255;  /* 品牌默认主色（rgb 三元组），「主色」里选完色会被内联值覆盖 */
+  --md3-primary: var(--t-accent);             --md3-primary-rgb: var(--t-accent-rgb);
   --md3-on-primary: #ffffff;          --md3-on-primary-rgb: 255 255 255;
   --md3-primary-container: #5D9BFF;   --md3-primary-container-rgb: 93 155 255;
   --md3-on-primary-container: #ffffff; --md3-on-primary-container-rgb: 255 255 255;
@@ -2510,7 +2511,7 @@ body.theme-miuix {
   --md3-on-secondary-container: #A9A9A9; --md3-on-secondary-container-rgb: 169 169 169;
   --md3-tertiary: #6EB5FF;            --md3-tertiary-rgb: 110 181 255;
   --md3-tertiary-container: #EAF2FF;  --md3-tertiary-container-rgb: 234 242 255;
-  --md3-on-tertiary-container: #3482FF; --md3-on-tertiary-container-rgb: 52 130 255;
+  --md3-on-tertiary-container: var(--t-accent); --md3-on-tertiary-container-rgb: var(--t-accent-rgb);
   --md3-surface: #F7F7F7;             --md3-surface-rgb: 247 247 247;
   --md3-surface-dim: #E8E8E8;         --md3-surface-dim-rgb: 232 232 232;
   --md3-surface-container: #FFFFFF;   --md3-surface-container-rgb: 255 255 255;
@@ -2527,7 +2528,7 @@ body.theme-miuix {
   --t-btn-r: 16px;
   --t-blur: blur(22px) saturate(150%);
   --t-veil-border: rgb(255 255 255 / 0.6);
-  --t-veil-shadow: inset 0 1px 0 rgb(255 255 255 / 0.8), 0 18px 40px -20px rgb(52 130 255 / 0.35);
+  --t-veil-shadow: inset 0 1px 0 rgb(255 255 255 / 0.8), 0 18px 40px -20px rgb(var(--t-accent-rgb) / 0.35);
   --t-surface: rgb(247 247 247 / 0.82);
   --t-surface-2: rgb(255 255 255 / 0.92);
   --t-surface-3: #EAF2FF;
@@ -2535,8 +2536,8 @@ body.theme-miuix {
   --t-accent: #3482FF;
   --t-on-accent: #ffffff;
   --t-accent-c: #EAF2FF;
-  --t-on-accent-c: #3482FF;
-  --t-shadow-hover: 0 10px 26px -10px rgb(52 130 255 / 0.45);
+  --t-on-accent-c: var(--t-accent);
+  --t-shadow-hover: 0 10px 26px -10px rgb(var(--t-accent-rgb) / 0.45);
   --t-shadow-menu: 0 12px 34px -12px rgb(0 0 0 / 0.28);
   --t-fw-title: 800; --t-fw-name: 600; --t-fw-btn: 700;
   --t-ease: cubic-bezier(0.2, 0, 0, 1);      /* HyperOS 标准减速曲线 */
@@ -2544,8 +2545,8 @@ body.theme-miuix {
   --t-dur: 180ms; --t-dur-mid: 300ms; --t-stagger: 25ms;
   --text: #000000;
   --text-soft: #8C93B0;
-  --accent: #3482FF;
-  --accent-soft: rgb(52 130 255 / 0.12);
+  --accent: var(--t-accent);
+  --accent-soft: rgb(var(--t-accent-rgb) / 0.12);
   --accent-border: rgb(217 217 217 / 0.9);
   --danger: #E94634;
   --glass-edge: rgb(255 255 255 / 0.6);
@@ -2748,11 +2749,12 @@ body.theme-miuix .seg-btn[aria-pressed="true"] {
 
 body.theme-harmony {
   /* v2.1 对齐 HarmonyOS 设计规范（developer.huawei.com/consumer/cn/doc/design-guides-V1/color
-   * 浅色系统色）：高亮色 #0A59F7 / 界面背景色 #F1F3F5 / 卡片 #FFFFFF /
+   * 浅色系统色）：高亮色 var(--t-accent) / 界面背景色 #F1F3F5 / 卡片 #FFFFFF /
    * 二级文本 60% 黑 ≈ #666666 / 分割线 20% 黑 ≈ #CCCCCC / 警告 #E84026。
    * ※ 与 kitty/dog/miuix 同机制——body 上直接覆盖 --md3-* 配色中枢（body 声明赢过
    *   :root 继承，Monet 取色到不了头上），鸿蒙蓝从此不跟壁纸走。 */
-  --md3-primary: #0A59F7;             --md3-primary-rgb: 10 89 247;
+  --t-accent-rgb: 10 89 247;  /* 品牌默认主色（rgb 三元组），「主色」里选完色会被内联值覆盖 */
+  --md3-primary: var(--t-accent);             --md3-primary-rgb: var(--t-accent-rgb);
   --md3-on-primary: #ffffff;          --md3-on-primary-rgb: 255 255 255;
   --md3-primary-container: #317AF7;   --md3-primary-container-rgb: 49 122 247;
   --md3-on-primary-container: #ffffff; --md3-on-primary-container-rgb: 255 255 255;
@@ -2785,8 +2787,8 @@ body.theme-harmony {
   --t-line: rgb(0 0 0 / 0.08);
   --t-accent: #0A59F7;
   --t-on-accent: #ffffff;
-  --t-accent-c: rgb(10 89 247 / 0.10);
-  --t-on-accent-c: #0A59F7;
+  --t-accent-c: rgb(var(--t-accent-rgb) / 0.10);
+  --t-on-accent-c: var(--t-accent);
   --t-shadow-hover: 0 2px 8px rgb(0 0 0 / 0.06), 0 10px 22px -12px rgb(0 0 0 / 0.14);
   --t-shadow-menu: 0 4px 14px rgb(0 0 0 / 0.08), 0 18px 40px -18px rgb(0 0 0 / 0.18);
   --t-fw-title: 600; --t-fw-name: 400; --t-fw-btn: 600;
@@ -2795,8 +2797,8 @@ body.theme-harmony {
   --t-dur: 180ms; --t-dur-mid: 280ms; --t-stagger: 20ms;
   --text: #000000;
   --text-soft: #666666;
-  --accent: #0A59F7;
-  --accent-soft: rgb(10 89 247 / 0.10);
+  --accent: var(--t-accent);
+  --accent-soft: rgb(var(--t-accent-rgb) / 0.10);
   --accent-border: rgb(0 0 0 / 0.10);
   --danger: #E84026;
   --glass-edge: rgb(0 0 0 / 0.07);
@@ -3567,3 +3569,310 @@ body > .tselect-pop { position: fixed; }
 }
 .layout-param input[type="range"] { flex: 1; accent-color: var(--accent); }
 .layout-param .val { min-width: 3.2em; text-align: right; }
+
+/* ============================================================
+ * v2.6.2
+ *   ① 设置面板左侧分区栏（功能设置 / 个性化 / 关于）
+ *   ② 自由布局：手柄命中区放大 + 每图标的显示选项（缩放/边框/文字）
+ *   ③ 按压白光（主界面 + 所有按钮）+ 滑块按住放大
+ *   ④ 更新弹窗 / 调试台
+ * ============================================================ */
+
+/* ---------- ① 设置面板：左侧分区栏 ----------
+ * panel 仍是自上而下的 flex（header + panel-main），
+ * panel-main 再横排 [rail | body]。body 保持原样滚动，rail 独立不滚。 */
+#settingsPanel { max-width: 360px; }
+.panel-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.panel-rail {
+  flex: 0 0 auto;
+  width: 62px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 6px;
+  border-right: 1px solid rgb(80 100 160 / 0.14);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.rail-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 50px;               /* 触摸命中区：太矮手指按不住 */
+  padding: 8px 2px;
+  border-radius: 12px;
+  color: var(--text-soft);
+  font-size: 0.67rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.16s, color 0.16s;
+}
+.rail-btn .ic { width: 17px; height: 17px; }
+.rail-btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .rail-btn:hover { background: rgb(120 140 200 / 0.14); color: var(--text); }
+}
+.panel-body { overscroll-behavior: contain; }
+.psec { scroll-margin-top: 4px; }
+.psec + .psec { margin-top: 4px; }
+.psec-title {
+  margin: 10px 0 2px;
+  padding-bottom: 5px;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  color: var(--text-soft);
+  border-bottom: 1px dashed rgb(80 100 160 / 0.18);
+}
+.psec:first-child .psec-title { margin-top: 2px; }
+
+/* ---------- ② 自由布局 ---------- */
+/* 触摸缩放/拖动的前提：卡片自己吃掉手势，别让 .content 的滚动抢走
+ * （抢走就是 pointercancel，表现为"手指按上去纹丝不动"）。
+ * 只在**编辑模式**里禁手势 —— 非编辑态下用户还要靠滑动滚列表，
+ * 一刀切会把滚动一起废掉。 */
+body.edit-mode #content.free-layout .item { touch-action: none; }
+/* 缩放手柄：命中区 34×34（原来 20×20，红外触摸框根本按不准），
+ * 可视箭头仍是小的，视觉不变 */
+.item-grip {
+  width: 34px;
+  height: 34px;
+  right: 0;
+  bottom: 0;
+  touch-action: none;
+}
+.item-grip::before {
+  right: 7px;
+  bottom: 7px;
+  width: 11px;
+  height: 11px;
+  border-right-width: 2.5px;
+  border-bottom-width: 2.5px;
+}
+/* 编辑模式下描一圈虚框，明确"这里可以抓" */
+.edit-mode #content.free-layout .item { outline: 1px dashed rgb(58 99 242 / 0.35); outline-offset: -1px; }
+#content.free-layout .item.free-moving,
+#content.free-layout .item.free-resizing {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+/* 图标在框内的显示大小（每图标独立，值写进 --fg-icon-scale） */
+#content.free-layout .item .item-icon {
+  transform: scale(var(--fg-icon-scale, 1));
+  transform-origin: center center;
+}
+/* 不显示文字 */
+#content.free-layout .item.hide-label .item-name { display: none; }
+/* 不显示边框：卡片框线/底/阴影全收掉，只剩图标与文字 */
+#content.free-layout .item.hide-ring,
+#content.free-layout .item.hide-ring::before,
+#content.free-layout .item.hide-ring::after {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+#content.free-layout .item.hide-ring:active { transform: none; }
+
+/* 布局参数里的开关行（图标大小 / 边框 / 文字） */
+.layout-param.toggle-inline { justify-content: space-between; }
+.layout-param.toggle-inline input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+}
+
+/* ---------- ③ 按压白光 ---------- */
+/* 主界面：手指按下去亮一片白光，松手淡出。跟主题无关（.sheen 在不少主题里
+ * 是 display:none，不能复用它）。 */
+.touch-light {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 340px;
+  height: 340px;
+  margin: -170px 0 0 -170px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  transform: scale(0.55);
+  background: radial-gradient(circle,
+    rgb(255 255 255 / 0.62) 0%,
+    rgb(255 255 255 / 0.30) 34%,
+    rgb(255 255 255 / 0) 70%);
+  mix-blend-mode: screen;
+  transition: opacity 0.34s ease, transform 0.42s cubic-bezier(0.2, 0.8, 0.3, 1);
+  will-change: opacity, transform;
+}
+.touch-light.on {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.1s ease-out, transform 0.16s ease-out;
+}
+/* 按钮：按下时在按点生成一片白光，动画结束自己移除（见 app.js bindPressLight） */
+.press-light {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--pl-r, 120px) * 2);
+  height: calc(var(--pl-r, 120px) * 2);
+  margin-left: calc(var(--pl-r, 120px) * -1);
+  margin-top: calc(var(--pl-r, 120px) * -1);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(circle,
+    rgb(255 255 255 / 0.8) 0%,
+    rgb(255 255 255 / 0.30) 44%,
+    rgb(255 255 255 / 0) 72%);
+  animation: pl-fade 0.55s ease-out forwards;
+}
+@keyframes pl-fade {
+  from { opacity: 1; transform: scale(0.35); }
+  to { opacity: 0; transform: scale(1); }
+}
+.pl-static { position: relative; }
+
+/* 按钮的玻璃质感 + 按压白光（低特异性，主题包/内置主题自己的规则照旧能盖） */
+.text-btn,
+.primary-btn,
+.ghost-btn,
+.pick-btn,
+.seg-btn,
+.rail-btn,
+.ctx-item,
+.theme-mini {
+  position: relative;
+  overflow: hidden;                       /* 白光裁剪在按钮内，不糊到旁边 */
+  isolation: isolate;
+  /* 刻意**不用** backdrop-filter：设置面板一开就是几十个按钮，逐颗开模糊在核显
+   * 机器上直接掉帧。玻璃感由"半透渐变 + 顶部受光 + 内高光"给，视觉差别很小，
+   * 而面板本身已经有整块模糊在下面托着。 */
+  background-image: linear-gradient(160deg,
+    rgb(255 255 255 / 0.55) 0%,
+    rgb(255 255 255 / 0.12) 46%,
+    rgb(255 255 255 / 0.26) 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.9),
+    inset 0 -1px 0 rgb(255 255 255 / 0.28),
+    0 4px 12px -8px rgb(20 40 100 / 0.42);
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s, color 0.15s;
+}
+.text-btn:active,
+.primary-btn:active,
+.ghost-btn:active,
+.pick-btn:active,
+.seg-btn:active,
+.rail-btn:active,
+.ctx-item:active,
+.theme-mini:active {
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.95),
+    inset 0 0 20px rgb(255 255 255 / 0.6),
+    0 2px 8px -6px rgb(20 40 100 / 0.4);
+}
+.text-btn > *,
+.primary-btn > *,
+.ghost-btn > *,
+.seg-btn > *,
+.ctx-item > * { position: relative; z-index: 1; }
+
+/* 滑块珠子：按住/拖动时放大，松开回缩（v2.6.2 用户点名）
+ * 伪元素吃不到 JS，所以由 app.js 在 pointerdown/up 上切 .slider-hot 类。
+ * 五个主题各自有珠子样式，这里逐条覆盖，保证哪套皮肤都放大。 */
+input[type="range"]::-webkit-slider-thumb {
+  transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.3, 1.35), box-shadow 0.16s ease;
+}
+input[type="range"].slider-hot::-webkit-slider-thumb,
+body.theme-glass input[type="range"].slider-hot::-webkit-slider-thumb,
+body.theme-md3 input[type="range"].slider-hot::-webkit-slider-thumb,
+body.theme-fluent input[type="range"].slider-hot::-webkit-slider-thumb,
+body.theme-miuix input[type="range"].slider-hot::-webkit-slider-thumb,
+body.theme-harmony input[type="range"].slider-hot::-webkit-slider-thumb {
+  transform: scale(1.5);
+  box-shadow:
+    inset 0 -2px 3px rgb(58 99 242 / 0.42),
+    inset 0 1px 1px #fff,
+    0 4px 12px -1px rgb(14 28 68 / 0.5),
+    0 0 0 6px rgb(255 255 255 / 0.5);
+}
+
+/* ---------- ④ 更新弹窗 / 调试台 ---------- */
+.update-card { max-width: 440px; }
+.update-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.update-ver { font-size: 1.08rem; font-weight: 780; color: var(--accent); }
+.update-cur { font-size: 0.76rem; color: var(--text-soft); }
+.update-notes {
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  white-space: pre-wrap;               /* 更新日志里的换行/缩进原样保留 */
+  word-break: break-word;
+  font-size: 0.82rem;
+  line-height: 1.66;
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.55);
+  border: 1px solid rgb(80 100 160 / 0.16);
+}
+.debug-card { max-width: 440px; }
+.debug-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 14px;
+  font-size: 0.8rem;
+}
+.debug-k { color: var(--text-soft); white-space: nowrap; }
+.debug-v { color: var(--text); word-break: break-all; }
+.debug-actions { margin-top: 14px; flex-wrap: wrap; }
+.debug-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px dashed rgb(58 99 242 / 0.38);
+  background: rgb(58 99 242 / 0.06);
+}
+.debug-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-size: 0.74rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+.debug-head .ic { width: 14px; height: 14px; }
+
+/* 深色层：v2.6.2 新加的浅底部件在 dark 下要压暗（升特异性，见文件头的规矩） */
+html body.dark .update-notes,
+html body.dark .debug-box {
+  background: rgb(10 13 20 / 0.55);
+  border-color: rgb(255 255 255 / 0.14);
+}
+html body.dark .psec-title { border-bottom-color: rgb(255 255 255 / 0.14); }
+html body.dark .panel-rail { border-right-color: rgb(255 255 255 / 0.12); }

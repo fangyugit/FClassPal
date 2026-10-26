@@ -147,7 +147,7 @@ const API = window.widgetAPI || (function () {
     alwaysOnTop: false, keepBottom: true, autoLaunch: false, locked: false,
     /* 与 main.js 的 DEFAULT_CONFIG 对齐；缺了这几项预览模式开场就是 undefined，
      * 设置面板会读出一堆空值（风格按钮、取色器） */
-    theme: 'glass', colorMode: 'auto', accentColor: PREVIEW_SOURCE, accentPicked: false,
+    theme: 'harmony', colorMode: 'auto', accentColor: PREVIEW_SOURCE, accentPicked: false,
     /* 明暗模式 + 自定义背景（v2.4.0），与 main.js 的 DEFAULT_CONFIG 对齐 */
     appearance: 'light',
     background: { enabled: false, path: '', blur: 0, mask: 0, scale: 100, offsetX: 50, offsetY: 50, fit: 'cover' },
@@ -183,7 +183,8 @@ const API = window.widgetAPI || (function () {
     selectImage: () => Promise.resolve({ path: 'demo', url: DEMO_ICON }),
     getEnv: () => Promise.resolve({ transparent: true, platform: 'browser', release: '0' }),
     // 关于界面：预览模式没有主进程，版本号给个占位；链接用新窗口模拟
-    getAppVersion: () => Promise.resolve('2.4.3'),
+    /* 预览模式的版本号：与 package.json 保持一致（_check.js 有同源断言，别让它漂） */
+    getAppVersion: () => Promise.resolve('2.6.2'),
     openExternal: (url) => { window.open(url, '_blank'); return Promise.resolve(true); },
     // 预览模式取不到真实壁纸：返回 null，让 #envLayer 用内置渐变基底，
     // MD3 则退回 CSS 里的 baseline 配色
@@ -297,16 +298,30 @@ const ctxMenu = $('ctxMenu');
  * 安卓壳没有主进程 → 拿不到主题包，注册表就停在"内置五套"，界面照常可用。 */
 const BUILTIN_THEMES = ['glass', 'md3', 'fluent', 'miuix', 'harmony'];
 const BUILTIN_LABEL = {
-  glass: '液态玻璃', md3: 'MD3', fluent: 'Fluent', miuix: 'MIUI', harmony: '鸿蒙'
+  /* v2.6.2 用户要求改名：鸿蒙 → 经典、MIUI → 渐色。
+   * 只改**展示名**，id 保持 miuix / harmony —— id 是配置文件、主题包、探针断言
+   * 共用的键，动它等于把所有老配置和主题包一起打翻。 */
+  glass: '液态玻璃', md3: 'MD3', fluent: 'Fluent', miuix: '渐色', harmony: '经典'
 };
 /* 每套主题的推荐主色：从「莫奈取色」切到「手动指定」时用它当起点，
  * 这样每套风格一上手就是自己的味道（而不是一律基线紫）。 */
 const BUILTIN_ACCENT = {
   glass: '#6750A4', md3: '#6750A4', fluent: '#0B57D0', miuix: '#3482FF', harmony: '#0A59F7'
 };
-/* 固定配色（不跟壁纸取色）的内置主题：MIUI / 鸿蒙 是品牌色方案。
- * 主题包默认也是固定配色（manifest 里 fixedPalette，缺省 true）。 */
-const BUILTIN_FIXED = ['miuix', 'harmony'];
+/* 固定配色（不跟壁纸取色）的内置主题。
+ * v2.6.2：清空 —— 用户要求「渐色 / 经典 都要开放颜色的自由选择」。
+ * 这两套仍然保留自己的**中性表面**（浅灰/米白）与形状规范，只是主色不再钉死为
+ * 牌子蓝：选色面板照常出现，选完把 palette 的强调色族内联写到 body 上，
+ * 覆盖 body.theme-xxx{} 里那份硬编码（见 applyBrandAccent）。
+ * 角色主题包（.fcpt）依旧是固定配色，manifest 里 fixedPalette 缺省 true。
+ * ※ 空数组是有意的：别再往里塞，固定配色会让「主色」面板对它隐身。 */
+const BUILTIN_FIXED = [];
+/* 品牌色主题（v2.6.2）：主色可换，但表面/形状/动效是它们自己的规范。
+ * applyBrandAccent 会把用户选的强调色族内联写到 body（内联赢过 body.theme-xxx 规则）。 */
+const BRAND_ACCENT_THEMES = ['miuix', 'harmony'];
+/* 默认初始主题（v2.6.2）：用户点名「以后默认初始主题就设置成"经典"」。
+ * 经典 = 原「鸿蒙」那套（id 仍是 harmony）。 */
+const DEFAULT_THEME = 'harmony';
 
 let THEMES = BUILTIN_THEMES.slice();
 let FLAT_THEMES = BUILTIN_THEMES.filter((t) => t !== 'glass');
@@ -319,13 +334,13 @@ let THEME_ACCENT_LIST = Object.keys(THEME_ACCENT).map((k) => THEME_ACCENT[k].toU
 let themePackCss = {};
 /* 主题管理弹窗的最近一次清单（排序/装/删之后重画用） */
 let themeInv = null;
-let currentTheme = 'glass';
+let currentTheme = DEFAULT_THEME;
 /* 用户是否亲手挑过主色。为 false 时，切风格/切手动模式会用该风格的推荐色；
  * 为 true 就一律尊重用户的选择，不再被主题默认值覆盖。 */
 let accentPicked = false;
 
 function applyTheme(theme) {
-  const t = THEMES.indexOf(theme) >= 0 ? theme : 'glass';
+  const t = THEMES.indexOf(theme) >= 0 ? theme : DEFAULT_THEME;
   currentTheme = t;
   /* 要清的类 = 注册表里的全部 + body 上**已存在**的 theme-*。
    * 后一半是主题包被删掉时的保险：那个 id 已经不在注册表里了，
@@ -346,6 +361,10 @@ function applyTheme(theme) {
    * 黑暗模式下它们的 --md3-* 角色由主进程的 Monet 暗色方案整份给出，CSS 层
    * 必须"别插手"—— body.dark:not(.dyn) 才去压表面角色。 */
   document.body.classList.toggle('dyn', isDynamicTheme(t));
+  /* v2.6.2：换到品牌色主题（渐色/经典）要把用户选的主色内联铺上去；
+   * 换到别的皮肤必须撤掉，否则上一套的强调色会跟着串过来。 */
+  if (BRAND_ACCENT_THEMES.indexOf(t) >= 0) applyBrandAccent(lastPalette);
+  else clearBrandAccent();
   /* 图标外观要跟着主题"重算几何"（v2.4.3）：形状选「跟随主题」时，「内部」的内缩量
    * 是从主题给的圆角半径实测出来的 —— 换了主题不重测，MD3 会沿用玻璃的 14.65%
    * （多留一圈白）、玻璃会沿用 MD3 的 10.98%（圆角处切掉一点点）。
@@ -354,8 +373,13 @@ function applyTheme(theme) {
   syncThemeSelect();          /* 老样式下拉：跟着当前主题显示名字与色点 */
 }
 
-/** 动态配色（跟底材取色）的主题：玻璃基线 + MD3 + Fluent */
+/** 动态配色（跟底材取色）的主题：玻璃基线 + MD3 + Fluent
+ * ※ v2.6.2：「渐色 / 经典」虽然现在**允许换主色**，但它们的表面仍是自己那套
+ *   浅色规范 + 由 body.dark:not(.dyn) 压暗，所以 **不能**标成 dyn ——
+ *   标了以后那段深色兜底会对它们失效，深色模式下会一片惨白。
+ *   "能不能选色"与"是不是 dyn"从此是两件事，别再合并判断。 */
 function isDynamicTheme(t) {
+  if (BRAND_ACCENT_THEMES.indexOf(t) >= 0) return false;
   return FIXED_PALETTE_THEMES.indexOf(t) < 0;
 }
 
@@ -391,6 +415,63 @@ function applyPalette(palette) {
     const triplet = hexToRgbTriplet(hex);
     if (triplet) root.style.setProperty('--md3-' + role + '-rgb', triplet);
   });
+  applyBrandAccent(palette);
+}
+
+/* ---------- 品牌色主题的「主色自由选择」（v2.6.2） ----------
+ * 「渐色」「经典」两套的中性表面与形状规范要保留，但主色不该钉死。
+ * 难点在于它们在 style.css 里是 `body.theme-miuix { --md3-primary: #3482FF; … }`
+ * —— body 上的声明赢过 :root 继承，所以 applyPalette 写什么都到不了头上。
+ * 解法：把强调色族**内联写到 body**（内联样式优先级最高，能压过它自己的规则），
+ * 只覆盖"颜色"那一族，表面/圆角/字重/动效一律不动。
+ * 不同主题来回切时要把上一轮的内联值撤掉，否则会跟着串到别的皮肤上。 */
+const BRAND_ACCENT_ROLES = [
+  'primary', 'on-primary', 'primary-container', 'on-primary-container',
+  'tertiary', 'on-tertiary', 'tertiary-container', 'on-tertiary-container'
+];
+let brandAccentProps = [];
+/* 最近一次拿到的调色板（applyPalette 里存）。换主题时要用它重铺品牌色覆盖，
+ * 而 applyTheme 可能在 wallInfo 初始化之前就被调用 —— 另存一份最稳。 */
+let lastPalette = null;
+function clearBrandAccent() {
+  if (!brandAccentProps.length) return;
+  const b = document.body;
+  brandAccentProps.forEach((p) => b.style.removeProperty(p));
+  brandAccentProps = [];
+}
+function applyBrandAccent(palette) {
+  if (BRAND_ACCENT_THEMES.indexOf(currentTheme) < 0) { clearBrandAccent(); return; }
+  if (!palette || !palette.primary) return;
+  lastPalette = palette;
+  const b = document.body;
+  const set = (prop, val) => {
+    if (val == null || val === '') return;
+    b.style.setProperty(prop, val);
+    if (brandAccentProps.indexOf(prop) < 0) brandAccentProps.push(prop);
+  };
+  BRAND_ACCENT_ROLES.forEach((role) => {
+    const key = role.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    const hex = palette[key];
+    if (!hex) return;
+    set('--md3-' + role, hex);
+    const t = hexToRgbTriplet(hex);
+    if (t) set('--md3-' + role + '-rgb', t);
+  });
+  /* 这两套内部还有一批写死品牌色的组件变量（按钮、焦点环、阴影），
+   * 它们读的是 --t-accent 族。一并指到用户选的主色上，皮肤才不会一半新一半旧。
+   * --t-accent-c 原本是"主色的 10% 淡底"，这里同样按比例现算，别塞个实色进去。 */
+  const p = palette.primary, oc = palette.onPrimaryContainer;
+  const tr = hexToRgbTriplet(p);
+  set('--t-accent', p);
+  set('--accent', p);
+  set('--t-on-accent', palette.onPrimary || '#fff');
+  if (tr) {
+    set('--t-accent-rgb', tr);
+    set('--accent-soft', 'rgb(' + tr + ' / 0.12)');
+    set('--t-accent-c', 'rgb(' + tr + ' / 0.12)');
+    set('--t-shadow-hover', '0 10px 26px -10px rgb(' + tr + ' / 0.45)');
+  }
+  if (oc) set('--t-on-accent-c', oc);
 }
 
 /* ---------- MD3 动效（motion） ----------
@@ -986,22 +1067,53 @@ function applyFreeLayout(el, it) {
   if (Number.isFinite(l.y)) el.style.top = Math.round(l.y) + 'px';
   if (Number.isFinite(l.w) && l.w >= 48) el.style.width = Math.round(l.w) + 'px';
   if (Number.isFinite(l.h) && l.h >= 48) el.style.height = Math.round(l.h) + 'px';
+  applyFreeItemLook(el, l);
 }
 
-/* ---------- 自由布局：拖动移动 / 手柄缩放（仅编辑模式） ---------- */
+/* ---------- 每图标的显示选项（v2.6.2） ----------
+ * 用户要「自由模式可以调节每个图标在框内的显示大小、是否要边框、是否显示字」。
+ * 三项都存在 config.layout.items[key] 上（跟坐标同一张表，备份/迁移天然带着走）：
+ *   iconScale  0.5~2   → 写进 --fg-icon-scale，由 CSS 缩 .item-icon
+ *   showRing   false   → 卡片加 .hide-ring，边框与那圈玻璃白边一起收掉
+ *   showLabel  false   → 卡片加 .hide-label，名字不显示（点按仍可打开）
+ * 缺省（undefined）= 全显示，老配置不用迁移。 */
+function applyFreeItemLook(el, l) {
+  const scale = Math.max(0.5, Math.min(2, Number(l.iconScale) || 1));
+  el.style.setProperty('--fg-icon-scale', String(scale));
+  el.classList.toggle('hide-ring', l.showRing === false);
+  el.classList.toggle('hide-label', l.showLabel === false);
+}
+
+/* ---------- 自由布局：拖动移动 / 手柄缩放（仅编辑模式） ----------
+ * v2.6.2 重做 —— 用户报「自由排列的时候触摸根本无法拖动调整大小」，三个原因：
+ *   ① 事件只挂在 groupsEl 上、且要等位移满 5px 才 setPointerCapture。触摸时
+ *      pointerdown 之后 Chromium 会先按"可能的滚动手势"处理，一判定就发
+ *      pointercancel；捕获又还没建立，后续 pointermove 直接派给手指底下的元素
+ *      （卡片本身在动 → 目标每帧都在换），groupsEl 收不到 → 手感是"纹丝不动"。
+ *      → **pointerdown 当场就把捕获建立在自己身上**，并把 move/up/cancel 同时挂到
+ *      document 捕获段（与标题栏拖动同款兜底，不依赖捕获是否还活着）。
+ *   ② 缩放手柄只有 20×20 且命中区等于可视区，手指（尤其红外框）按不准。
+ *      → 命中区放大到 34×34（可视箭头仍是小的），触摸阈值降到 2px。
+ *   ③ 手柄和卡片移动抢同一个 pointerdown，靠 closest 猜。现在先判手柄、再判卡片，
+ *      顺序固定，不猜。 */
 let freeDrag = null;   // { mode:'move'|'resize', el, key, pointerId, startX, startY, started, orig }
+const FREE_TOUCH_THRESHOLD = { move: 5, resize: 2 };
 
 groupsEl.addEventListener('pointerdown', (e) => {
   if (layoutMode() !== 'free' || !editMode || freeDrag || itemDrag) return;
   if (e.button !== undefined && e.button !== 0) return;
-  const card = e.target.closest ? e.target.closest('.item') : null;
+  const t = e.target;
+  if (!t || !t.closest) return;
+  const card = t.closest('.item');
   if (!card || card.classList.contains('add-card')) return;
-  if (e.target.closest('.del-btn')) return;              // 删除按钮照常点
+  const grip = t.closest('.item-grip');
+  if (!grip && t.closest('.del-btn')) return;            // 删除按钮照常点
   const gi = +card.dataset.gi, ii = +card.dataset.ii;
   const it = config.groups[gi] && config.groups[gi].items[ii];
   if (!it) return;
+  const mode = grip ? 'resize' : 'move';
   freeDrag = {
-    mode: (e.target.closest && e.target.closest('.item-grip')) ? 'resize' : 'move',
+    mode: mode,
     el: card, key: layoutKey(it),
     pointerId: e.pointerId,
     startX: e.clientX, startY: e.clientY, started: false,
@@ -1010,16 +1122,19 @@ groupsEl.addEventListener('pointerdown', (e) => {
       freeLayoutOf(it) || {}
     )
   };
+  /* ① 立刻抓在手里：手柄抓手柄、移动抓卡片。触摸下这一步是关键 ——
+   *    等 5px 再抓的话，捕获建立之前就可能已经 pointercancel 了。 */
+  try { (grip || card).setPointerCapture(e.pointerId); } catch (err) { /* 老内核没有就算了 */ }
 });
 
-groupsEl.addEventListener('pointermove', (e) => {
+const onFreeMove = (e) => {
   if (!freeDrag || e.pointerId !== freeDrag.pointerId) return;
   const d = freeDrag;
+  const thr = FREE_TOUCH_THRESHOLD[d.mode] || 5;
   if (!d.started) {
     const dx0 = Math.abs(e.clientX - d.startX), dy0 = Math.abs(e.clientY - d.startY);
-    if (dx0 < 5 && dy0 < 5) return;
+    if (dx0 < thr && dy0 < thr) return;
     d.started = true;
-    try { groupsEl.setPointerCapture(d.pointerId); } catch (err) { /* 老内核没有就算了 */ }
     d.el.classList.add(d.mode === 'move' ? 'free-moving' : 'free-resizing');
   }
   const dx = e.clientX - d.startX, dy = e.clientY - d.startY;
@@ -1032,12 +1147,14 @@ groupsEl.addEventListener('pointermove', (e) => {
     d.el.style.width = Math.round(Math.max(56, Math.min(400, d.orig.w + dx))) + 'px';
     d.el.style.height = Math.round(Math.max(56, Math.min(400, d.orig.h + dy))) + 'px';
   }
-});
+};
+document.addEventListener('pointermove', onFreeMove, true);
 
 function endFreeDrag(e, cancelled) {
   if (!freeDrag || (e.pointerId !== undefined && e.pointerId !== freeDrag.pointerId)) return;
   const d = freeDrag;
   freeDrag = null;
+  try { if (d.el.hasPointerCapture && d.el.hasPointerCapture(d.pointerId)) d.el.releasePointerCapture(d.pointerId); } catch (err) {}
   if (!d.started) return;
   d.el.classList.remove('free-moving', 'free-resizing');
   itemDragSuppressed = true;   // 拖完吞掉紧跟的 click，别误开编辑弹窗/目标
@@ -1057,6 +1174,9 @@ function endFreeDrag(e, cancelled) {
 }
 groupsEl.addEventListener('pointerup', (e) => endFreeDrag(e, false));
 groupsEl.addEventListener('pointercancel', (e) => endFreeDrag(e, true));
+/* ① 捕获丢了/事件派到别处也一样收得住（触摸序列里 pointercancel 很常见） */
+document.addEventListener('pointerup', (e) => endFreeDrag(e, false), true);
+document.addEventListener('pointercancel', (e) => endFreeDrag(e, true), true);
 
 /* ---------- 布局设置（设置面板） ---------- */
 function syncLayoutSeg() {
@@ -1529,7 +1649,15 @@ let dragLastAt = 0;            // 上一次有效位移的时间戳（卡死自�
 const DRAG_CANCEL_GRACE = 260; // 取消后仍可无缝续拖的时间窗（ms）
 const DRAG_MAX_STEP = 240;     // 单帧最大可信位移（px）
 const DRAG_SETTLE = 200;       // ⑥ 手势收尾延迟（ms），见下面 beginMoveSession
-const DRAG_SMOOTH = 0.45;      // ⑧ 触摸坐标平滑系数（只对非鼠标输入生效），见 onDragMove
+/* ⑨ 触摸坐标滤波参数（v2.6.2 重做"跟手度"）
+ * v2.6.0 用固定 EMA α=0.45 压噪声，噪声是压住了，但**滞后**也上来了：
+ * 匀速拖动时平滑值落后真实手指 (1-α)/α ≈ 1.2 个事件位移，而红外框事件率远高于
+ * 帧率，实测就是用户说的"拖的时候慢、不太跟手"。
+ * 现在改成**自适应**滤波：小位移（< DRAG_DEADBAND）当噪声直接吃掉不输出；
+ * 位移越大系数越接近 1，超过 DRAG_FULL_AT 就 1:1 直通 —— 快拖零滞后、
+ * 慢放不抖，两头都占住。鼠标路径完全不走这里。 */
+const DRAG_DEADBAND = 1.2;     // 死区（px）：小于它视为采样噪声
+const DRAG_FULL_AT = 14;       // 单次事件位移达到它 → 系数给满（1:1 跟手）
 const titlebar = $('titlebar');
 
 /* ---------- 拖拽会话（v2.5.4）：一次手势只开关一次"降载" ----------
@@ -1561,6 +1689,23 @@ function endMoveSession(done) {
     if (typeof API.setDragging === 'function') API.setDragging(false);
     if (typeof done === 'function') done();
   }, DRAG_SETTLE);
+}
+
+/* ---------- 触摸坐标一阶滤波（v2.6.2） ----------
+ * 输入 raw = 本次事件的屏幕坐标，prev = 上一次滤波后的值；返回新的滤波值。
+ * 规则（三段）：
+ *   |d| < 死区        → 原样返回 prev（这一下是采样噪声，窗口不动 = 不抖）
+ *   死区 ≤ |d| < 满速 → 系数从 0.6 线性升到 1（越动越快，越像手指）
+ *   |d| ≥ 满速        → 系数 1，直接落在 raw 上（快拖零滞后）
+ * 这样"慢放"仍然是平滑的（红外框噪声全在死区里），"快拖"则完全不掉队。
+ * 拖动与缩放共用同一个函数，两处手感才一致。 */
+function touchFollow(raw, prev) {
+  if (prev == null || !Number.isFinite(prev)) return raw;
+  const d = raw - prev;
+  const ad = Math.abs(d);
+  if (ad < DRAG_DEADBAND) return prev;
+  const a = ad >= DRAG_FULL_AT ? 1 : 0.6 + (ad / DRAG_FULL_AT) * 0.4;
+  return prev + d * a;
 }
 
 function applyMove() {
@@ -1614,10 +1759,11 @@ titlebar.addEventListener('pointerdown', (e) => {
   beginMoveSession(null);        // ⑥ 会话式降载：不再每按一次就摘/戴滤镜
   try { titlebar.setPointerCapture(e.pointerId); } catch (_) {}
 });
-/* ⑧+⑦ 拖拽移动（v2.6.0 触摸热修，版本号不变）：
- *   ⑧ 触摸/触控笔坐标走 EMA 平滑——教室大屏的红外触摸框 ±1~3px 噪声原样喂给
- *      setPosition，窗口就跟着手指高频抖（鼠标本来就稳，不做平滑、手感不变）。
- *      α=0.45 滞后 1~2 帧，肉眼追不出，噪声基本滤净。
+/* ⑧+⑦ 拖拽移动（v2.6.0 触摸热修；v2.6.2 重做滤波解决"不跟手"）：
+ *   ⑧ 触摸/触控笔坐标走**自适应滤波**（touchFollow）——教室大屏的红外触摸框
+ *      ±1~3px 噪声原样喂给 setPosition，窗口就跟着手指高频抖；但 v2.6.0 的
+ *      固定 α=0.45 又把快速拖动拖出 1~2 个事件位移的滞后，用户反馈"慢、不跟手"。
+ *      现在小位移进死区、大位移系数给满，滤波与跟手不再互斥（鼠标不做处理）。
  *   ⑦ 事件同时挂 document 捕获段。drag-diag.log 证明这台机器上触摸拖动必夹
  *      pointercancel/lostpointercapture（toggles=4）——捕获一丢，后续 pointermove
  *      就派给"手指底下当时命中的元素"（窗口每帧都在动，命中的元素每帧都在换），
@@ -1651,9 +1797,11 @@ const onDragMove = (e) => {
   if (e.pointerType === 'mouse') {
     lastX = e.screenX; lastY = e.screenY;
   } else {
-    const sx = e.screenX, sy = e.screenY;
-    lastX = dragSmX = (dragSmX == null) ? sx : dragSmX + (sx - dragSmX) * DRAG_SMOOTH;
-    lastY = dragSmY = (dragSmY == null) ? sy : dragSmY + (sy - dragSmY) * DRAG_SMOOTH;
+    /* ⑨ 自适应滤波（v2.6.2）：慢放滤噪、快拖 1:1。
+     * v2.6.0 的固定 α=0.45 是"跟手度不够"的元凶（滞后约 1.2 个事件位移）。 */
+    dragSmX = touchFollow(e.screenX, dragSmX);
+    dragSmY = touchFollow(e.screenY, dragSmY);
+    lastX = dragSmX; lastY = dragSmY;
   }
   dragLastAt = Date.now();
   if (!dragRaf) dragRaf = requestAnimationFrame(applyMove);  // 一帧最多一次
@@ -1730,9 +1878,9 @@ const onRsMove = (e) => {
   if (e.pointerType === 'mouse') {
     rsLastX = e.screenX; rsLastY = e.screenY;
   } else {
-    const sx = e.screenX, sy = e.screenY;
-    rsLastX = rsSmX = (rsSmX == null) ? sx : rsSmX + (sx - rsSmX) * DRAG_SMOOTH;
-    rsLastY = rsSmY = (rsSmY == null) ? sy : rsSmY + (sy - rsSmY) * DRAG_SMOOTH;
+    rsSmX = touchFollow(e.screenX, rsSmX);
+    rsSmY = touchFollow(e.screenY, rsSmY);
+    rsLastX = rsSmX; rsLastY = rsSmY;
   }
   if (!rsRaf) rsRaf = requestAnimationFrame(applyResize);
 };
@@ -2671,8 +2819,37 @@ function showOpacityBar() {
   if (editMode) return;
   opacityBar.classList.add('show');
   clearTimeout(hideTimer);
-  hideTimer = setTimeout(() => opacityBar.classList.remove('show'), 2800);
+  hideTimer = setTimeout(() => {
+    /* v2.6.2：手指还按在条上（正在拖珠子）就别收走 —— 以前触摸根本看不到这根条，
+     * 现在能看到就绝不能在拖到一半时消失 */
+    if (holdingBar) { showOpacityBar(); return; }
+    opacityBar.classList.remove('show');
+  }, 2800);
 }
+/* v2.6.2：触摸设备没有 hover，原来只有 mouseenter/mousemove 会让这根条出现，
+ * 于是"液态玻璃的透明度调节条在触屏上根本出不来"（用户报的坨坨点不到）。
+ * 现在触摸按下主界面任意空白处就把它请出来，按住条本身期间不收。 */
+let holdingBar = false;
+widget.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') return;                 // 鼠标仍走 hover 那套
+  const t = e.target;
+  if (t && t.closest && t.closest('.opacity-bar')) return;   // 已经按在条上，不用再请
+  if (t && t.closest && t.closest('#titlebar, #resizeHandle')) return;
+  showOpacityBar();
+}, true);
+opacityBar.addEventListener('pointerdown', (e) => {
+  holdingBar = true;
+  clearTimeout(hideTimer);
+  opacityBar.classList.add('show');
+  e.stopPropagation();
+}, true);
+const releaseBar = () => {
+  if (!holdingBar) return;
+  holdingBar = false;
+  showOpacityBar();
+};
+document.addEventListener('pointerup', releaseBar, true);
+document.addEventListener('pointercancel', releaseBar, true);
 widget.addEventListener('mouseenter', showOpacityBar);
 widget.addEventListener('mousemove', showOpacityBar);
 widget.addEventListener('mouseleave', () => opacityBar.classList.remove('show'));
@@ -2785,6 +2962,7 @@ function openSettings() {
   $('sizeVal').textContent = `${Math.round(bounds.width)} × ${Math.round(bounds.height)}`;
   syncSettingsControls();
   syncLayoutSeg();   // v2.6.0：布局模式分段按钮跟着配置走
+  syncDebugControls();   // v2.6.2：每日随机主题 / 调试区（含平台效果、更新服务器）
   describePalette(wallInfo && wallInfo.palette);
   $('settingsPanel').classList.remove('hidden');
 }
@@ -2803,8 +2981,9 @@ function syncSettingsControls() {
   if (hint) {
     hint.classList.toggle('hidden', !fixed);
     if (fixed) {
+      /* v2.6.2：「渐色」「经典」已开放主色自定义，固定配色的只剩下角色主题包 */
       hint.textContent = '「' + (THEME_LABEL[currentTheme] || currentTheme) +
-        '」使用官方规范固定配色，不跟壁纸取色。想自定义配色请切回液态玻璃 / MD3 / Fluent。';
+        '」是主题包自带的固定配色，不跟壁纸取色。想自定义配色请切到液态玻璃 / MD3 / Fluent / 经典 / 渐色。';
     }
   }
   const mode = config.colorMode === 'manual' ? 'manual' : 'auto';
@@ -2891,6 +3070,351 @@ function syncSettingsControls() {
   }
 }
 $('btnSettingsClose').addEventListener('click', () => $('settingsPanel').classList.add('hidden'));
+
+/* ==================================================================
+ * v2.6.2 新增：设置左侧栏 / 按压白光 / 每日随机主题 / 更新弹窗 / 调试模式
+ * ================================================================== */
+
+/* ---------- 设置面板左侧分区栏 ----------
+ * 三个分区（功能设置 / 个性化 / 关于）在 DOM 里是连续的三段，所以两种导航方式
+ * 用的是同一套坐标：rail 点击 = 把 scrollTop 平移到该段顶部；滚动 = 反过来算
+ * 现在停在哪一段。§ 不用 scrollIntoView：它会把外层（.panel）也一起滚，
+ * 面板会莫名往上跳一截。 */
+(function bindPanelRail() {
+  const rail = $('panelRail');
+  const body = $('panelBody');
+  if (!rail || !body) return;
+  const btns = Array.prototype.slice.call(rail.querySelectorAll('.rail-btn'));
+  const secs = btns.map((b) => $(b.dataset.sec)).filter(Boolean);
+  let lockUntil = 0;
+
+  const setActive = (id) => {
+    btns.forEach((b) => b.setAttribute('aria-pressed', b.dataset.sec === id ? 'true' : 'false'));
+  };
+  /* 段落相对**滚动容器内容**的偏移：两个 getBoundingClientRect 相减，
+   * 与 offsetParent 是谁无关（.panel 是 absolute，offsetTop 会带上头部高度）。 */
+  const secOffset = (el) => body.scrollTop + el.getBoundingClientRect().top - body.getBoundingClientRect().top;
+
+  btns.forEach((b) => {
+    b.addEventListener('click', () => {
+      const sec = $(b.dataset.sec);
+      if (!sec) return;
+      setActive(b.dataset.sec);
+      lockUntil = Date.now() + 700;      // 平滑滚动途中别让 scroll 监听把高亮抢走
+      try {
+        body.scrollTo({ top: Math.max(0, secOffset(sec) - 4), behavior: 'smooth' });
+      } catch (e) {
+        body.scrollTop = Math.max(0, secOffset(sec) - 4);   // 老内核不认 behavior
+      }
+    });
+  });
+
+  body.addEventListener('scroll', () => {
+    if (Date.now() < lockUntil || !secs.length) return;
+    const probe = body.scrollTop + 28;
+    let cur = secs[0];
+    secs.forEach((s) => { if (secOffset(s) <= probe) cur = s; });
+    if (cur && cur.id) setActive(cur.id);
+  }, { passive: true });
+})();
+
+/* ---------- 全局按压白光（v2.6.2） ----------
+ * 用户要「主界面触摸按上去要有像鼠标那样的白光效果，松手消失」，而且
+ * 「软件的其他按键也做成玻璃效果，按上去有白光松开消失」。
+ * 原来的白光只有 sheen 光斑，且**只跟鼠标**（触摸直接 return）；按钮那边只有
+ * MD3 一套 ripple，别的主题按下去没有反馈。
+ * 现在两层：
+ *   ① 主界面：一个专门的 .touch-light 光斑，pointerdown 亮起、pointerup 熄灭，
+ *      任何主题任何输入都在（不受 .sheen 在各主题里 display:none 影响）；
+ *   ② 按钮：pointerdown 在按钮里插一个 .press-light 白色光斑，动画结束自己移除。
+ *      pointer-events:none，不会挡住按钮自己的点击。 */
+(function bindPressLight() {
+  const light = document.createElement('div');
+  light.className = 'touch-light';
+  light.setAttribute('aria-hidden', 'true');
+  widget.appendChild(light);
+  let offTimer = 0;
+
+  widget.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const t = e.target;
+    /* 标题栏拖窗口、右下手柄缩放、滑条自己拖：这些手势本身有明确反馈，
+     * 再叠一片白光只会干扰（而且拖窗口时它会跟着整屏扫）。 */
+    if (t && t.closest && t.closest('#titlebar, #resizeHandle, input[type="range"], .opacity-bar')) return;
+    const r = widget.getBoundingClientRect();
+    light.style.left = (e.clientX - r.left) + 'px';
+    light.style.top = (e.clientY - r.top) + 'px';
+    if (offTimer) { clearTimeout(offTimer); offTimer = 0; }
+    light.classList.add('on');
+  }, true);
+
+  const dim = () => {
+    if (offTimer) clearTimeout(offTimer);
+    offTimer = setTimeout(() => { offTimer = 0; light.classList.remove('on'); }, 20);
+  };
+  document.addEventListener('pointerup', dim, true);
+  document.addEventListener('pointercancel', dim, true);
+
+  /* ② 按钮白光：只在"看起来是按钮/卡片"的元素上生成 */
+  const PRESS_SEL = 'button, .ctx-item, .item, .swatch, .tselect-item, .rail-btn, ' +
+    '.seg-btn, .text-btn, .primary-btn, .ghost-btn, .danger-btn, .pick-btn, .add-card';
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const host = t.closest(PRESS_SEL);
+    if (!host || host.disabled) return;
+    if (host.closest('#titlebar, #resizeHandle')) return;
+    const rr = host.getBoundingClientRect();
+    if (!rr.width || !rr.height) return;
+    /* 宿主必须是定位元素，否则绝对定位的光斑会跑到视口角上 */
+    if (getComputedStyle(host).position === 'static') host.classList.add('pl-static');
+    const d = document.createElement('span');
+    d.className = 'press-light';
+    d.style.left = (e.clientX - rr.left) + 'px';
+    d.style.top = (e.clientY - rr.top) + 'px';
+    d.style.setProperty('--pl-r', Math.max(rr.width, rr.height) * 0.9 + 'px');
+    host.appendChild(d);
+    const drop = () => { if (d.parentNode) d.parentNode.removeChild(d); };
+    d.addEventListener('animationend', drop, { once: true });
+    setTimeout(drop, 800);      // 兜底：动画被中断也要收走
+  }, true);
+
+  /* ---------- 液态玻璃调节条：按住放大、松开回缩（v2.6.2） ----------
+   * 原生 range 的珠子是 ::-webkit-slider-thumb，JS 抓不到那个伪元素，
+   * 只能靠类名把放大态挂在 input 上（CSS 里写 .slider-hot::-webkit-slider-thumb）。
+   * 触摸也要能按住 —— 所以监听 pointerdown/up/cancel，而不是只看 :active
+   * （触摸滚动/失焦时 :active 会莫名其妙一直亮着）。 */
+  const hotOn = (el) => { if (el && el.type === 'range') el.classList.add('slider-hot'); };
+  const hotOff = (el) => { if (el && el.type === 'range') el.classList.remove('slider-hot'); };
+  document.addEventListener('pointerdown', (e) => {
+    const el = e.target;
+    if (el && el.type === 'range') hotOn(el);
+  }, true);
+  document.addEventListener('pointerup', (e) => hotOff(e.target), true);
+  document.addEventListener('pointercancel', (e) => hotOff(e.target), true);
+  /* 拖到滑条外面松手：pointerup 的目标可能已经不是 input 了，兜底清一遍 */
+  const clearAllHot = () => {
+    document.querySelectorAll('input[type="range"].slider-hot').forEach(hotOff);
+  };
+  document.addEventListener('pointerup', clearAllHot, true);
+  document.addEventListener('pointercancel', clearAllHot, true);
+  window.addEventListener('blur', clearAllHot);
+})();
+
+/* ---------- 每日随机主题（v2.6.2） ----------
+ * 按日期挑一套已装主题；同一天只自动挑一次（记 dailyThemeDate），
+ * 否则用户手动换的主题会被反复拽回去。 */
+function dailyThemeId() {
+  if (!THEMES.length) return null;
+  const d = new Date();
+  /* 日期 → 序号：年*372 + 月*31 + 日，足够打散且同一天恒定 */
+  const seed = d.getFullYear() * 372 + (d.getMonth() + 1) * 31 + d.getDate();
+  return THEMES[seed % THEMES.length];
+}
+function applyDailyTheme() {
+  if (!config || !config.dailyTheme) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  if (config.dailyThemeDate === today) return false;
+  const pick = dailyThemeId();
+  if (!pick) return false;
+  config.dailyThemeDate = today;
+  config.theme = pick;
+  persist();
+  applyTheme(pick);
+  return true;
+}
+const setDailyTheme = $('setDailyTheme');
+if (setDailyTheme) {
+  setDailyTheme.addEventListener('change', () => {
+    config.dailyTheme = !!setDailyTheme.checked;
+    if (config.dailyTheme) {
+      config.dailyThemeDate = '';        // 立刻生效一次
+      const ok = applyDailyTheme();
+      toast(ok ? '每日随机主题已开启：今天是「' + (THEME_LABEL[config.theme] || config.theme) + '」'
+        : '每日随机主题已开启');
+    } else {
+      persist();
+      toast('已关闭每日随机主题');
+    }
+    syncThemeSelect();
+  });
+}
+
+/* ---------- 更新弹窗（v2.6.2）：把更新日志摆出来，忽略 / 去更新 ---------- */
+let updateInfo = null;
+function showUpdateDialog(r) {
+  updateInfo = r;
+  $('updateVer').textContent = 'v' + r.latest;
+  $('updateCur').textContent = '当前 v' + r.current;
+  const notes = $('updateNotes');
+  const body = (r.body || '').trim();
+  notes.textContent = body || '这个版本没有写更新日志，可以直接去发布页看。';
+  $('updateModal').classList.remove('hidden');
+}
+function closeUpdateDialog() { $('updateModal').classList.add('hidden'); }
+if ($('btnUpdateClose')) $('btnUpdateClose').addEventListener('click', closeUpdateDialog);
+if ($('btnUpdateIgnore')) {
+  $('btnUpdateIgnore').addEventListener('click', () => {
+    if (updateInfo && updateInfo.latest) {
+      config.ignoredUpdate = updateInfo.latest;
+      persist();
+      toast('已忽略 v' + updateInfo.latest + '，下次不再提醒这个版本');
+    }
+    closeUpdateDialog();
+  });
+}
+if ($('btnUpdateGo')) {
+  $('btnUpdateGo').addEventListener('click', () => {
+    /* GITHUB_URL 是脚本后半段定义的 const：处理器在用户点击时才跑，那时早已初始化 */
+    const url = (updateInfo && updateInfo.url) || (GITHUB_URL + '/releases');
+    API.openExternal(url);
+    closeUpdateDialog();
+  });
+}
+
+/* ---------- 调试模式（v2.6.2）：长按版本号 1.2 秒 ----------
+ * 进调试模式后「关于」分区下面多出：平台效果预览 / 调试台 / 自定义更新服务器。
+ * 长按与「连点 20 次重置」共存：长按期间不计连点，松手后 600ms 内也不计，
+ * 免得一手长按把重置流程点出来。 */
+let pressTimer = 0, pressFired = false, suppressTapsUntil = 0;
+const versionEl = $('aboutVersion');
+if (versionEl) {
+  versionEl.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    pressFired = false;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      pressFired = true;
+      suppressTapsUntil = Date.now() + 600;
+      setDebugMode(true);
+    }, 1200);
+  });
+  const cancelPress = () => { clearTimeout(pressTimer); pressTimer = 0; };
+  versionEl.addEventListener('pointerup', cancelPress);
+  versionEl.addEventListener('pointerleave', cancelPress);
+  versionEl.addEventListener('pointercancel', cancelPress);
+}
+
+function setDebugMode(on) {
+  config.debugMode = !!on;
+  persist();
+  syncDebugControls();
+  toast(on ? '调试模式已开启（关于分区下面多了几项）' : '已退出调试模式');
+  if (on) {
+    /* 滚到「关于」分区，否则用户看不见刚解锁的那几项 */
+    const body = $('panelBody'), sec = $('secAbout');
+    if (body && sec) {
+      const top = body.scrollTop + sec.getBoundingClientRect().top - body.getBoundingClientRect().top;
+      try { body.scrollTo({ top: Math.max(0, top - 4), behavior: 'smooth' }); } catch (e) { body.scrollTop = top; }
+    }
+  }
+}
+
+/* 平台效果预览：把渲染层的"平台认知"临时换掉，用来核对各平台的界面差异。
+ * 只影响界面判定，不改任何真实行为（主题风格下拉的显示条件就是它的主要用途）。 */
+function applySimPlatform(p, skipPersist) {
+  const v = ['android', 'linux', 'darwin'].indexOf(p) >= 0 ? p : 'auto';
+  config.simPlatform = v;
+  document.body.classList.remove('sim-android', 'sim-linux', 'sim-darwin');
+  if (v !== 'auto') document.body.classList.add('sim-' + v);
+  /* 安卓效果会露出「主题风格」下拉；本机本来就是安卓时也保持露出。
+   * 判"本机"用 REAL_ANDROID（真机事实），别用 IS_ANDROID —— 那个是模拟后的结果，
+   * 拿它做判断会在"移动端 → 本机"之间来回切时自锁成永远安卓。 */
+  applyThemePickVisibility(v === 'android' || (v === 'auto' && REAL_ANDROID));
+  if (!skipPersist) persist();
+}
+
+function syncDebugControls() {
+  const box = $('debugBox');
+  if (!box) return;
+  const on = !!config.debugMode;
+  box.classList.toggle('hidden', !on);
+  const seg = $('simSeg');
+  const sim = ['android', 'linux', 'darwin'].indexOf(config.simPlatform) >= 0 ? config.simPlatform : 'auto';
+  if (seg) {
+    seg.querySelectorAll('.seg-btn').forEach((b) => {
+      b.setAttribute('aria-pressed', b.dataset.sim === sim ? 'true' : 'false');
+    });
+  }
+  const api = $('setUpdateApi');
+  if (api && document.activeElement !== api) api.value = config.updateApi || '';
+  const daily = $('setDailyTheme');
+  if (daily) daily.checked = !!config.dailyTheme;
+}
+
+if ($('simSeg')) {
+  $('simSeg').querySelectorAll('.seg-btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      applySimPlatform(b.dataset.sim);
+      syncDebugControls();
+      const t = b.dataset.sim;
+      toast(t === 'auto' ? '界面效果：跟随本机' : '界面效果已切换为 ' + (b.textContent || t) + ' 样式');
+    });
+  });
+}
+if ($('btnSaveUpdateApi')) {
+  $('btnSaveUpdateApi').addEventListener('click', () => {
+    const v = ($('setUpdateApi').value || '').trim().replace(/\/+$/, '');
+    if (v && !/^https?:\/\/[^\s]+$/i.test(v)) { toast('服务器地址要以 http:// 或 https:// 开头'); return; }
+    config.updateApi = v;
+    persist();
+    toast(v ? '更新服务器改为 ' + v : '更新服务器已恢复默认（GitHub）');
+  });
+}
+if ($('btnDebugExit')) {
+  $('btnDebugExit').addEventListener('click', () => setDebugMode(false));
+}
+if ($('btnDebugConsole')) {
+  $('btnDebugConsole').addEventListener('click', async () => {
+    const grid = $('debugGrid');
+    grid.innerHTML = '<div class="debug-k">正在收集…</div>';
+    $('debugModal').classList.remove('hidden');
+    let env = {};
+    try { env = (await API.getEnv()) || {}; } catch (e) { env = { error: String(e && e.message || e) }; }
+    let ver = '';
+    try { ver = await API.getAppVersion(); } catch (e) {}
+    const rows = [
+      ['版本', ver || '—'],
+      ['平台', (env.platform || '—') + (env.release ? ' / ' + env.release : '')],
+      ['当前主题', currentTheme + '（' + (THEME_LABEL[currentTheme] || '?') + '）'],
+      ['主题总数', String(THEMES.length)],
+      ['明暗', config.appearance || 'light'] ,
+      ['主色来源', (config.colorMode === 'manual' ? '手动 ' + (config.accentColor || '') : '壁纸取色')],
+      ['窗口', Math.round(bounds.x) + ',' + Math.round(bounds.y) + '  ' +
+        Math.round(bounds.width) + '×' + Math.round(bounds.height)],
+      ['布局', layoutMode() + (layoutMode() === 'free' ? '（' + (Object.keys((config.layout && config.layout.items) || {}).length) + ' 项有坐标）' : '')],
+      ['毛玻璃', wallInfo ? '壁纸基底' : '内置渐变'],
+      ['实时底材', config.realtime ? '开启' : '关闭'],
+      ['调试', 'debugMode=' + !!config.debugMode + ' sim=' + (config.simPlatform || 'auto')],
+      ['更新源', config.updateApi || 'GitHub 默认']
+    ];
+    grid.innerHTML = rows.map((r) =>
+      '<div class="debug-k">' + r[0] + '</div><div class="debug-v">' + String(r[1]) + '</div>').join('');
+  });
+}
+if ($('btnDebugClose')) $('btnDebugClose').addEventListener('click', () => $('debugModal').classList.add('hidden'));
+if ($('btnDebugCopy')) {
+  $('btnDebugCopy').addEventListener('click', async () => {
+    const text = JSON.stringify({ version: 1, config: config, bounds: bounds }, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('配置已复制到剪贴板');
+    } catch (e) {
+      toast('复制失败：' + (e && e.message || e));
+    }
+  });
+}
+if ($('btnDebugReload')) {
+  $('btnDebugReload').addEventListener('click', () => location.reload());
+}
+if ($('btnDebugOpenDir')) {
+  $('btnDebugOpenDir').addEventListener('click', () => {
+    if (typeof API.openConfigDir === 'function') API.openConfigDir();
+    else toast('这个平台没有提供打开配置目录的接口');
+  });
+}
+
 
 $('setTitle').addEventListener('input', (e) => {
   config.title = e.target.value || 'FClassPal';
@@ -3077,6 +3601,9 @@ function themeSelectOpen(open) {
  * 桌面端撤掉这条快速切换（管理都走「主题管理」弹窗）；安卓触屏才留着。
  * 先按 UA 兜底判一次（settings 面板随时可能被打开），env 回来后再校正。 */
 let IS_ANDROID = /Android/i.test(navigator.userAgent || '');
+/* 本机**真实**是不是安卓：与 IS_ANDROID 分开存，因为调试模式的「平台效果」
+ * 会把 IS_ANDROID 改成模拟值，再拿它反推真实平台就会自锁死（切回"本机"还是安卓）。 */
+let REAL_ANDROID = IS_ANDROID;
 function applyThemePickVisibility(android) {
   IS_ANDROID = !!android;
   const row = $('rowThemePick');
@@ -3717,22 +4244,33 @@ if (typeof API.getAppVersion === 'function') {
 }
 $('aboutGithub').addEventListener('click', () => { API.openExternal(GITHUB_URL); });
 
-/* --- 检测更新（v2.5.0）：比对 GitHub 正式 release 与当前版本 ---
+/* --- 检测更新（v2.5.0 起比对 GitHub 正式 release；v2.6.2 起有更新就弹窗看日志）---
  * 主进程那边有两级链路（直连 → DoH over IP 直连），本机 hosts 把 github
- * 域名钉到 127.0.0.1 也能通，所以这里不再提示"网络不可用"那类含糊文案。 */
-$('btnCheckUpdate').addEventListener('click', async () => {
+ * 域名钉到 127.0.0.1 也能通，所以这里不再提示"网络不可用"那类含糊文案。
+ * v2.6.2：以前发现新版只 toast 一句就把人扔到浏览器，更新日志完全看不到。
+ * 现在把该 release 的正文摆进弹窗，给「忽略此版本」「去更新」两个出口。 */
+async function runCheckUpdate(silent) {
   const b = $('btnCheckUpdate');
-  b.disabled = true; const old = b.textContent; b.textContent = '检测中…';
+  const old = b ? b.textContent : '';
+  if (b) { b.disabled = true; b.textContent = '检测中…'; }
   try {
-    const r = await API.checkUpdate();
-    if (!r || !r.success) toast('检测失败：' + ((r && r.error) || '网络不可达，稍后再试'));
-    else if (r.update) {
-      toast('发现新版本 v' + r.latest + '（当前 v' + r.current + '），正在打开发布页');
-      API.openExternal(GITHUB_URL + '/releases');
-    } else toast('已是最新版本（v' + r.current + '）');
-  } catch (e) { toast('检测失败：' + (e && e.message || e)); }
-  b.disabled = false; b.textContent = old;
-});
+    const r = await API.checkUpdate(config.updateApi ? { apiBase: config.updateApi } : undefined);
+    if (!r || !r.success) {
+      if (!silent) toast('检测失败：' + ((r && r.error) || '网络不可达，稍后再试'));
+    } else if (r.update) {
+      /* 用户明确忽略过的版本：手动检测仍然提示（他自己点的），
+       * 自动检测则安静跳过 —— 不然每次开机都弹一遍会很烦。 */
+      const ignored = config.ignoredUpdate && String(config.ignoredUpdate) === String(r.latest);
+      if (!(silent && ignored)) showUpdateDialog(r);
+    } else if (!silent) {
+      toast('已是最新版本（v' + r.current + '）');
+    }
+  } catch (e) {
+    if (!silent) toast('检测失败：' + (e && e.message || e));
+  }
+  if (b) { b.disabled = false; b.textContent = old; }
+}
+$('btnCheckUpdate').addEventListener('click', () => { runCheckUpdate(false); });
 
 /* --- 连点版本号 20 次 → 恢复出厂（v2.5.0）---
  * 流程：连点 20 次（2.5 秒内不续点就清零）→ 第一道风险弹窗 → 确认后
@@ -3740,6 +4278,10 @@ $('btnCheckUpdate').addEventListener('click', async () => {
  * → 两次都同意才真的清配置重启。 */
 let resetTaps = 0, resetTapTimer = null, resetCountdown = null;
 $('aboutVersion').addEventListener('click', () => {
+  /* v2.6.2：长按进调试模式占据了同一个按钮，所以长按触发后要吞掉这一串 click
+   * （否则长按 1.2 秒 = 连点若干次，会把重置流程点出来） */
+  if (pressFired) { pressFired = false; return; }
+  if (Date.now() < suppressTapsUntil) return;
   resetTaps++;
   clearTimeout(resetTapTimer);
   resetTapTimer = setTimeout(() => { resetTaps = 0; }, 2500);
@@ -4021,8 +4563,9 @@ function openItemModal(groupIndex, itemIndex) {
   $('itemName').focus();
 }
 
-/* ---------- 自由布局参数（v2.6.0）：编辑弹窗里的宽/高滑条 ----------
- * 仅自由布局模式 + 编辑已有条目时出现；改动写入 config.layout.items[key]。 */
+/* ---------- 自由布局参数（v2.6.0 / v2.6.2 扩展）：编辑弹窗里的宽高等控件 ----------
+ * 仅自由布局模式 + 编辑已有条目时出现；改动写入 config.layout.items[key]。
+ * v2.6.2 增加三项显示选项：图标大小 / 显示边框 / 显示文字。 */
 function syncItemLayoutField(it) {
   const free = layoutMode() === 'free' && it && !isFolder(it);
   const box = $('itemLayoutField');
@@ -4033,9 +4576,17 @@ function syncItemLayoutField(it) {
   $('itemLayoutH').value = l.h || FREE_ITEM_DEFAULT;
   $('itemLayoutWVal').textContent = String($('itemLayoutW').value);
   $('itemLayoutHVal').textContent = String($('itemLayoutH').value);
+  const scalePct = Math.round((Number(l.iconScale) || 1) * 100);
+  $('itemIconScale').value = String(Math.max(50, Math.min(200, scalePct)));
+  $('itemIconScaleVal').textContent = $('itemIconScale').value + '%';
+  $('itemShowRing').checked = l.showRing !== false;
+  $('itemShowLabel').checked = l.showLabel !== false;
 }
 $('itemLayoutW').addEventListener('input', () => { $('itemLayoutWVal').textContent = $('itemLayoutW').value; });
 $('itemLayoutH').addEventListener('input', () => { $('itemLayoutHVal').textContent = $('itemLayoutH').value; });
+$('itemIconScale').addEventListener('input', () => {
+  $('itemIconScaleVal').textContent = $('itemIconScale').value + '%';
+});
 
 $('btnItemClose').addEventListener('click', () => { itemModal.classList.add('hidden'); childEdit = null; });
 $('btnItemCancel').addEventListener('click', () => { itemModal.classList.add('hidden'); childEdit = null; });
@@ -4153,11 +4704,14 @@ $('btnItemSave').addEventListener('click', () => {
   if (iconState.char) item.iconChar = iconState.char;
   if (iconState.path) item.iconPath = iconState.path;
 
-  /* 自由布局模式下编辑过宽/高滑条 → 写回布局表（新建/网格模式不写） */
+  /* 自由布局模式下编辑过宽/高/显示选项 → 写回布局表（新建/网格模式不写） */
   if (!childEdit && layoutMode() === 'free' && oldItem && !isFolder(oldItem)) {
     const l = freeLayoutOf(oldItem) || {};
     l.w = parseInt($('itemLayoutW').value, 10) || l.w || FREE_ITEM_DEFAULT;
     l.h = parseInt($('itemLayoutH').value, 10) || l.h || FREE_ITEM_DEFAULT;
+    l.iconScale = Math.max(0.5, Math.min(2, (parseInt($('itemIconScale').value, 10) || 100) / 100));
+    l.showRing = $('itemShowRing').checked !== false;
+    l.showLabel = $('itemShowLabel').checked !== false;
     config.layout.items[layoutKey(item)] = l;
   }
 
@@ -4562,12 +5116,17 @@ if (typeof API.onTrayAction === 'function') {
   autoInstallBundledPacks().catch((e) => console.warn('[themes]', e));
   /* 配置里记的主题已经不在本机（包被删了、或从别的机器同步过来的配置）→ 收回基线，
    * 顺手落盘，别让"配置说是 kitty、界面却是玻璃"这种状态一直挂着 */
-  if (THEMES.indexOf(config.theme) < 0) config.theme = 'glass';
+  if (THEMES.indexOf(config.theme) < 0) config.theme = DEFAULT_THEME;
+  /* v2.6.2 每日随机主题：开机按日期挑一套（同一天只挑一次）。
+   * 必须排在 applyTheme 之前 —— 它自己会 applyTheme，先跑它才不会先闪默认皮肤。 */
+  applyDailyTheme();
+  /* v2.6.2 调试模式里的平台效果预览：开过就按配置的模拟平台摆好界面 */
+  if (config.simPlatform && config.simPlatform !== 'auto') applySimPlatform(config.simPlatform, true);
   applyRadius(config.cornerRadius ?? null, false);
   API.setBounds(bounds);
   enableLiquidGlass();   // 能力探测通过后点亮 .lg-ready
   // 界面风格要在第一帧就位，否则会看到"先玻璃后 MD3"的闪一下
-  applyTheme(config.theme || 'glass');
+  applyTheme(config.theme || DEFAULT_THEME);
   // 取色方式的默认值：没配过 = 走壁纸莫奈取色
   if (config.colorMode !== 'manual' && config.colorMode !== 'auto') config.colorMode = 'auto';
   if (!/^#?[0-9a-f]{6}$/i.test(String(config.accentColor || ''))) {
@@ -4626,7 +5185,13 @@ if (typeof API.onTrayAction === 'function') {
   if (typeof API.getEnv === 'function') {
     try {
       const env = await API.getEnv();
-      applyThemePickVisibility(env && env.platform === 'android');   // v2.6.0：以真实环境为准校正
+      REAL_ANDROID = env && env.platform === 'android';
+      /* 调试模式的平台效果优先：模拟值在跑就以模拟值决定界面，别被真实平台覆盖 */
+      if (!config.simPlatform || config.simPlatform === 'auto') {
+        applyThemePickVisibility(REAL_ANDROID);   // v2.6.0：以真实环境为准校正
+      } else {
+        applyThemePickVisibility(config.simPlatform === 'android');
+      }
       const bi = $('blurInfo');
       if (env && env.platform === 'browser') {
         document.body.classList.add('preview');   // 浏览器预览：深色渐变替身，让玻璃可见
@@ -4638,4 +5203,7 @@ if (typeof API.onTrayAction === 'function') {
       }
     } catch (e) { /* 环境信息获取失败不影响主功能 */ }
   }
+  /* v2.6.2：首屏稳定后静默查一次更新 —— 有新版就弹更新日志，「忽略过」的版本不弹。
+   * 延迟 4s 是为了不跟首屏的壁纸取色/主题包加载抢网络与主线程。 */
+  setTimeout(() => { runCheckUpdate(true); }, 4000);
 })();

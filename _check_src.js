@@ -381,10 +381,12 @@ const checks = [
     /const SEEWO_TOOL_MATCH = \{/.test(mainNC)],
   ['v2.6.0: 安卓端希沃工具明确报错（不许静默）',
     bridge.includes('希沃桌面工具是电脑端功能')],
-  ['v2.6.0: 主题风格下拉只在安卓端显示（UA 先兜底、env 回来再校正）',
+  ['v2.6.0/2.6.2: 主题风格下拉只在安卓端显示（UA 兜底 → env 校正 → 调试模式可模拟）',
     /function applyThemePickVisibility\(/.test(app) &&
     /applyThemePickVisibility\(IS_ANDROID\)/.test(app) &&
-    /applyThemePickVisibility\(env && env\.platform === 'android'\)/.test(app)],
+    /REAL_ANDROID = env && env\.platform === 'android'/.test(app) &&
+    /if \(!config\.simPlatform \|\| config\.simPlatform === 'auto'\) \{/.test(app) &&
+    /applyThemePickVisibility\(config\.simPlatform === 'android'\)/.test(app)],
   ['v2.6.0: 主题下拉 portal 到 body（逃出设置面板 overflow 裁剪 + 放不下朝上弹）',
     /if \(pop\.parentNode !== document\.body\) document\.body\.appendChild\(pop\)/.test(app) &&
     /body > \.tselect-pop \{ position: fixed; \}/.test(css)],
@@ -405,12 +407,84 @@ const checks = [
     /document\.addEventListener\('pointerup', onDragUp, true\)/.test(app) &&
     /document\.addEventListener\('pointercancel', onDragCancel, true\)/.test(app) &&
     /document\.addEventListener\('pointermove', onRsMove, true\)/.test(app)],
-  ['v2.6.0 热修: 触摸坐标 EMA 平滑（鼠标路径保持原手感不动）',
-    /const DRAG_SMOOTH = 0\.45/.test(app) &&
+  ['v2.6.2: 触摸坐标自适应滤波（死区滤噪 + 大位移 1:1 跟手，鼠标不动）',
+    /const DRAG_DEADBAND = 1\.2/.test(app) &&
+    /const DRAG_FULL_AT = 14/.test(app) &&
+    /function touchFollow\(raw, prev\)/.test(app) &&
+    /if \(ad < DRAG_DEADBAND\) return prev;/.test(app) &&
+    /dragSmX = touchFollow\(e\.screenX, dragSmX\)/.test(app) &&
+    /rsSmX = touchFollow\(e\.screenX, rsSmX\)/.test(app) &&
     /dragSmX = dragSmY = null/.test(app) && /rsSmX = rsSmY = null/.test(app) &&
-    /dragSmX \+ \(sx - dragSmX\) \* DRAG_SMOOTH/.test(app) &&
-    /rsSmX \+ \(sx - rsSmX\) \* DRAG_SMOOTH/.test(app) &&
     /if \(e\.pointerType === 'mouse'\) \{\s*\n\s*lastX = e\.screenX; lastY = e\.screenY;/.test(app)],
+  /* v2.6.2：设置左侧栏 / 自由布局触摸缩放 / 每图标显示选项 / 按压白光 /
+   * 滑块按住放大 / 更新弹窗 / 每日随机主题 / 调试模式 */
+  ['v2.6.2: 设置面板左侧栏三分区（点 rail 定位 + 滚动同步高亮）',
+    html.includes('class="panel-rail" id="panelRail"') &&
+    html.includes('id="secFunction"') && html.includes('id="secPersonal"') &&
+    html.includes('id="secAbout"') &&
+    (html.match(/class="rail-btn"/g) || []).length === 3 &&
+    app.includes('bindPanelRail') && app.includes('body.scrollTo({ top:') &&
+    css.includes('.panel-rail') && css.includes('.rail-btn[aria-pressed="true"]')],
+  ['v2.6.2: 自由布局触摸缩放（pointerdown 当场抓捕获 + document 兜底 + 手柄命中区放大）',
+    /const FREE_TOUCH_THRESHOLD = \{ move: 5, resize: 2 \}/.test(app) &&
+    /const onFreeMove = \(e\) => \{/.test(app) &&
+    /document\.addEventListener\('pointermove', onFreeMove, true\)/.test(app) &&
+    /document\.addEventListener\('pointerup', \(e\) => endFreeDrag\(e, false\), true\)/.test(app) &&
+    /document\.addEventListener\('pointercancel', \(e\) => endFreeDrag\(e, true\), true\)/.test(app) &&
+    /\(grip \|\| card\)\.setPointerCapture\(e\.pointerId\)/.test(app) &&
+    /body\.edit-mode #content\.free-layout \.item \{ touch-action: none; \}/.test(css) &&
+    /\.item-grip \{\s*\n\s*width: 34px;\s*\n\s*height: 34px;/.test(css)],
+  ['v2.6.2: 自由模式每图标可调显示大小 / 边框 / 文字',
+    app.includes('function applyFreeItemLook') &&
+    /--fg-icon-scale/.test(app) && /--fg-icon-scale/.test(css) &&
+    /classList\.toggle\('hide-ring', l\.showRing === false\)/.test(app) &&
+    /classList\.toggle\('hide-label', l\.showLabel === false\)/.test(app) &&
+    html.includes('id="itemIconScale"') && html.includes('id="itemShowRing"') &&
+    html.includes('id="itemShowLabel"') &&
+    /l\.iconScale = Math\.max\(0\.5, Math\.min\(2,/.test(app)],
+  ['v2.6.2: 主界面触摸白光 + 所有按钮玻璃质感与按压白光',
+    app.includes("light.className = 'touch-light'") &&
+    app.includes('function bindPressLight') &&
+    app.includes("d.className = 'press-light'") &&
+    css.includes('.touch-light.on') && css.includes('@keyframes pl-fade') &&
+    /\.text-btn,\s*\n\.primary-btn,/.test(css) &&
+    /html body\.dark \.debug-box/.test(css)],
+  ['v2.6.2: 滑块珠子按住放大、松开回缩（五套内置皮肤逐条覆盖）',
+    app.includes("classList.add('slider-hot')") &&
+    app.includes("classList.remove('slider-hot')") &&
+    /input\[type="range"\]\.slider-hot::-webkit-slider-thumb/.test(css) &&
+    /body\.theme-miuix input\[type="range"\]\.slider-hot::-webkit-slider-thumb/.test(css) &&
+    /body\.theme-harmony input\[type="range"\]\.slider-hot::-webkit-slider-thumb/.test(css)],
+  ['v2.6.2: 透明度条触摸可见（手指按下主界面即出现，按住期间不被收走）',
+    /widget\.addEventListener\('pointerdown', \(e\) => \{\s*\n\s*if \(e\.pointerType === 'mouse'\) return;/.test(app) &&
+    app.includes('holdingBar') && /opacityBar\.addEventListener\('pointerdown'/.test(app)],
+  ['v2.6.2: 更新弹窗带更新日志 + 忽略/去更新两个出口',
+    html.includes('id="updateModal"') && html.includes('id="updateNotes"') &&
+    html.includes('id="btnUpdateIgnore"') && html.includes('id="btnUpdateGo"') &&
+    app.includes('function showUpdateDialog') &&
+    /config\.ignoredUpdate = updateInfo\.latest/.test(app) &&
+    /body: String\(best\.r\.body \|\| ''\)/.test(main) &&
+    /url: String\(best\.r\.html_url \|\| ''\)/.test(main)],
+  ['v2.6.2: 每日随机主题（按日期哈希 + 同一天只自动挑一次）',
+    app.includes('function dailyThemeId') && app.includes('function applyDailyTheme') &&
+    /config\.dailyThemeDate === today/.test(app) &&
+    html.includes('id="setDailyTheme"') && app.includes('applyDailyTheme();')],
+  ['v2.6.2: 调试模式（长按版本号 1.2s / 平台效果 / 调试台 / 自定义更新服务器）',
+    /setTimeout\(\(\) => \{\s*\n\s*pressFired = true;/.test(app) &&
+    /, 1200\);/.test(app) &&
+    app.includes('function setDebugMode') && app.includes('function applySimPlatform') &&
+    html.includes('id="debugBox"') && html.includes('id="simSeg"') &&
+    html.includes('id="btnDebugConsole"') && html.includes('id="setUpdateApi"') &&
+    html.includes('id="debugModal"') && html.includes('id="debugGrid"') &&
+    main.includes("ipcMain.handle('open-config-dir'") &&
+    pre.includes('openConfigDir') &&
+    /apiBase/.test(main) && /checkUpdate: \(opts\) => ipcRenderer\.invoke\('check-update', opts\)/.test(pre)],
+  ['v2.6.2: 默认主题「经典」+ 改名（鸿蒙→经典 / MIUI→渐色，id 不动）',
+    /const DEFAULT_THEME = 'harmony'/.test(app) &&
+    /harmony: '经典'/.test(app) && /miuix: '渐色'/.test(app) &&
+    /theme: 'harmony',/.test(main) &&
+    /id: 'harmony', name: '经典'/.test(fs.readFileSync('themes.js', 'utf8')) &&
+    /id: 'miuix', name: '渐色'/.test(fs.readFileSync('themes.js', 'utf8'))],
   ['多主题 v2.5.0: 内置五套 + 运行时可刷新注册表（装/删/排序后不用改代码）',
     /const BUILTIN_THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony'\]/.test(app) &&
     /let THEMES = BUILTIN_THEMES\.slice\(\)/.test(app) &&
@@ -418,8 +492,11 @@ const checks = [
     /function loadThemeRegistry\(\)/.test(app) &&
     /glass:\s*'#6750A4'/.test(app) && /miuix:\s*'#3482FF'/.test(app) &&
     /harmony:\s*'#0A59F7'/.test(app) && /accentPicked/.test(app)],
-  ['多主题 v2.5.0: 固定配色主题 = MIUI/鸿蒙 本体写死 + 主题包按 manifest.fixedPalette',
-    /const BUILTIN_FIXED = \['miuix', 'harmony'\]/.test(app) &&
+  ['多主题 v2.6.2: 渐色/经典开放主色（不再固定配色），角色主题包仍按 manifest.fixedPalette',
+    /const BUILTIN_FIXED = \[\];/.test(app) &&
+    /const BRAND_ACCENT_THEMES = \['miuix', 'harmony'\]/.test(app) &&
+    /function applyBrandAccent\(palette\)/.test(app) &&
+    /applyBrandAccent\(lastPalette\)/.test(app) &&
     /fixedPalette: raw\.fixedPalette !== false/.test(fs.readFileSync('themes.js', 'utf8')) &&
     PACK_IDS.every((t) => packManifest[t].fixedPalette === true)],
   ['多主题: 每套主题各自定义完整 token（本体 5 套 + 主题包 13 套）',
@@ -471,14 +548,17 @@ const checks = [
     /feTurbulence/.test(cssNC) &&
     /radial-gradient\(circle at var\(--rv-x, ?50%\) var\(--rv-y, ?50%\)/.test(cssNC) &&
     /--rv-x/.test(app)],
-  ['多主题: MIUIX v2.1 对齐 compose-miuix-ui（固定 #3482FF / 16dp 家族 / 掠光 / HyperOS 缓动）',
+  ['多主题: 渐色（原 MIUIX）对齐 compose-miuix-ui（16dp 家族 / 掠光 / HyperOS 缓动 / 主色可变）',
     /linear-gradient/.test(ruleBlockFrom('body.theme-miuix .glass-veil {')) &&
-    /--md3-primary:\s*#3482FF/.test(themeTokens('miuix')) &&
+    /* v2.6.2：品牌色不再写死，改成 var(--t-accent)；默认值留在 --t-accent-rgb 上 */
+    /--md3-primary:\s*var\(--t-accent\)/.test(themeTokens('miuix')) &&
+    /--t-accent-rgb:\s*52 130 255/.test(themeTokens('miuix')) &&
     /--t-btn-r:\s*16px/.test(themeTokens('miuix')) &&
     /cubic-bezier\(0\.2, 0, 0, 1\)/.test(themeTokens('miuix')) &&
     /background-position:\s*130% 0, 0 0/.test(css)],
-  ['多主题: 鸿蒙 v2.1 对齐官方规范（固定 #0A59F7 / 沉浸光感边缘流光环）',
-    /--md3-primary:\s*#0A59F7/.test(themeTokens('harmony')) &&
+  ['多主题: 经典（原鸿蒙）对齐官方规范（沉浸光感边缘流光环 / 主色可变）',
+    /--md3-primary:\s*var\(--t-accent\)/.test(themeTokens('harmony')) &&
+    /--t-accent-rgb:\s*10 89 247/.test(themeTokens('harmony')) &&
     /@property --hl-angle/.test(cssNC) &&
     /conic-gradient\(from var\(--hl-angle\)/.test(css) &&
     /@keyframes hl-orbit/.test(cssNC) &&
@@ -604,6 +684,9 @@ const checks = [
     new RegExp('##\\s*v' + srcPkg.version.replace(/\./g, '\\.') + '\\s*—').test(changelog)],
   ['配置: dist 里存在当前版本的便携 exe（防发版发了上一版产物）',
     fs.existsSync('dist/FClassPal-' + srcPkg.version + '.exe')],
+  ['配置: 预览模式版本号与 package.json 同源（曾经漂成 2.4.3）',
+    new RegExp("getAppVersion: \\(\\) => Promise\\.resolve\\('" +
+      srcPkg.version.replace(/\./g, '\\.') + "'\\)").test(app)],
   ['配置: 已移除 package.json description（exe 属性不再带描述）',
     srcPkg.description === undefined],
   ['author = YU（用户在远端改的大写）', srcPkg.author === 'YU'],
@@ -1008,8 +1091,8 @@ const checks = [
     app.includes("localeCompare") && app.includes('zh-Hans-CN') &&
     html.includes('data-act="sortAsc"') && html.includes('data-act="sortDesc"')],
   ['v2.4.6: 编辑模式菜单项只在编辑态露出', css.includes('body.edit-mode .ctx-menu .ctx-sort')],
-  ['v2.4.6: 设置面板描述文字已清空（只留 JS 回填的 fixedPaletteHint；v2.5.2 主题管理提示句按需求删除）',
-    (html.match(/class="row-hint/g) || []).length === 1 &&
+  ['v2.4.6: 设置面板描述文字已清空（只留 JS 回填的 fixedPaletteHint + v2.6.2 每日主题说明）',
+    (html.match(/class="row-hint/g) || []).length === 2 &&
     html.includes('id="fixedPaletteHint"') && !html.includes('themeManageHint')],
   ['v2.4.6: 占用程序弹窗（三键：关闭占用并重试 / 直接重试 / 取消）',
     app.includes('showOccupiedDialog') && main.includes("'close-drive-occupants'") &&
