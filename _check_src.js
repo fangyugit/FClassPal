@@ -294,9 +294,10 @@ const checks = [
   ['打包白名单放行 vendor/**（漏了就无法 require）',
     (srcPkg.build && srcPkg.build.files || []).includes('vendor/**/*')],
   ['asar: 位移贴图随包（无 JPEG 残留）', /LG_DISPLACEMENT_MAP\s*=\s*'data:image\/png;base64,/.test(mapJs) && !/data:image\/jpeg/.test(mapJs)],
-  ['html: 主题管理入口（v2.5.3 界面风格下拉撤下，一个入口管全部主题）',
-    html.includes('id="rowThemeManage"') && html.includes('id="btnThemeManage"') &&
-    !html.includes('id="themeSelect"') && !html.includes('tselect')],
+  ['html: 主题两处入口（v2.5.4：设置面板恢复老样式下拉管"切换"，管理弹窗管"安装/排序/导入"）',
+    html.includes('id="rowThemePick"') && html.includes('id="themeSelectBtn"') &&
+    html.includes('id="themeSelectPop"') && !/<select id="themeSelect"/.test(html) &&
+    html.includes('id="rowThemeManage"') && html.includes('id="btnThemeManage"')],
   ['html: MD3 取色方式（莫奈取色 / 手动指定）',
     html.includes('id="colorModeSeg"') && /data-mode="auto"/.test(html) &&
     /data-mode="manual"/.test(html)],
@@ -308,9 +309,14 @@ const checks = [
   ['app.js + main.js + preload: set-dragging 三件套',
     /API\.setDragging\(true\)/.test(app) && /ipcMain\.on\('set-dragging'/.test(main) &&
     /setDragging:/.test(pre)],
-  ['main.js: 拖拽期间不回推 bounds / 不改 Z 序',
-    /if \(!renderDragging\) pushBounds\(b\)/.test(main) &&
-    /!renderDragging\)[\s\S]{0,80}moveBottom/.test(main)],
+  /* v2.5.4：挪窗口时主进程绝不回推 bounds，也不顺手改 Z 序；另加一道时间戳保险
+     （move-window 触发的 setPosition 会反过来发 'move'，set-dragging(true) 迟到
+     一拍时靠它挡住那一记回推）；松手后的置底/落盘延后 250ms 执行。 */
+  ['main.js: 拖拽期间不回推 bounds / 不改 Z 序（v2.5.4 加时间戳保险 + 延后置底）',
+    /if \(!renderDragging && Date\.now\(\) - lastProgrammaticMove > 500\) pushBounds\(b\)/.test(main) &&
+    /!renderDragging\)[\s\S]{0,80}moveBottom/.test(main) &&
+    /if \(dragEndTimer\) \{ clearTimeout\(dragEndTimer\); dragEndTimer = 0; \}/.test(main) &&
+    /dragEndTimer = setTimeout\([\s\S]{0,200}?\}, 250\)/.test(main)],
   ['main.js: 透明窗口显式 #00000000 底色（免首次合成白闪）',
     /backgroundColor: '#00000000'/.test(main)],
   ['main.js: 拖动诊断只在异常时落 drag-diag.log（正常拖拽零 IO）',
@@ -340,13 +346,23 @@ const checks = [
   ['多主题: 已彻底移除 theme-flat 共底（十套风格各自自足）',
     !/theme-flat/.test(cssNC) && !/theme-flat/.test(app) &&
     !/md3-enter/.test(cssNC) && !/md3-enter/.test(app)],
-  ['多主题 v2.5.3: 主题管理弹窗唯一入口（自绘下拉已撤，注册表驱动不变）',
+  /* v2.5.4：安卓真机上"只靠弹窗切换"不稳，快速切换换回自绘下拉（v2.5.2 老样式），
+   * 管理弹窗保留安装/导入/排序/删除。两条入口各管一件事，数据源都还是注册表。 */
+  ['多主题 v2.5.4: 切换走自绘下拉（注册表驱动）+ 管理走弹窗',
     html.includes('id="themeModal"') && html.includes('id="btnThemeManage"') &&
-    !html.includes('id="themeSelectBtn"') && !/<select id="themeSelect"/.test(html) &&
+    html.includes('id="themeSelectBtn"') && !/<select id="themeSelect"/.test(html) &&
     !/data-theme="/.test(html) &&
     /function openThemeModal\(\)/.test(app) &&
-    !/renderThemeOptions/.test(app) && !/syncThemeSelect/.test(app) &&
-    !/themeSelect/.test(app) && !/\.tselect/.test(app)],
+    /function renderThemeOptions\(\)/.test(app) && /pop\.innerHTML = THEMES\.map/.test(app) &&
+    /function syncThemeSelect\(\)/.test(app)],
+  ['v2.5.4: 随包主题启动自动补装（安卓"附带的用不了"的兜底）',
+    /function autoInstallBundledPacks\(\)/.test(app) &&
+    /autoInstallBundledPacks\(\)\.catch/.test(app) &&
+    /API\.themesInstallBundled\(b\.file\)/.test(app)],
+  ['v2.5.4: 拖动/缩放走会话式降载（一次手势只摘戴一次滤镜，治触摸拖动闪动）',
+    /function beginMoveSession\(/.test(app) && /function endMoveSession\(/.test(app) &&
+    /beginMoveSession\(null\)/.test(app) && /beginMoveSession\('is-resizing'\)/.test(app) &&
+    /const DRAG_SETTLE\s*=/.test(app)],
   ['多主题 v2.5.0: 内置五套 + 运行时可刷新注册表（装/删/排序后不用改代码）',
     /const BUILTIN_THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony'\]/.test(app) &&
     /let THEMES = BUILTIN_THEMES\.slice\(\)/.test(app) &&
@@ -744,7 +760,7 @@ const checks = [
     /function measureIconRadiusPct/.test(app) &&
     /measured === null \? 50 : measured/.test(app)],
   ['★ v2.4.3 换主题要重算内缩几何（否则 MD3 会沿用玻璃的 14.65%，白白多留一圈白）',
-    /function applyTheme[\s\S]{0,2400}?refreshIconLook\(\);\s*\n\}/.test(app) &&
+    /function applyTheme[\s\S]{0,2600}?refreshIconLook\(\);\s*\n\s*syncThemeSelect\(\);/.test(app) &&
     /render\(\);[\s\S]{0,320}?refreshIconLook\(\);/.test(app)],
   ['v2.4.2 图标外观：首帧就带着颜色渲染（init 里 auto 模式先 await 取色再 render）',
     /if \(config\.iconBorder === 'auto' && !config\.iconRingColor\) \{[\s\S]{0,200}?await ensureIconColors\(\)[\s\S]{0,120}?render\(\);/.test(app)],

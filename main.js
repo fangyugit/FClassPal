@@ -141,6 +141,8 @@ let keepBottom = true;
  *   ① 不再把主进程读到的 bounds 回推给渲染层（渲染层自己算的位置才是对的）
  *   ② 不再因为抢到焦点就 moveBottom（拖拽拿到焦点是常态，压回去等于改 Z 序） */
 let renderDragging = false;
+let dragEndTimer = 0;          // set-dragging(false) 后的收尾延迟句柄（上面已用到）
+let lastProgrammaticMove = 0;  // 最近一次"渲染层叫我把窗口挪到这"的时间戳
 
 function applyKeepBottom() {
   if (keepBottom && mainWindow && !mainWindow.isDestroyed() && !renderDragging) {
@@ -816,9 +818,12 @@ function saveBounds() {
     // cfg.opacity 现在表示"玻璃背景 alpha"，仅由渲染层在调透明度滑块时写入，
     // 不再从 mainWindow.getOpacity() 读取（OS 级窗口透明度已停用，避免覆盖渲染层值）。
     saveConfig(cfg);
-    // 渲染层拖拽期间绝不回推：它的 bounds 才是准的（见 renderDragging 注释）。
-    // 缺这一步时，每拖一帧都会有一次"被拉回旧位置又拖回来"的闪跳。
-    if (!renderDragging) pushBounds(b);
+    /* 渲染层拖拽期间绝不回推：它的 bounds 才是准的（见 renderDragging 注释）。
+     * 缺这一步时，每拖一帧都会有一次"被拉回旧位置又拖回来"的闪跳。
+     * 另加一道时间戳保险：由 move-window 触发的 setPosition 会反过来产生
+     * 'move' 事件，哪怕 set-dragging(true) 迟到了一拍，这500ms也足够挡住
+     * 那一记回推（延迟的那次 saveBounds 发生在手势之间的空隙里，最容易撞上）。 */
+    if (!renderDragging && Date.now() - lastProgrammaticMove > 500) pushBounds(b);
   }, 300);
 }
 
@@ -1296,6 +1301,7 @@ ipcMain.on('move-window', (event, pos) => {
     dragStat.lastY = y;
     dragStat.lastAt = Date.now();
   }
+  lastProgrammaticMove = Date.now();
   mainWindow.setPosition(x, y);
 });
 
@@ -1332,10 +1338,20 @@ ipcMain.on('set-dragging', (event, value) => {
       ' maxStep=' + dragStat.maxStep + ' span=' + (now - dragStat.t0) + 'ms');
   }
   renderDragging = !!value;
-  if (!renderDragging) {
-    applyKeepBottom();   // 拖拽期间被搁置的置底，松手后补一次
-    saveBounds();        // 立即排一次落盘+回推（内部已有 300ms 防抖）
-  }
+  /* 触摸手势中间会夹一次"假结束"（一次拖动 set-dragging 能到 4 次，见上面的
+   * drag-diag.log）。旧代码在 false 这一刻立刻 applyKeepBottom() + saveBounds()，
+   * 于是手势中间平白改了一次 Z 序（窗口瞬间沉下去再冒回来），并排了一次
+   * bounds 回推 —— 用户说的"拖动会闪"就是从这里来的。
+   * → 收尾动作延后 250ms，期间只要又拖起来就撤销。这比在渲染层猜"这次是不是
+   *   真结束"更可靠：IPC 到达时机不由渲染层说了算。 */
+  if (dragEndTimer) { clearTimeout(dragEndTimer); dragEndTimer = 0; }
+  if (renderDragging) return;
+  dragEndTimer = setTimeout(() => {
+    dragEndTimer = 0;
+    if (renderDragging) return;   // 期间又按下去了
+    applyKeepBottom();
+    saveBounds();
+  }, 250);
 });
 
 /* ---------- 开机自启动 ----------

@@ -328,6 +328,7 @@ function applyTheme(theme) {
    * （多留一圈白）、玻璃会沿用 MD3 的 10.98%（圆角处切掉一点点）。
    * 只重写几何量，颜色那边「跟随主题」本来就是 CSS 回退链，不需要钩子。 */
   refreshIconLook();
+  syncThemeSelect();          /* 老样式下拉：跟着当前主题显示名字与色点 */
 }
 
 /** 动态配色（跟底材取色）的主题：玻璃基线 + MD3 + Fluent */
@@ -1306,7 +1307,39 @@ let dragStartX = 0, dragStartY = 0, dragOriginX = 0, dragOriginY = 0, lastX = 0,
 let dragLastAt = 0;            // 上一次有效位移的时间戳（卡死自救用）
 const DRAG_CANCEL_GRACE = 260; // 取消后仍可无缝续拖的时间窗（ms）
 const DRAG_MAX_STEP = 240;     // 单帧最大可信位移（px）
+const DRAG_SETTLE = 200;       // ⑥ 手势收尾延迟（ms），见下面 beginMoveSession
 const titlebar = $('titlebar');
+
+/* ---------- 拖拽会话（v2.5.4）：一次手势只开关一次"降载" ----------
+ * 触摸序列里常夹 pointercancel / lostpointercapture —— 窗口每帧被程序移动，
+ * Chromium 会重新做命中测试，于是同一个手势中途被判成"结束"。本机
+ * ~/.desktop-widget/drag-diag.log 每一行都是 toggles=4（正常一次拖动是 2），
+ * 说明每次触摸拖动至少假结束过一次。每一次假结束都带来三件事：
+ *   ① 折射滤镜摘了又戴（body.is-moving 被摘）→ 肉眼看到的就是"闪"；
+ *   ② 主进程立刻 moveBottom() 改一次 Z 序 → 窗口瞬间沉到别的窗口后面再回来；
+ *   ③ 300ms 后回推一次 bounds → 位置被旧值拉一把。
+ * → 引用计数 + 延迟收尾：手势中间的抖动不再产生任何开关，真正松手后
+ *   DRAG_SETTLE 毫秒才落地。鼠标那条路本来就不抖，加了延迟也感觉不出来。 */
+let dragSession = 0;           // 活跃手势数（拖动 + 缩放都算）
+let dragSettleTimer = 0;
+function beginMoveSession(cls) {
+  if (dragSettleTimer) { clearTimeout(dragSettleTimer); dragSettleTimer = 0; }  // 收尾被撤销
+  dragSession++;
+  document.body.classList.add('is-moving');
+  if (cls) document.body.classList.add(cls);
+  if (dragSession === 1 && typeof API.setDragging === 'function') API.setDragging(true);
+}
+function endMoveSession(done) {
+  if (dragSession > 0) dragSession--;
+  if (dragSession > 0) return;        // 另一只手还在拖/缩放
+  if (dragSettleTimer) clearTimeout(dragSettleTimer);
+  dragSettleTimer = setTimeout(() => {
+    dragSettleTimer = 0;
+    document.body.classList.remove('is-moving', 'is-resizing');
+    if (typeof API.setDragging === 'function') API.setDragging(false);
+    if (typeof done === 'function') done();
+  }, DRAG_SETTLE);
+}
 
 function applyMove() {
   dragRaf = 0;
@@ -1355,8 +1388,7 @@ titlebar.addEventListener('pointerdown', (e) => {
   dragOriginX = bounds.x;
   dragOriginY = bounds.y;
   cancelLp();                    // ⑤ 拖动期间不弹长按菜单
-  document.body.classList.add('is-moving');
-  if (typeof API.setDragging === 'function') API.setDragging(true);
+  beginMoveSession(null);        // ⑥ 会话式降载：不再每按一次就摘/戴滤镜
   try { titlebar.setPointerCapture(e.pointerId); } catch (_) {}
 });
 titlebar.addEventListener('pointermove', (e) => {
@@ -1377,9 +1409,7 @@ const endDrag = () => {
   dragPointerDown = false;
   if (dragEndTimer) { clearTimeout(dragEndTimer); dragEndTimer = 0; }
   if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; }
-  document.body.classList.remove('is-moving');
-  if (typeof API.setDragging === 'function') API.setDragging(false);
-  persist();
+  endMoveSession(() => persist());   // ⑥ 延迟收尾：假结束不再引发滤镜/ Z 序抖动
 };
 /* ② 软结束：cancel / 丢失捕获可能只是系统重做命中测试造成的一过性事件，
  *    先按住不动，宽限期内有新的位移就继续拖，到点才真收尾（避免滤镜反复摘戴）。 */
@@ -1437,10 +1467,9 @@ resizeHandle.addEventListener('pointerdown', (e) => {
   rsW = bounds.width;
   rsH = bounds.height;
   cancelLp();                          // 缩放期间不弹长按菜单
-  // is-resizing 会把毛玻璃整个摘掉（缩放会重算图层，代价远高于平移），
-  // is-moving 只摘折射滤镜。两个 class 分开，观感才不会"一按就掉画质"。
-  document.body.classList.add('is-moving', 'is-resizing');
-  if (typeof API.setDragging === 'function') API.setDragging(true);
+  /* is-resizing 会把毛玻璃整个摘掉（缩放会重算图层，代价远高于平移），
+   * is-moving 只摘折射滤镜。两个 class 分开，观感才不会"一按就掉画质"。 */
+  beginMoveSession('is-resizing');     // ⑥ 与拖动共用同一个会话
   try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) {}
 });
 resizeHandle.addEventListener('pointermove', (e) => {
@@ -1458,11 +1487,13 @@ const endResize = () => {
   rsPointerDown = false;
   if (rsEndTimer) { clearTimeout(rsEndTimer); rsEndTimer = 0; }
   if (rsRaf) { cancelAnimationFrame(rsRaf); rsRaf = 0; }
-  document.body.classList.remove('is-moving', 'is-resizing');
-  if (typeof API.setDragging === 'function') API.setDragging(false);
+  /* ⑥ 延迟收尾：refreshWallpaper/refreshRealtimeBounds 也一起延后，
+   *   免得手势中途那次"假结束"先按新几何重画一遍底材。 */
+  endMoveSession(() => {
+    refreshWallpaper();        // 尺寸变了：壁纸相对偏移要重算
+    refreshRealtimeBounds();   // canvas 后备分辨率跟着窗口尺寸变，必须重画
+  });
   persist();
-  refreshWallpaper();   // 尺寸变了：壁纸相对偏移要重算（函数声明会提升，可安全前置调用）
-  refreshRealtimeBounds();   // canvas 后备分辨率跟着窗口尺寸变，必须重画
 };
 /* 与拖动同样的软结束：缩放中的一过性 cancel 不该让毛玻璃闪一下又回来 */
 const softEndResize = () => {
@@ -2685,9 +2716,74 @@ function switchTheme(t) {
  */
 const THEME_REPO_URL = 'https://github.com/fangyugit/FClassPal-theme';
 
-/* ---------- 界面风格选择（v2.5.3 已撤下）----------
- * 原 v2.5.2 的界面风格自绘下拉被「主题管理」弹窗取代：内置皮肤与 .fcpt 主题包的
- * 切换/排序/删除/导入都在弹窗里，设置面板只留一个入口。相关函数与绑定一并移除。 */
+/* ---------- 主题风格选择（老样式自绘下拉，v2.5.4 换回来）----------
+ * 为什么换回来：v2.5.3 把切换收进「主题管理」弹窗之后，安卓真机上反馈是
+ * "主题切不动"——多一层弹窗多一层变数（安卓 WebView 里卡片列表的可点区域、
+ * 滚动容器都不如桌面稳），而快速切换本来也不该躲在管理弹窗里。
+ * 于是设置面板恢复一条直接的下拉：按钮显示当前主题（色点 + 名字），弹出层是
+ * 44px 行高的选项列表，选中项打勾；数据源仍是 THEMES/THEME_LABEL/THEME_ACCENT
+ * 注册表，装/删/排序后 applyThemeRegistry → renderThemeOptions 重画。
+ * 管理（安装/导入/排序/删除）依旧在主题管理弹窗，两边各管一件事。 */
+function renderThemeOptions() {
+  const pop = $('themeSelectPop');
+  if (!pop) return;
+  const cur = THEMES.indexOf(currentTheme) >= 0 ? currentTheme : 'glass';
+  pop.innerHTML = THEMES.map((t) =>
+    '<button type="button" class="tselect-item" role="option" data-value="' + escapeHtml(t) + '"' +
+    ' aria-selected="' + (t === cur ? 'true' : 'false') + '">' +
+    '<span class="tselect-dot" style="--c:' + escapeHtml(THEME_ACCENT[t] || '#6750A4') + '"></span>' +
+    '<span class="tselect-label">' + escapeHtml(THEME_LABEL[t] || t) + '</span>' +
+    (t === cur ? '<svg class="ic tselect-check" aria-hidden="true"><use href="#i-check"/></svg>' : '') +
+    '</button>').join('');
+  syncThemeSelect();
+}
+
+/** 把当前主题同步到下拉按钮（applyTheme / 启动同步都会调） */
+function syncThemeSelect() {
+  const label = $('themeSelectLabel');
+  const dot = $('themeSelectDot');
+  if (!label || !dot) return;
+  const cur = THEMES.indexOf(currentTheme) >= 0 ? currentTheme : 'glass';
+  label.textContent = THEME_LABEL[cur] || cur;
+  dot.style.setProperty('--c', THEME_ACCENT[cur] || '#6750A4');
+}
+
+function themeSelectOpen(open) {
+  const pop = $('themeSelectPop');
+  const btn = $('themeSelectBtn');
+  if (!pop || !btn) return;
+  pop.classList.toggle('hidden', !open);
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+(function bindThemeSelect() {
+  const wrap = $('themeSelect');
+  const btn = $('themeSelectBtn');
+  const pop = $('themeSelectPop');
+  if (!wrap || !btn || !pop) return;
+  /* 触摸优先：pointerdown/click 都接一次。安卓 WebView 里某些场景 click 会迟到
+   * 甚至不来（父容器滚动/machinery），但 pointerup 一定来；两条路都去重后合并。 */
+  const pick = (e) => {
+    const item = e.target.closest && e.target.closest('.tselect-item');
+    if (!item || !item.dataset.value) return;
+    themeSelectOpen(false);
+    if (item.dataset.value !== currentTheme) switchTheme(item.dataset.value);
+  };
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    themeSelectOpen(pop.classList.contains('hidden'));
+  });
+  pop.addEventListener('click', pick);
+  /* 安卓 WebView 里个别场景（父容器滚动判定的那一小会儿）click 会迟到甚至不来，
+   * pointerup 一定来。多这一条路不会切两次：切完 currentTheme 已经等于选中值。 */
+  pop.addEventListener('pointerup', pick);
+  document.addEventListener('click', (e) => {
+    if (!(e.target.closest && e.target.closest('#themeSelect'))) themeSelectOpen(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !pop.classList.contains('hidden')) themeSelectOpen(false);
+  });
+})();
 
 /** 主进程给的卡片列表 → 注册表（顺序就是用户排的顺序；内置五套缺了就补在末尾） */
 function applyThemeRegistry(cards) {
@@ -2706,6 +2802,7 @@ function applyThemeRegistry(cards) {
   THEME_ACCENT = accent;
   FIXED_PALETTE_THEMES = fixed;
   THEME_ACCENT_LIST = Object.keys(THEME_ACCENT).map((k) => THEME_ACCENT[k].toUpperCase());
+  renderThemeOptions();   // 注册表一变就重画：装/删/排序之后下拉跟着变
 }
 
 /* 一个主题包一个 <style>，绝不拼成一份。
@@ -2907,6 +3004,31 @@ async function installBundledTheme(file) {
   const r = await API.themesInstallBundled(file);
   const n = r && r.success && r.installed ? '「' + r.installed.name + '」' : '';
   await afterThemeMutation(r, r && r.success ? '已装上 ' + n : '');
+}
+
+/* ---------- 随包主题自动补装（v2.5.4）----------
+ * 安卓真机上反馈"附带的主题用不了"：得用户自己在弹窗里逐项点一下才装得进来，
+ * 而那层随包列表在某些机型上点不响（SAF/隐私选择器的同一批兼容问题）。
+ * → 启动后静默把还没装的随包主题补上。装完它们自然移出"随包"清单，
+ *   下次启动一件挂也没有（幂等，不留额外开销）。 */
+async function autoInstallBundledPacks() {
+  if (typeof API.themesInstallBundled !== 'function') return 0;
+  const pend = ((themeInv && themeInv.bundled) || []).filter((b) => b && !b.installed && b.file);
+  if (!pend.length) return 0;
+  let n = 0;
+  for (const b of pend) {
+    try {
+      const r = await API.themesInstallBundled(b.file);
+      if (r && r.success) n++;
+    } catch (e) {
+      console.warn('[themes] 随包主题补装失败', b.file, e);
+    }
+  }
+  if (n) {
+    await loadThemeRegistry();   // 重新拉清单 + 包 CSS，新主题立刻出现在下拉里
+    toast('已自动装上 ' + n + ' 套随包主题');
+  }
+  return n;
 }
 
 async function removeThemePack(id) {
@@ -4053,6 +4175,9 @@ if (typeof API.onTrayAction === 'function') {
    * 主题包还没读进来就会被退回基线（用户看到的就是"升级完主题没了"）。
    * 主进程在建窗前其实已经自动装过随包离线包，这里是渲染层的第二道保险。 */
   await loadThemeRegistry();
+  /* 随包主题没装的补装上（安卓重点，见 autoInstallBundledPacks 注释）。
+   * 不 await：库存为空时本就是零成本，有活干时也不该卡住首屏。 */
+  autoInstallBundledPacks().catch((e) => console.warn('[themes]', e));
   /* 配置里记的主题已经不在本机（包被删了、或从别的机器同步过来的配置）→ 收回基线，
    * 顺手落盘，别让"配置说是 kitty、界面却是玻璃"这种状态一直挂着 */
   if (THEMES.indexOf(config.theme) < 0) config.theme = 'glass';

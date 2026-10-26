@@ -1776,7 +1776,103 @@ body.is-resizing .lg-border {
   box-shadow: 0 0 0 2px var(--md3-surface, #fff), 0 0 0 4px var(--md3-primary, #6750a4);
 }
 
-/* 原生 select（界面风格入口 v2.5.3 起由「主题管理」弹窗取代）；这个类还服务于「背景填充方式」等 */
+/* ====== 主题风格选择（v2.5.4 换回老样式：自绘下拉）======
+ * 原生 <select> 在触屏上弹系统菜单、行高小、间距挤。自绘：按钮显示
+ * 当前主题（色点 + 名字 + 箭头），弹出行高 44px+ 的选项列表，选中打勾。
+ * 颜色全部走 token，随主题 / 明暗自动适配。 */
+.tselect {
+  position: relative;
+  display: inline-block;
+  max-width: 170px;
+}
+.tselect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 34px 6px 10px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--t-surface-2, rgba(255, 255, 255, 0.78));
+  border: 1px solid var(--t-line, rgba(70, 90, 160, 0.22));
+  border-radius: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+.tselect-btn:hover { border-color: var(--accent); }
+.tselect-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tselect-btn[aria-expanded="true"] .tselect-caret { transform: rotate(180deg); }
+.tselect-caret {
+  position: absolute;
+  right: 10px;
+  width: 13px;
+  height: 13px;
+  color: var(--text-soft);
+  transition: transform 0.18s ease;
+}
+.tselect-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tselect-dot {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--c, var(--accent));
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+.tselect-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: max-content;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  background: var(--t-surface, #fff);
+  border: 1px solid var(--t-line, rgba(70, 90, 160, 0.22));
+  border-radius: 14px;
+  box-shadow: var(--t-shadow-menu, 0 14px 38px -14px rgb(0 0 0 / 0.35));
+}
+.tselect-pop.hidden { display: none; }
+.tselect-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;               /* 触控目标：手指按得住 */
+  padding: 8px 12px 8px 10px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  touch-action: manipulation;
+  transition: background 0.14s ease;
+}
+.tselect-item:hover { background: var(--t-surface-3, rgb(0 0 0 / 0.06)); }
+.tselect-item:active { transform: scale(0.98); }
+.tselect-item .tselect-label { flex: 1 1 auto; }
+.tselect-item[aria-selected="true"] {
+  background: var(--t-surface-3, rgb(0 0 0 / 0.06));
+  color: var(--accent);
+}
+.tselect-check { width: 14px; height: 14px; color: var(--accent); flex: 0 0 auto; }
+
+/* 原生 select（界面风格入口 v2.5.4 起恢复为上面的自绘 .tselect）；这个类还服务于「背景填充方式」等 */
 .theme-select {
   appearance: none;
   -webkit-appearance: none;
