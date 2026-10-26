@@ -1523,11 +1523,13 @@ let dragging = false, dragRaf = 0;
 let dragPointerId = null;      // ① 拖拽主指针（其它 pointerId 一律忽略）
 let dragPointerDown = false;   // 主指针是否还按着（软结束判定用）
 let dragEndTimer = 0;          // ② 软结束宽限定时器
+let dragSmX = null, dragSmY = null;   // ⑧ 触摸 EMA 平滑值（鼠标路径不用）
 let dragStartX = 0, dragStartY = 0, dragOriginX = 0, dragOriginY = 0, lastX = 0, lastY = 0;
 let dragLastAt = 0;            // 上一次有效位移的时间戳（卡死自救用）
 const DRAG_CANCEL_GRACE = 260; // 取消后仍可无缝续拖的时间窗（ms）
 const DRAG_MAX_STEP = 240;     // 单帧最大可信位移（px）
 const DRAG_SETTLE = 200;       // ⑥ 手势收尾延迟（ms），见下面 beginMoveSession
+const DRAG_SMOOTH = 0.45;      // ⑧ 触摸坐标平滑系数（只对非鼠标输入生效），见 onDragMove
 const titlebar = $('titlebar');
 
 /* ---------- 拖拽会话（v2.5.4）：一次手势只开关一次"降载" ----------
@@ -1600,6 +1602,7 @@ titlebar.addEventListener('pointerdown', (e) => {
   dragging = true;
   dragPointerId = e.pointerId;
   dragPointerDown = true;
+  dragSmX = dragSmY = null;      // ⑧ 平滑基准重新播种（首帧直接取采样，无跳变）
   dragLastAt = Date.now();
   // 屏幕坐标：不随窗口自身位移而变，拖拽才能真正"指哪走哪"
   dragStartX = lastX = e.screenX;
@@ -1611,17 +1614,16 @@ titlebar.addEventListener('pointerdown', (e) => {
   beginMoveSession(null);        // ⑥ 会话式降载：不再每按一次就摘/戴滤镜
   try { titlebar.setPointerCapture(e.pointerId); } catch (_) {}
 });
-titlebar.addEventListener('pointermove', (e) => {
-  if (!dragging || e.pointerId !== dragPointerId) return;
-  // 鼠标的悬停移动（未按左键）不算拖拽，别把已结束的拖拽续上
-  if (e.pointerType === 'mouse' && e.buttons === 0) return;
-  if (dragEndTimer) {            // ② 宽限期内又来了位移 → 无缝续上，不摘滤镜
-    clearTimeout(dragEndTimer); dragEndTimer = 0; dragPointerDown = true;
-  }
-  lastX = e.screenX; lastY = e.screenY;
-  dragLastAt = Date.now();
-  if (!dragRaf) dragRaf = requestAnimationFrame(applyMove);  // 一帧最多一次
-});
+/* ⑧+⑦ 拖拽移动（v2.6.0 触摸热修，版本号不变）：
+ *   ⑧ 触摸/触控笔坐标走 EMA 平滑——教室大屏的红外触摸框 ±1~3px 噪声原样喂给
+ *      setPosition，窗口就跟着手指高频抖（鼠标本来就稳，不做平滑、手感不变）。
+ *      α=0.45 滞后 1~2 帧，肉眼追不出，噪声基本滤净。
+ *   ⑦ 事件同时挂 document 捕获段。drag-diag.log 证明这台机器上触摸拖动必夹
+ *      pointercancel/lostpointercapture（toggles=4）——捕获一丢，后续 pointermove
+ *      就派给"手指底下当时命中的元素"（窗口每帧都在动，命中的元素每帧都在换），
+ *      只挂 titlebar 就收不到，表现是"拖一下断一下"的抖。捕获段 + pointerId
+ *      过滤让软结束的宽限期真正能续上；与 titlebar 上的旧监听靠 dragging/pointerId
+ *      判重，不会重复处理。 */
 const endDrag = () => {
   if (!dragging) return;
   dragging = false;
@@ -1639,25 +1641,51 @@ const softEndDrag = () => {
   if (dragEndTimer) clearTimeout(dragEndTimer);
   dragEndTimer = setTimeout(() => { dragEndTimer = 0; endDrag(); }, DRAG_CANCEL_GRACE);
 };
-// ②-① 事件只认主指针：别的 pointerId 的 up/cancel 不能打断正在进行的拖拽
-titlebar.addEventListener('pointerup', (e) => {
-  if (e.pointerId !== dragPointerId) return;
+const onDragMove = (e) => {
+  if (!dragging || e.pointerId !== dragPointerId) return;
+  // 鼠标的悬停移动（未按左键）不算拖拽，别把已结束的拖拽续上
+  if (e.pointerType === 'mouse' && e.buttons === 0) return;
+  if (dragEndTimer) {            // ② 宽限期内又来了位移 → 无缝续上，不摘滤镜
+    clearTimeout(dragEndTimer); dragEndTimer = 0; dragPointerDown = true;
+  }
+  if (e.pointerType === 'mouse') {
+    lastX = e.screenX; lastY = e.screenY;
+  } else {
+    const sx = e.screenX, sy = e.screenY;
+    lastX = dragSmX = (dragSmX == null) ? sx : dragSmX + (sx - dragSmX) * DRAG_SMOOTH;
+    lastY = dragSmY = (dragSmY == null) ? sy : dragSmY + (sy - dragSmY) * DRAG_SMOOTH;
+  }
+  dragLastAt = Date.now();
+  if (!dragRaf) dragRaf = requestAnimationFrame(applyMove);  // 一帧最多一次
+};
+const onDragUp = (e) => {
+  if (!dragging || e.pointerId !== dragPointerId) return;
   endDrag();
-});
-titlebar.addEventListener('pointercancel', (e) => {
-  if (e.pointerId !== dragPointerId) return;
+};
+const onDragCancel = (e) => {
+  if (!dragging || e.pointerId !== dragPointerId) return;
   softEndDrag();
-});
+};
+titlebar.addEventListener('pointermove', onDragMove);
+document.addEventListener('pointermove', onDragMove, true);
+// ②-① 事件只认主指针：别的 pointerId 的 up/cancel 不能打断正在进行的拖拽
+titlebar.addEventListener('pointerup', onDragUp);
+titlebar.addEventListener('pointercancel', onDragCancel);
 titlebar.addEventListener('lostpointercapture', (e) => {
   if (e.pointerId !== undefined && e.pointerId !== dragPointerId) return;
   softEndDrag();
 });
+/* 捕获丢失后 up/cancel 也会派到别的元素上：document 捕获段兜底，
+ * 真正松手的那一刻必须立刻 endDrag，不能干等 260ms 宽限期。 */
+document.addEventListener('pointerup', onDragUp, true);
+document.addEventListener('pointercancel', onDragCancel, true);
 
 /* ---------- 缩放 ----------
  * 同理用 rAF 合并：pointermove 每秒可达上百次，逐次 IPC 会让尺寸在
  * 排队消息间抖动。合并成每帧一次后拖动边缘就是连续的。 */
 let resizing = false, rsRaf = 0;
 let rsPointerId = null, rsPointerDown = false, rsEndTimer = 0;
+let rsSmX = null, rsSmY = null;   // ⑧ 与拖动同款的触摸平滑
 let rsStartX = 0, rsStartY = 0, rsW = 0, rsH = 0, rsLastX = 0, rsLastY = 0;
 const resizeHandle = $('resizeHandle');
 
@@ -1681,6 +1709,7 @@ resizeHandle.addEventListener('pointerdown', (e) => {
   resizing = true;
   rsPointerId = e.pointerId;
   rsPointerDown = true;
+  rsSmX = rsSmY = null;               // ⑧ 平滑基准重新播种
   // 同理用屏幕坐标：与主窗口几何无关，不会形成反馈回路
   rsStartX = rsLastX = e.screenX;
   rsStartY = rsLastY = e.screenY;
@@ -1692,14 +1721,23 @@ resizeHandle.addEventListener('pointerdown', (e) => {
   beginMoveSession('is-resizing');     // ⑥ 与拖动共用同一个会话
   try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) {}
 });
-resizeHandle.addEventListener('pointermove', (e) => {
+/* ⑦+⑧ 与拖动同款：document 捕获段兜底 + 触摸坐标 EMA 平滑（缩放手势同样
+ * 会被 pointercancel 打断、红外框同样会抖） */
+const onRsMove = (e) => {
   if (!resizing || e.pointerId !== rsPointerId) return;
   if (e.pointerType === 'mouse' && e.buttons === 0) return;
   if (rsEndTimer) { clearTimeout(rsEndTimer); rsEndTimer = 0; rsPointerDown = true; }
-  rsLastX = e.screenX;
-  rsLastY = e.screenY;
+  if (e.pointerType === 'mouse') {
+    rsLastX = e.screenX; rsLastY = e.screenY;
+  } else {
+    const sx = e.screenX, sy = e.screenY;
+    rsLastX = rsSmX = (rsSmX == null) ? sx : rsSmX + (sx - rsSmX) * DRAG_SMOOTH;
+    rsLastY = rsSmY = (rsSmY == null) ? sy : rsSmY + (sy - rsSmY) * DRAG_SMOOTH;
+  }
   if (!rsRaf) rsRaf = requestAnimationFrame(applyResize);
-});
+};
+resizeHandle.addEventListener('pointermove', onRsMove);
+document.addEventListener('pointermove', onRsMove, true);
 const endResize = () => {
   if (!resizing) return;
   resizing = false;
@@ -1734,6 +1772,14 @@ resizeHandle.addEventListener('lostpointercapture', (e) => {
   if (e.pointerId !== undefined && e.pointerId !== rsPointerId) return;
   softEndResize();
 });
+document.addEventListener('pointerup', (e) => {
+  if (!resizing || e.pointerId !== rsPointerId) return;
+  endResize();
+}, true);
+document.addEventListener('pointercancel', (e) => {
+  if (!resizing || e.pointerId !== rsPointerId) return;
+  softEndResize();
+}, true);
 
 /* ---------- 同步主进程回推的真实窗口位置 ----------
  * 原生拖拽由系统完成，渲染层拿不到新坐标。若不同步，下次保存配置时

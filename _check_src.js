@@ -398,6 +398,19 @@ const checks = [
     /#content\.free-layout \.group,/.test(css) && /\.item-grip/.test(css)],
   ['v2.6.0: 网格拖拽在自由布局下让位（同一次手势不会两套拖拽都接）',
     /if \(layoutMode\(\) === 'free'\) return;/.test(app)],
+  /* v2.6.0 触摸热修（版本号不变，2026-10-26 下午）：win 触摸拖动还是抖的两个根因 */
+  ['v2.6.0 热修: 拖拽/缩放事件挂 document 捕获段（pointercancel 丢捕获后也续得上）',
+    /const onDragMove = \(e\) => \{/.test(app) &&
+    /document\.addEventListener\('pointermove', onDragMove, true\)/.test(app) &&
+    /document\.addEventListener\('pointerup', onDragUp, true\)/.test(app) &&
+    /document\.addEventListener\('pointercancel', onDragCancel, true\)/.test(app) &&
+    /document\.addEventListener\('pointermove', onRsMove, true\)/.test(app)],
+  ['v2.6.0 热修: 触摸坐标 EMA 平滑（鼠标路径保持原手感不动）',
+    /const DRAG_SMOOTH = 0\.45/.test(app) &&
+    /dragSmX = dragSmY = null/.test(app) && /rsSmX = rsSmY = null/.test(app) &&
+    /dragSmX \+ \(sx - dragSmX\) \* DRAG_SMOOTH/.test(app) &&
+    /rsSmX \+ \(sx - rsSmX\) \* DRAG_SMOOTH/.test(app) &&
+    /if \(e\.pointerType === 'mouse'\) \{\s*\n\s*lastX = e\.screenX; lastY = e\.screenY;/.test(app)],
   ['多主题 v2.5.0: 内置五套 + 运行时可刷新注册表（装/删/排序后不用改代码）',
     /const BUILTIN_THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony'\]/.test(app) &&
     /let THEMES = BUILTIN_THEMES\.slice\(\)/.test(app) &&
