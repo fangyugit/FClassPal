@@ -2,7 +2,7 @@
 
 > FClassPal是一个主要为班级大屏打造的桌面快捷方式启动器小部件 可用于替代希沃管家助手/桌面助手
 
-![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-922%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.5.3-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
+![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-922%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.6.0-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **FClassPal**是一个常驻桌面的启动器小部件，用于替代希沃管家助手/桌面助手 把常用的应用、文件、文件夹和网页钉在桌面一角，顺手管理 U 盘的弹出。无任务栏图标——右键或长按唤醒菜单，其余时间安静地贴在桌面上。
 
@@ -12,11 +12,12 @@
 
 ## 功能
 
-- **快捷方式管理**：应用（.exe）/ 文件 / 文件夹 / 网页四种类型；exe 自动提取图标，也可自选图片或字符；支持分组
+- **快捷方式管理**：应用（.exe）/ 文件 / 文件夹 / 网页 / **希沃桌面工具**五种类型；exe 自动提取图标，也可自选图片或字符；支持分组。希沃桌面工具内置批注、日历、随机抽选、人数统计、放大镜、计时、降半屏、截屏八个入口（图标对齐希沃侧边栏），点一下自动配好名称与图标，启动时在希沃安装目录里自动定位工具，位置特殊也可手动指定 exe 路径
 - **图标外观**：填充方式可选「内部」（图片**完整落在边框形状之内**，按内切解留白 `0.2929 × 半径`，带字的图与异形图标都不会被圆边切角）或「裁剪」（填满圆形裁掉多余）；形状可选「跟随主题 / 圆形 / 圆角 / 方形」（圆角可调 4–50%）；边框可选「自动取色」（描边 / 外发光 / 底色都取这张图自己的主色）、「跟随主题」（用当前主题的强调色，换风格、换壁纸自动跟着变）、「透明」或「玻璃白边」，也可以**直接指定颜色**。「内部」下还能开**统一图标风格**：所有图标收敛到同一个颜色，图片按自己的形状染成单色（明暗细节保留，认得出是哪个应用），预设与字符图标直接换色——像 Pixel 的主题图标那样一整套图标统一取色。没开统一风格时，预设图标与字符图标取色退回当前主题的强调色
 - **U 盘管理**：自动列出即插 U 盘，一键打开；安全弹出采用五层降级策略（设备节点 → 卷级 IOCTL → Shell 动词 → WMI 卸载 → mountvol），每层都校验盘符真的消失，全失败时给出一键「管理员重试」
 - **窗口控制**：透明度、圆角弧度（8–40px）、尺寸、置底、锁定位置、开机自启、隐藏到托盘、隐藏任务栏图标
 - **编辑模式**：进编辑模式后直接**拖动图标**排位置（跨分组也行），两个图标拖到一起就**聚合成文件夹**，点文件夹弹出二级菜单管理里面成员；「按名称排序」一键正序 / 倒序（中文拼音序）
+- **图标布局**（v2.6.0）：默认**网格**自动排布，也可切**自由**布局——每个图标都能拖到任意位置、拖右下角手柄自由拉伸大小，编辑弹窗里还有宽/高滑条精调；「一键整理」按当前窗口重新排整齐，「还原尺寸」位置不动恢复默认大小，「恢复默认」清掉全部自定义回到网格
 - **配置备份**（设置面板最下面）：导出 `.fcpc`（软件设置 + 全部分组 / 快捷方式 + 自定义图标）与 `.fcps`（主题方案：元素位置 / 背景图 / 图标设置，包内附可读说明），换电脑导入同格式包即可原样恢复。`.fcpt` 从 v2.5.0 起是**主题包**（独立分发的皮肤，见下）
 - **明暗模式**：十套主题都支持明亮 / 黑暗 / **跟随系统**三档。选「跟随系统」时系统在亮暗之间切换（含定时切换、日落到日出）应用立刻跟着变，不用重开；动态配色主题走 Monet 官方暗色方案重算整套角色（主色色相守恒，主题身份色不漂）；固定配色主题只压暗表面、绝不动强调色——Kitty 在暗色下依然是粉的
 - **自定义背景图**：可以拿自己的图片当底材，可调模糊（0–40px）、白色蒙版（0–100%）、缩放与位移（合起来就是裁剪）、铺法；背景图同时作为取色源，玻璃配色跟着新底材走
@@ -79,16 +80,16 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 
 | 平台 | 产物 | 处理器架构 |
 |---|---|---|
-| Windows | [FClassPal-2.5.3.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.5.3/FClassPal-2.5.3.exe)（单文件版，约 63MB） | x64 |
-| Linux | `FClassPal-2.5.3-linux-x64.tar.gz`| x64 |
-| Linux | `FClassPal-2.5.3-linux-arm64.tar.gz` | arm64 |
-| Linux | [FClassPal-2.5.3-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.5.3/FClassPal-2.5.3-linux-loong64.tar.gz)（适配龙芯架构） | LoongArch64 |
-| macOS | `FClassPal-2.5.3-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
-| macOS | `FClassPal-2.5.3-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
-| Android | `FClassPal-2.5.3-android.apk`| arm64 / armv7 / x86_64 |
-| Android | `FClassPal-2.5.3-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
+| Windows | [FClassPal-2.6.0.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.6.0/FClassPal-2.6.0.exe)（单文件版，约 73MB） | x64 |
+| Linux | `FClassPal-2.6.0-linux-x64.tar.gz`| x64 |
+| Linux | `FClassPal-2.6.0-linux-arm64.tar.gz` | arm64 |
+| Linux | [FClassPal-2.6.0-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.6.0/FClassPal-2.6.0-linux-loong64.tar.gz)（适配龙芯架构） | LoongArch64 |
+| macOS | `FClassPal-2.6.0-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
+| macOS | `FClassPal-2.6.0-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
+| Android | `FClassPal-2.6.0-android.apk`| arm64 / armv7 / x86_64 |
+| Android | `FClassPal-2.6.0-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
 
-以上都在 [v2.5.3 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.5.3)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
+以上都在 [v2.6.0 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.0)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
 
 - 龙芯包解压后执行 `FClassPal-linux-loong64/electron` 即可（这一份的可执行文件仍叫
   `electron`，顶层目录名也沿用它，与其它平台不同）

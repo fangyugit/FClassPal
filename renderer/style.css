@@ -1833,7 +1833,7 @@ body.is-resizing .lg-border {
   right: 0;
   z-index: 60;
   min-width: max-content;
-  max-height: 260px;
+  max-height: 300px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -3469,3 +3469,101 @@ body.edit-mode .ctx-menu .ctx-sort { display: flex; }
 .occupied-acts .usb-btn { font-size: 0.72rem; padding: 6px 10px; }
 
 
+
+/* ====== 希沃桌面工具选择器（v2.6.0）======
+ * 添加/编辑快捷方式弹窗里，类型选「希沃桌面工具」时出现的 4×2 工具格子。
+ * 图标为白色线条风（对齐希沃侧边栏），颜色走 token 随主题/明暗适配。 */
+.seewo-tools {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.seewo-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 4px 7px;
+  border: 1px solid var(--t-line, rgba(70, 90, 160, 0.22));
+  border-radius: 12px;
+  background: var(--t-surface-2, rgb(255 255 255 / 0.55));
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color 0.14s, background 0.14s, transform 0.1s;
+}
+.seewo-tool .ic { width: 22px; height: 22px; color: var(--text-soft); transition: color 0.14s; }
+.seewo-tool .st-label { font-size: 0.72rem; line-height: 1.1; }
+.seewo-tool:hover { border-color: var(--accent); }
+.seewo-tool:active { transform: scale(0.96); }
+.seewo-tool.sel {
+  border-color: var(--accent);
+  background: var(--t-surface-3, rgb(0 0 0 / 0.06));
+  color: var(--accent);
+}
+.seewo-tool.sel .ic { color: var(--accent); }
+
+/* 弹出的主题风格下拉（v2.6.0）：打开时挪到 body 上用 fixed 定位，
+ * 彻底逃出设置面板的 overflow 裁剪——这是"下拉被面板剪掉一截"的根修 */
+body > .tselect-pop { position: fixed; }
+
+/* ====== 自由布局（v2.6.0）======
+ * #content.free-layout：分组标题隐藏、组与网格 display:contents，
+ * 让所有快捷方式卡片成为 .content 的直接绝对定位子元素——
+ * 坐标（left/top/width/height）由 config.layout.items[key] 提供。
+ * 编辑模式：按住卡片拖位置；右下角 .item-grip 拉伸大小。 */
+#content.free-layout .group,
+#content.free-layout .item-grid { display: contents; }
+#content.free-layout .group-title { display: none; }
+#content.free-layout .item {
+  position: absolute;
+  margin: 0;
+  min-height: 0;
+}
+#content.free-layout .item.add-card { display: none; }
+.edit-mode #content.free-layout .item.add-card { display: none; }
+#content.free-layout .item.free-moving {
+  transition: none;
+  opacity: 0.88;
+  z-index: 30;
+  box-shadow: 0 14px 30px -12px rgb(20 40 100 / 0.5);
+}
+#content.free-layout .item.free-resizing { transition: none; }
+.item-grip {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 20px;
+  height: 20px;
+  display: none;
+  cursor: nwse-resize;
+  touch-action: none;
+  color: var(--text-soft);
+  z-index: 5;
+}
+.edit-mode .item-grip { display: block; }
+.item-grip::before {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  border-radius: 1px;
+  opacity: 0.75;
+}
+.item-grip:hover { color: var(--accent); }
+
+/* 布局参数滑条（添加/编辑弹窗，自由模式） */
+.layout-param {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 0.82rem;
+  color: var(--text-soft);
+}
+.layout-param input[type="range"] { flex: 1; accent-color: var(--accent); }
+.layout-param .val { min-width: 3.2em; text-align: right; }

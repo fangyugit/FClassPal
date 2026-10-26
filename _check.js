@@ -365,6 +365,41 @@ const checks = [
     /function beginMoveSession\(/.test(app) && /function endMoveSession\(/.test(app) &&
     /beginMoveSession\(null\)/.test(app) && /beginMoveSession\('is-resizing'\)/.test(app) &&
     /const DRAG_SETTLE\s*=/.test(app)],
+  /* v2.6.0：希沃桌面工具类型 + 自由布局 + 主题风格下拉只在安卓端显示 */
+  ['v2.6.0: 快捷方式新增「希沃桌面工具」类型（8 个工具选择器自动填名称/图标/目标）',
+    /<option value="seewo">希沃桌面工具<\/option>/.test(html) &&
+    html.includes('id="seewoToolGrid"') && html.includes('id="seewoField"') &&
+    /const SEEWO_TOOLS = \[/.test(app) &&
+    /function buildSeewoToolGrid\(\)/.test(app) &&
+    /function syncSeewoSelection\(\)/.test(app)],
+  ['v2.6.0: 希沃工具图标随类型走（8 个 symbol + 预设映射齐）',
+    ['annotate', 'calendar', 'random', 'people', 'magnifier', 'timer', 'half', 'screenshot']
+      .every((k) => html.includes('id="i-seewo-' + k + '"') &&
+        app.includes("'s-" + k + "': 'i-seewo-" + k + "'"))],
+  ['v2.6.0: 主进程启动希沃桌面工具（open-target 分流 + 安装目录关键字搜索 + 手动路径直开）',
+    /async function launchSeewoTool\(item\)/.test(mainNC) &&
+    /item\.type === 'seewo'/.test(mainNC) &&
+    /function findSeewoToolExe\(toolId\)/.test(mainNC) &&
+    /const SEEWO_TOOL_MATCH = \{/.test(mainNC)],
+  ['v2.6.0: 安卓端希沃工具明确报错（不许静默）',
+    bridge.includes('希沃桌面工具是电脑端功能')],
+  ['v2.6.0: 主题风格下拉只在安卓端显示（UA 先兜底、env 回来再校正）',
+    /function applyThemePickVisibility\(/.test(app) &&
+    /applyThemePickVisibility\(IS_ANDROID\)/.test(app) &&
+    /applyThemePickVisibility\(env && env\.platform === 'android'\)/.test(app)],
+  ['v2.6.0: 主题下拉 portal 到 body（逃出设置面板 overflow 裁剪 + 放不下朝上弹）',
+    /if \(pop\.parentNode !== document\.body\) document\.body\.appendChild\(pop\)/.test(app) &&
+    /body > \.tselect-pop \{ position: fixed; \}/.test(css)],
+  ['v2.6.0: 自由布局（网格/自由分段 + 拖动/手柄缩放 + 一键整理/还原尺寸/恢复默认）',
+    html.includes('id="layoutSeg"') && html.includes('id="btnLayoutTidy"') &&
+    html.includes('id="btnLayoutResetSize"') && html.includes('id="btnLayoutReset"') &&
+    html.includes('id="itemLayoutField"') &&
+    /function layoutMode\(\)/.test(app) && /function ensureFreeLayouts\(\)/.test(app) &&
+    /function applyFreeLayout\(el, it\)/.test(app) &&
+    /function syncItemLayoutField\(/.test(app) &&
+    /#content\.free-layout \.group,/.test(css) && /\.item-grip/.test(css)],
+  ['v2.6.0: 网格拖拽在自由布局下让位（同一次手势不会两套拖拽都接）',
+    /if \(layoutMode\(\) === 'free'\) return;/.test(app)],
   ['多主题 v2.5.0: 内置五套 + 运行时可刷新注册表（装/删/排序后不用改代码）',
     /const BUILTIN_THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony'\]/.test(app) &&
     /let THEMES = BUILTIN_THEMES\.slice\(\)/.test(app) &&
@@ -548,7 +583,8 @@ const checks = [
     fs.existsSync('build/icon.ico') && fs.existsSync('build/icon.png')],
   ['main: BrowserWindow 挂 icon（开发模式/alt-tab 也有图标）',
     /icon:\s*fs\.existsSync\(path\.join\(__dirname, 'build', 'icon\.ico'\)\)/.test(main)],
-  ['产物: 便携 exe 已生成（v2.4.6）', fs.existsSync('dist/FClassPal-2.4.6.exe')],
+  /* v2.6.0 起改为钉当前版本：dist 会清旧产物，钉死 2.4.6 的老断言只会永远假红 */
+  ['产物: 便携 exe 已生成（当前版本）', fs.existsSync('dist/FClassPal-' + srcPkg.version + '.exe')],
   /* 版本一致性（不再钉死某个号）：源码版本 = README 徽章 = CHANGELOG 有对应小节
    * = dist 里真有这个版本的 exe。改版本只改 package.json 一处，其余不同步就判红。 */
   ['配置: 版本号三处同源（package.json / README 徽章 / CHANGELOG 小节）',
@@ -916,11 +952,12 @@ const checks = [
     JSON.stringify(srcPkg.build.mac.target).includes('"arm64"') &&
     srcPkg.build.linux.artifactName === 'FClassPal-${version}-linux-${arch}.${ext}' &&
     srcPkg.build.mac.artifactName === 'FClassPal-${version}-mac-${arch}.${ext}'],
-  ['v2.4.5: Linux 产物已生成（两个架构的 deb + tar.gz）',
-    fs.existsSync('dist/FClassPal-2.4.5-linux-amd64.deb') &&
-    fs.existsSync('dist/FClassPal-2.4.5-linux-arm64.deb') &&
-    fs.existsSync('dist/FClassPal-2.4.5-linux-x64.tar.gz') &&
-    fs.existsSync('dist/FClassPal-2.4.5-linux-arm64.tar.gz')],
+  /* v2.6.0 起改为钉当前版本：Windows 上本来只能打 tar.gz（deb 缺 fpm），
+   * 老断言钉 2.4.5 的 deb 文件名，dist 一清就永远假红 */
+  ['v2.4.5: Linux 产物已生成（x64 + arm64 + loong64 的 tar.gz，当前版本）',
+    fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-x64.tar.gz') &&
+    fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-arm64.tar.gz') &&
+    fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-loong64.tar.gz')],
   ['v2.3.2: 进度条跟随（--sl-fill 不在 input 上声明 + syncRangeFill 清元素自身陈旧变量）',
     !/body\.theme-glass input\[type="range"\]\s*\{[^}]*--sl-fill\s*:/.test(css) &&
     /el\.style\.removeProperty\('--sl-fill'\)/.test(app) &&

@@ -9,8 +9,31 @@
 const ICONS = {
   book: 'i-book', plus: 'i-plus', mail: 'i-mail', shield: 'i-shield',
   board: 'i-board', camera: 'i-camera', folder: 'i-folder', link: 'i-link',
-  app: 'i-gear', star: 'i-star'
+  app: 'i-gear', star: 'i-star',
+  /* 希沃桌面工具（v2.6.0）：不在预设下拉里露出，由工具选择器自动套用 */
+  's-annotate': 'i-seewo-annotate', 's-calendar': 'i-seewo-calendar',
+  's-random': 'i-seewo-random', 's-people': 'i-seewo-people',
+  's-magnifier': 'i-seewo-magnifier', 's-timer': 'i-seewo-timer',
+  's-half': 'i-seewo-half', 's-screenshot': 'i-seewo-screenshot'
 };
+
+/* 希沃桌面工具（v2.6.0）：类型选「希沃桌面工具」时可选的八个工具。
+ * 目标格式 seewo:<id>，主进程在希沃安装目录里按关键字搜对应工具 exe；
+ * 顺序对齐用户给的侧边栏截图。 */
+const SEEWO_TOOLS = [
+  { id: 'annotate',   name: '批注',     icon: 's-annotate' },
+  { id: 'calendar',   name: '日历',     icon: 's-calendar' },
+  { id: 'random',     name: '随机抽选', icon: 's-random' },
+  { id: 'rollcall',   name: '人数统计', icon: 's-people' },
+  { id: 'magnifier',  name: '放大镜',   icon: 's-magnifier' },
+  { id: 'timer',      name: '计时',     icon: 's-timer' },
+  { id: 'half',       name: '降半屏',   icon: 's-half' },
+  { id: 'screenshot', name: '截屏',     icon: 's-screenshot' }
+];
+function seewoToolById(id) {
+  for (let i = 0; i < SEEWO_TOOLS.length; i++) if (SEEWO_TOOLS[i].id === id) return SEEWO_TOOLS[i];
+  return null;
+}
 
 // 预览模式下的示例图片图标（用于验证自定义图片渲染）
 const DEMO_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAaElEQVR42mNgwAP0s///pwZmIAVQy1KyHENry/E6gl6WY3UEvS3HcMSgdAA6oLY83AG4XEcPB4AdMeqAgUqAow4Y/A4YzQWjDhjNBaMOGM0FdHPAgDfJRlvFg6JjMii6ZoOiczoQ3XMAbgljtx0qGzEAAAAASUVORK5CYII=';
@@ -807,6 +830,9 @@ function setIconMono(on) {
 /* ---------- 渲染 ---------- */
 function render() {
   titleInput.value = config.title || 'FClassPal';
+  const freeMode = layoutMode() === 'free';
+  $('content').classList.toggle('free-layout', freeMode);
+  if (freeMode) ensureFreeLayouts();   // 没坐标的新图标先补一份默认位置
   groupsEl.innerHTML = '';
   config.groups.forEach((g, gi) => {
     const groupEl = document.createElement('div');
@@ -864,6 +890,13 @@ function render() {
       itemEl.append(del, icon, name);
       staggerIndex(itemEl, ii);   // 错峰入场（glass 风格下 CSS 不认这个 class）
       itemEl.classList.add('t-enter');
+      if (freeMode) {
+        applyFreeLayout(itemEl, it);
+        const grip = document.createElement('div');
+        grip.className = 'item-grip';
+        grip.title = '拖动调整大小';
+        itemEl.appendChild(grip);
+      }
       itemEl.addEventListener('click', () => {
         if (itemDragSuppressed) return;          // 刚拖完，这次 click 是拖拽的收尾
         if (isFolder(it)) { showFolderMenu(gi, ii); return; }  // 文件夹：二级菜单
@@ -885,6 +918,192 @@ function render() {
     groupsEl.appendChild(groupEl);
   });
 }
+
+/* ==================== 图标自由布局（v2.6.0）====================
+ * config.layout = { mode: 'grid'|'free', items: { [id]: {x,y,w,h} } }
+ * 网格模式维持原来的流式排布；自由模式下分组标题隐藏、组/网格容器
+ * display:contents，所有卡片成为 #content 的直接绝对定位子元素，
+ * 坐标按条目 id 存进 config.layout.items。
+ * 编辑模式交互：按住卡片拖位置；右下角 .item-grip 拉伸大小；
+ * 设置面板提供一键整理 / 还原尺寸 / 恢复默认。 */
+const FREE_ITEM_DEFAULT = 84;   // 与 --item-size 一致
+const FREE_PAD = 14;            // 对齐 .content 的 padding-top
+const FREE_GAP = 10;            // 对齐 .item-grid 的 gap
+
+function layoutMode() {
+  return (config && config.layout && config.layout.mode === 'free') ? 'free' : 'grid';
+}
+function layoutKey(it) {
+  return (it && it.id) ? it.id : ((it && it.name || '') + '|' + (it && it.target || ''));
+}
+function freeLayoutOf(it) {
+  return (config.layout && config.layout.items) ? config.layout.items[layoutKey(it)] || null : null;
+}
+function ensureLayoutConfig() {
+  if (!config.layout || typeof config.layout !== 'object') config.layout = { mode: 'grid', items: {} };
+  if (!config.layout.items || typeof config.layout.items !== 'object') config.layout.items = {};
+}
+
+/** 给没有坐标的图标按顺序补默认格位（已摆过的位置原样保留，不挪动）。 */
+function ensureFreeLayouts() {
+  ensureLayoutConfig();
+  const content = $('content');
+  const innerW = Math.max(240, content.clientWidth);
+  const cols = Math.max(1, Math.floor((innerW - FREE_PAD * 2 + FREE_GAP) / (FREE_ITEM_DEFAULT + FREE_GAP)));
+  const slotAt = (s) => ({
+    x: FREE_PAD + (s % cols) * (FREE_ITEM_DEFAULT + FREE_GAP),
+    y: FREE_PAD + Math.floor(s / cols) * (FREE_ITEM_DEFAULT + FREE_GAP)
+  });
+  const allItems = [];
+  config.groups.forEach((g) => (g.items || []).forEach((it) => allItems.push(it)));
+  const taken = new Set();
+  allItems.forEach((it) => {
+    const l = freeLayoutOf(it);
+    if (l && Number.isFinite(l.x) && Number.isFinite(l.y)) {
+      taken.add(Math.round((l.y - FREE_PAD) / (FREE_ITEM_DEFAULT + FREE_GAP)) * cols +
+        Math.round((l.x - FREE_PAD) / (FREE_ITEM_DEFAULT + FREE_GAP)));
+    }
+  });
+  let changed = false;
+  allItems.forEach((it) => {
+    const l = freeLayoutOf(it);
+    if (l && Number.isFinite(l.x) && Number.isFinite(l.y)) return;
+    let s = 0;
+    while (taken.has(s)) s++;
+    taken.add(s);
+    const p = slotAt(s);
+    config.layout.items[layoutKey(it)] = Object.assign({ w: FREE_ITEM_DEFAULT, h: FREE_ITEM_DEFAULT }, l || {}, p);
+    changed = true;
+  });
+  if (changed) persist();
+}
+
+/** 把布局写进卡片内联样式（render 里自由模式逐个调用） */
+function applyFreeLayout(el, it) {
+  const l = freeLayoutOf(it);
+  if (!l) return;
+  if (Number.isFinite(l.x)) el.style.left = Math.round(l.x) + 'px';
+  if (Number.isFinite(l.y)) el.style.top = Math.round(l.y) + 'px';
+  if (Number.isFinite(l.w) && l.w >= 48) el.style.width = Math.round(l.w) + 'px';
+  if (Number.isFinite(l.h) && l.h >= 48) el.style.height = Math.round(l.h) + 'px';
+}
+
+/* ---------- 自由布局：拖动移动 / 手柄缩放（仅编辑模式） ---------- */
+let freeDrag = null;   // { mode:'move'|'resize', el, key, pointerId, startX, startY, started, orig }
+
+groupsEl.addEventListener('pointerdown', (e) => {
+  if (layoutMode() !== 'free' || !editMode || freeDrag || itemDrag) return;
+  if (e.button !== undefined && e.button !== 0) return;
+  const card = e.target.closest ? e.target.closest('.item') : null;
+  if (!card || card.classList.contains('add-card')) return;
+  if (e.target.closest('.del-btn')) return;              // 删除按钮照常点
+  const gi = +card.dataset.gi, ii = +card.dataset.ii;
+  const it = config.groups[gi] && config.groups[gi].items[ii];
+  if (!it) return;
+  freeDrag = {
+    mode: (e.target.closest && e.target.closest('.item-grip')) ? 'resize' : 'move',
+    el: card, key: layoutKey(it),
+    pointerId: e.pointerId,
+    startX: e.clientX, startY: e.clientY, started: false,
+    orig: Object.assign(
+      { x: card.offsetLeft, y: card.offsetTop, w: card.offsetWidth, h: card.offsetHeight },
+      freeLayoutOf(it) || {}
+    )
+  };
+});
+
+groupsEl.addEventListener('pointermove', (e) => {
+  if (!freeDrag || e.pointerId !== freeDrag.pointerId) return;
+  const d = freeDrag;
+  if (!d.started) {
+    const dx0 = Math.abs(e.clientX - d.startX), dy0 = Math.abs(e.clientY - d.startY);
+    if (dx0 < 5 && dy0 < 5) return;
+    d.started = true;
+    try { groupsEl.setPointerCapture(d.pointerId); } catch (err) { /* 老内核没有就算了 */ }
+    d.el.classList.add(d.mode === 'move' ? 'free-moving' : 'free-resizing');
+  }
+  const dx = e.clientX - d.startX, dy = e.clientY - d.startY;
+  if (d.mode === 'move') {
+    const content = $('content');
+    const nx = Math.max(0, Math.min(d.orig.x + dx, Math.max(0, content.clientWidth - d.el.offsetWidth - 2)));
+    d.el.style.left = Math.round(nx) + 'px';
+    d.el.style.top = Math.round(Math.max(0, d.orig.y + dy)) + 'px';
+  } else {
+    d.el.style.width = Math.round(Math.max(56, Math.min(400, d.orig.w + dx))) + 'px';
+    d.el.style.height = Math.round(Math.max(56, Math.min(400, d.orig.h + dy))) + 'px';
+  }
+});
+
+function endFreeDrag(e, cancelled) {
+  if (!freeDrag || (e.pointerId !== undefined && e.pointerId !== freeDrag.pointerId)) return;
+  const d = freeDrag;
+  freeDrag = null;
+  if (!d.started) return;
+  d.el.classList.remove('free-moving', 'free-resizing');
+  itemDragSuppressed = true;   // 拖完吞掉紧跟的 click，别误开编辑弹窗/目标
+  setTimeout(() => { itemDragSuppressed = false; }, 120);
+  if (cancelled) return;
+  ensureLayoutConfig();
+  const l = Object.assign({}, d.orig);
+  if (d.mode === 'move') {
+    l.x = d.el.offsetLeft;
+    l.y = d.el.offsetTop;
+  } else {
+    l.w = d.el.offsetWidth;
+    l.h = d.el.offsetHeight;
+  }
+  config.layout.items[d.key] = l;
+  persist();
+}
+groupsEl.addEventListener('pointerup', (e) => endFreeDrag(e, false));
+groupsEl.addEventListener('pointercancel', (e) => endFreeDrag(e, true));
+
+/* ---------- 布局设置（设置面板） ---------- */
+function syncLayoutSeg() {
+  document.querySelectorAll('#layoutSeg .seg-btn').forEach((b) => {
+    b.setAttribute('aria-pressed', b.dataset.layout === layoutMode() ? 'true' : 'false');
+  });
+}
+document.querySelectorAll('#layoutSeg .seg-btn').forEach((b) => {
+  b.addEventListener('click', () => {
+    const m = b.dataset.layout;
+    if (!config || m === layoutMode()) return;
+    ensureLayoutConfig();
+    config.layout.mode = m;
+    persist();
+    render();
+    syncLayoutSeg();
+    toast(m === 'free' ? '自由布局：编辑模式下按住图标拖位置、右下角手柄缩放' : '已切回网格布局');
+  });
+});
+$('btnLayoutTidy').addEventListener('click', () => {
+  ensureLayoutConfig();
+  config.layout.items = {};          // 全部重新排
+  config.layout.mode = 'free';
+  persist();
+  render();
+  syncLayoutSeg();
+  toast('已按当前窗口重新整理布局');
+});
+$('btnLayoutResetSize').addEventListener('click', () => {
+  if (!config.layout) return;
+  Object.keys(config.layout.items).forEach((k) => {
+    delete config.layout.items[k].w;
+    delete config.layout.items[k].h;
+  });
+  persist();
+  render();
+  toast('已恢复默认尺寸（位置不动）');
+});
+$('btnLayoutReset').addEventListener('click', () => {
+  ensureLayoutConfig();
+  config.layout.mode = 'grid';
+  config.layout.items = {};
+  persist();
+  render();
+  syncLayoutSeg();
+  toast('已恢复默认网格布局');
+});
 
 /* ---------- 打开目标 ---------- */
 async function openItem(it) {
@@ -955,6 +1174,7 @@ let itemDrag = null;              // { gi, ii, pointerId, ghost, fromX, fromY, s
 
 groupsEl.addEventListener('pointerdown', (e) => {
   if (!editMode || itemDrag) return;
+  if (layoutMode() === 'free') return;   // 自由布局的拖动交给 freeDrag 那一套
   if (e.button !== undefined && e.button !== 0) return;
   const card = e.target.closest ? e.target.closest('.item') : null;
   if (!card || card.classList.contains('add-card')) return;
@@ -2518,6 +2738,7 @@ function openSettings() {
   syncBgControls();
   $('sizeVal').textContent = `${Math.round(bounds.width)} × ${Math.round(bounds.height)}`;
   syncSettingsControls();
+  syncLayoutSeg();   // v2.6.0：布局模式分段按钮跟着配置走
   describePalette(wallInfo && wallInfo.palette);
   $('settingsPanel').classList.remove('hidden');
 }
@@ -2752,7 +2973,27 @@ function themeSelectOpen(open) {
   const pop = $('themeSelectPop');
   const btn = $('themeSelectBtn');
   if (!pop || !btn) return;
-  pop.classList.toggle('hidden', !open);
+  if (open) {
+    /* v2.6.0 根修：下拉打开时挪到 body 上改 fixed 定位。
+     * 之前它是 absolute 钉在设置面板里，而 .panel 是 overflow:hidden 的
+     * 滚动容器 —— 主题一多（13+ 套 × 44px），弹出层下沿直接被面板剪掉，
+     * 后面的选项永远看不到，这就是"切换显示有 bug"的根因。
+     * （.panel 带 backdrop-filter，position:fixed 也会被它捕获成包含块，
+     *  所以必须真的把节点搬到 body 才能逃出裁剪。） */
+    if (pop.parentNode !== document.body) document.body.appendChild(pop);
+    pop.style.minWidth = Math.max(btn.getBoundingClientRect().width, 150) + 'px';
+    pop.style.right = 'auto';   // 原样式有 right:0，portal 后会和 inline left 打架把层拉宽
+    pop.classList.remove('hidden');
+    const r = btn.getBoundingClientRect();
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let x = Math.min(Math.max(8, r.right - pw), window.innerWidth - pw - 8);
+    let y = r.bottom + 6;
+    if (y + ph > window.innerHeight - 8) y = Math.max(8, r.top - ph - 6);   // 下方放不下就朝上弹
+    pop.style.left = x + 'px';
+    pop.style.top = y + 'px';
+  } else {
+    pop.classList.add('hidden');
+  }
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
@@ -2778,12 +3019,25 @@ function themeSelectOpen(open) {
    * pointerup 一定来。多这一条路不会切两次：切完 currentTheme 已经等于选中值。 */
   pop.addEventListener('pointerup', pick);
   document.addEventListener('click', (e) => {
-    if (!(e.target.closest && e.target.closest('#themeSelect'))) themeSelectOpen(false);
+    /* 下拉可能已被搬到 body（portal），点击判定要同时认 #themeSelectPop */
+    if (!(e.target.closest && e.target.closest('#themeSelect, #themeSelectPop'))) themeSelectOpen(false);
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !pop.classList.contains('hidden')) themeSelectOpen(false);
   });
 })();
+
+/* ---------- 主题风格下拉只在安卓端显示（v2.6.0，用户明确） ----------
+ * 桌面端撤掉这条快速切换（管理都走「主题管理」弹窗）；安卓触屏才留着。
+ * 先按 UA 兜底判一次（settings 面板随时可能被打开），env 回来后再校正。 */
+let IS_ANDROID = /Android/i.test(navigator.userAgent || '');
+function applyThemePickVisibility(android) {
+  IS_ANDROID = !!android;
+  const row = $('rowThemePick');
+  if (row) row.classList.toggle('hidden', !IS_ANDROID);
+  document.body.classList.toggle('is-android', IS_ANDROID);
+}
+applyThemePickVisibility(IS_ANDROID);
 
 /** 主进程给的卡片列表 → 注册表（顺序就是用户排的顺序；内置五套缺了就补在末尾） */
 function applyThemeRegistry(cards) {
@@ -3652,8 +3906,8 @@ $('btnClearIcon').addEventListener('click', () => {
 /* ---------- 从 exe / 文件提取系统图标 ---------- */
 async function extractIconFromTarget(target, silent) {
   const type = $('itemType').value;
-  if (type === 'web') {
-    if (!silent) toast('网页类型没有本地图标，可手动选图片');
+  if (type === 'web' || type === 'seewo') {
+    if (!silent) toast('该类型没有本地图标可提取');
     return false;
   }
   if (type === 'folder') {
@@ -3692,6 +3946,8 @@ $('btnExtractIcon').addEventListener('click', async () => {
 function openItemModal(groupIndex, itemIndex) {
   currentEdit = { groupIndex, itemIndex };
   fillGroupSelect($('itemGroup'));
+  buildSeewoToolGrid();
+  seewoNameAuto = false;
   if (itemIndex !== null) {
     const it = config.groups[groupIndex].items[itemIndex];
     $('itemModalTitle').textContent = '编辑快捷方式';
@@ -3713,10 +3969,27 @@ function openItemModal(groupIndex, itemIndex) {
     $('itemGroup').value = groupIndex;
     $('btnItemDelete').classList.add('hidden');
   }
+  syncItemLayoutField(itemIndex !== null ? config.groups[groupIndex].items[itemIndex] : null);
   syncTargetUI();
   itemModal.classList.remove('hidden');
   $('itemName').focus();
 }
+
+/* ---------- 自由布局参数（v2.6.0）：编辑弹窗里的宽/高滑条 ----------
+ * 仅自由布局模式 + 编辑已有条目时出现；改动写入 config.layout.items[key]。 */
+function syncItemLayoutField(it) {
+  const free = layoutMode() === 'free' && it && !isFolder(it);
+  const box = $('itemLayoutField');
+  box.classList.toggle('hidden', !free);
+  if (!free) return;
+  const l = freeLayoutOf(it) || {};
+  $('itemLayoutW').value = l.w || FREE_ITEM_DEFAULT;
+  $('itemLayoutH').value = l.h || FREE_ITEM_DEFAULT;
+  $('itemLayoutWVal').textContent = String($('itemLayoutW').value);
+  $('itemLayoutHVal').textContent = String($('itemLayoutH').value);
+}
+$('itemLayoutW').addEventListener('input', () => { $('itemLayoutWVal').textContent = $('itemLayoutW').value; });
+$('itemLayoutH').addEventListener('input', () => { $('itemLayoutHVal').textContent = $('itemLayoutH').value; });
 
 $('btnItemClose').addEventListener('click', () => { itemModal.classList.add('hidden'); childEdit = null; });
 $('btnItemCancel').addEventListener('click', () => { itemModal.classList.add('hidden'); childEdit = null; });
@@ -3726,24 +3999,69 @@ $('itemType').addEventListener('change', () => syncTargetUI());
 /* 类型变了：占位符、提示语、两个按钮一起跟着变 */
 function syncTargetUI() {
   const t = $('itemType').value;
-  $('itemTarget').placeholder = t === 'web' ? 'https://...' : (t === 'folder' ? '例如：D:\\教学资料' : '路径');
+  const isSeewo = t === 'seewo';
+  $('itemTarget').placeholder = isSeewo ? 'seewo:批注（选下方工具自动填写，也可改成 exe 路径）'
+    : (t === 'web' ? 'https://...' : (t === 'folder' ? '例如：D:\\教学资料' : '路径'));
   const tip = $('targetTip');
   if (tip) {
-    tip.textContent = t === 'folder'
-      ? '点"选择"打开目录对话框（支持新建文件夹）'
-      : (t === 'web' ? '填完整网址，会自动用浏览器打开' : '选择 exe 后会自动提取它的图标');
+    tip.textContent = isSeewo ? '目标由所选工具自动填写；希沃管家没装的机器上可手动改成工具 exe 路径'
+      : (t === 'folder'
+        ? '点"选择"打开目录对话框（支持新建文件夹）'
+        : (t === 'web' ? '填完整网址，会自动用浏览器打开' : '选择 exe 后会自动提取它的图标'));
   }
+  $('seewoField').classList.toggle('hidden', !isSeewo);
   syncTargetButtons();
+  if (isSeewo) syncSeewoSelection();
 }
 
 /* 网页类型没有本地文件可提取图标；文件夹类型用内置"文件夹"图标更贴切，
- * 因此这两类都隐藏"取图标"（文件夹仍可手动选图片图标）。 */
+ * 希沃桌面工具的图标由工具选择器自动套用——这三类都隐藏"选择/取图标"。 */
 function syncTargetButtons() {
   const t = $('itemType').value;
-  const local = t !== 'web';
+  const local = t !== 'web' && t !== 'seewo';
   $('btnPick').style.display = local ? 'inline-block' : 'none';
   $('btnExtractIcon').style.display = (local && t !== 'folder') ? 'inline-block' : 'none';
 }
+
+/* ---------- 希沃桌面工具选择器（v2.6.0） ---------- */
+function buildSeewoToolGrid() {
+  const grid = $('seewoToolGrid');
+  grid.innerHTML = '';
+  SEEWO_TOOLS.forEach((tool) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'seewo-tool';
+    b.dataset.tool = tool.id;
+    b.setAttribute('role', 'option');
+    b.innerHTML = svgIcon(ICONS[tool.icon] || 'i-gear') +
+      '<span class="st-label">' + escapeHtml(tool.name) + '</span>';
+    const pick = () => {
+      $('itemTarget').value = 'seewo:' + tool.id;
+      if (!$('itemName').value.trim() || seewoNameAuto) {
+        $('itemName').value = tool.name;
+        seewoNameAuto = true;
+      }
+      setIconState(tool.icon, '', '');
+      iconUserPicked = false;   // 套用工具图标不算"用户选过图"，不拦自动提取（希沃类型也没有提取）
+      syncSeewoSelection();
+    };
+    b.addEventListener('click', pick);
+    grid.appendChild(b);
+  });
+}
+function syncSeewoSelection() {
+  const t = $('itemTarget').value.trim();
+  const m = /^seewo:(.+)$/i.exec(t);
+  const tool = m ? seewoToolById(m[1].trim()) : null;
+  document.querySelectorAll('#seewoToolGrid .seewo-tool').forEach((b) => {
+    b.classList.toggle('sel', !!(tool && b.dataset.tool === tool.id));
+  });
+}
+let seewoNameAuto = false;   // 名称是工具自动填的 → 选别的工具时跟着换；用户手打过就不再动
+$('itemName').addEventListener('input', () => { seewoNameAuto = false; });
+$('itemTarget').addEventListener('input', () => {
+  if ($('itemType').value === 'seewo') syncSeewoSelection();
+});
 
 $('btnPick').addEventListener('click', async () => {
   const type = $('itemType').value;
@@ -3775,10 +4093,27 @@ $('btnItemSave').addEventListener('click', () => {
   const gi = parseInt($('itemGroup').value, 10);
   if (!name) { toast('请填写名称'); return; }
   if (!target) { toast('请填写目标路径或网址'); return; }
+  if (type === 'seewo' && !/^seewo:.+/i.test(target) && !/\.(exe|lnk)$/i.test(target)) {
+    toast('请先在下方选择一个希沃桌面工具'); return;
+  }
 
-  const item = { id: 'it-' + Date.now(), name, type, target, icon: iconState.preset };
+  /* 编辑已有条目时沿用旧 id：布局（v2.6.0）与使用统计都按 id 记账，
+   * 换新 id 等于把人家摆好的位置和计数一巴掌清零。 */
+  let oldItem = null;
+  if (!childEdit && currentEdit.itemIndex !== null) {
+    oldItem = config.groups[currentEdit.groupIndex].items[currentEdit.itemIndex] || null;
+  }
+  const item = { id: (oldItem && oldItem.id) || ('it-' + Date.now()), name, type, target, icon: iconState.preset };
   if (iconState.char) item.iconChar = iconState.char;
   if (iconState.path) item.iconPath = iconState.path;
+
+  /* 自由布局模式下编辑过宽/高滑条 → 写回布局表（新建/网格模式不写） */
+  if (!childEdit && layoutMode() === 'free' && oldItem && !isFolder(oldItem)) {
+    const l = freeLayoutOf(oldItem) || {};
+    l.w = parseInt($('itemLayoutW').value, 10) || l.w || FREE_ITEM_DEFAULT;
+    l.h = parseInt($('itemLayoutH').value, 10) || l.h || FREE_ITEM_DEFAULT;
+    config.layout.items[layoutKey(item)] = l;
+  }
 
   if (childEdit) {
     // 文件夹内子项：不参与换组（分组选择框在子项模式下无意义）
@@ -4164,6 +4499,7 @@ if (typeof API.onTrayAction === 'function') {
 /* ---------- 初始化 ---------- */
 (async function init() {
   config = await API.getConfig();
+  ensureLayoutConfig();   // v2.6.0：layout 字段兜底（老配置没有它）
   bounds = {
     x: config.x ?? 100, y: config.y ?? 100,
     width: config.width ?? 480, height: config.height ?? 420
@@ -4244,6 +4580,7 @@ if (typeof API.onTrayAction === 'function') {
   if (typeof API.getEnv === 'function') {
     try {
       const env = await API.getEnv();
+      applyThemePickVisibility(env && env.platform === 'android');   // v2.6.0：以真实环境为准校正
       const bi = $('blurInfo');
       if (env && env.platform === 'browser') {
         document.body.classList.add('preview');   // 浏览器预览：深色渐变替身，让玻璃可见

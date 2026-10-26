@@ -37,6 +37,16 @@
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4.6A1.6 1.6 0 0 1 9.6 3h4.8A1.6 1.6 0 0 1 16 4.6V6"/><path d="M18.4 6l-.9 13.2a1.9 1.9 0 0 1-1.9 1.8H8.4a1.9 1.9 0 0 1-1.9-1.8L5.6 6"/><path d="M10.4 10.6v6.6M13.6 10.6v6.6"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7.4 10.4L12 15l4.6-4.6"/><path d="M4.5 20h15"/></symbol>
 
+    <!-- ====== 希沃桌面工具（v2.6.0）：白色线性图标，风格对齐希沃侧边栏 ====== -->
+    <symbol id="i-seewo-annotate" viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M14.5 4.5l5 5L10 19l-4.7 1.2L6.5 15.5z"/><path d="M12.5 6.5l5 5"/></symbol>
+    <symbol id="i-seewo-calendar" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/></symbol>
+    <symbol id="i-seewo-random" viewBox="0 0 24 24"><path d="M16 4h4v4"/><path d="M20 4l-7 7"/><path d="M16 20h4v-4"/><path d="M20 20L4 4"/><path d="M4 20l5.5-5.5"/></symbol>
+    <symbol id="i-seewo-magnifier" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M15.8 15.8L21 21"/><path d="M8.5 11h5M11 8.5v5"/></symbol>
+    <symbol id="i-seewo-people" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="10" r="2.6"/><path d="M7.5 17.5c.6-2.3 2.4-3.6 4.5-3.6s3.9 1.3 4.5 3.6"/></symbol>
+    <symbol id="i-seewo-screenshot" viewBox="0 0 24 24"><path d="M4 9V6a2 2 0 0 1 2-2h3M15 4h3a2 2 0 0 1 2 2v3M20 15v3a2 2 0 0 1-2 2h-3M9 20H6a2 2 0 0 1-2-2v-3"/><path d="M9 15l6-6"/><path d="M14.2 9.8h1.6v1.6"/></symbol>
+    <symbol id="i-seewo-timer" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7"/><path d="M12 10.5v3.5l2.3 2.3"/><path d="M9.5 2.5h5"/><path d="M12 2.5V6"/></symbol>
+    <symbol id="i-seewo-half" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12.5h16"/><path d="M12 6v3.8"/><path d="M9.8 7.8L12 10l2.2-2.2"/></symbol>
+
     <!-- ====== 液态玻璃折射滤镜（standard 模式，逐行对齐 liquid-glass-react）======
          参考实现：https://github.com/rdev/liquid-glass-react  (MIT, © 2025 MAX ROVENSKY)
 
@@ -228,6 +238,25 @@
         <span>锁定位置</span>
         <input type="checkbox" id="setLock" />
       </label>
+      <!-- 图标布局（v2.6.0）：网格=自动流式排布；自由=每个图标可拖位置、
+           拉伸大小（编辑模式下按住拖动 / 右下角手柄缩放）。
+           一键整理=按当前窗口重新整齐排一遍；还原尺寸=位置不动恢复默认大小；
+           恢复默认=清掉全部自定义回到网格。 -->
+      <div class="row" id="rowLayoutMode">
+        <span>图标布局</span>
+        <div class="seg" id="layoutSeg" role="group" aria-label="图标布局">
+          <button type="button" class="seg-btn" data-layout="grid" aria-pressed="true">网格</button>
+          <button type="button" class="seg-btn" data-layout="free" aria-pressed="false">自由</button>
+        </div>
+      </div>
+      <div class="row" id="rowLayoutOps">
+        <span>一键操作</span>
+        <div class="btn-row">
+          <button id="btnLayoutTidy" class="text-btn" type="button">一键整理</button>
+          <button id="btnLayoutResetSize" class="text-btn" type="button">还原尺寸</button>
+          <button id="btnLayoutReset" class="text-btn" type="button">恢复默认</button>
+        </div>
+      </div>
       <!-- 主题风格（v2.5.4 换回老样式）——
            安卓真机上"只靠主题管理弹窗切换"这条路不稳，而且少了直观的快速切换：
            设置面板这里直接给一个自绘下拉，点开是 44px 行高的列表，手指按得住，
@@ -485,6 +514,7 @@
             <option value="file">文件</option>
             <option value="folder">文件夹（目录）</option>
             <option value="web">网页链接</option>
+            <option value="seewo">希沃桌面工具</option>
           </select>
         </label>
         <label class="field">
@@ -496,6 +526,16 @@
           </div>
           <small class="field-tip" id="targetTip">选择 exe 后会自动提取它的图标</small>
         </label>
+
+        <!-- 希沃桌面工具（v2.6.0）：类型选「希沃桌面工具」时出现，
+             八个工具点一下自动填好名称、图标与启动目标。
+             目标默认是 seewo:<id>，由主进程在希沃安装目录里搜对应的工具 exe；
+             装的比较特殊时可以把目标改成 exe 完整路径。 -->
+        <div class="field hidden" id="seewoField">
+          <span>选择工具</span>
+          <div class="seewo-tools" id="seewoToolGrid" role="listbox" aria-label="希沃桌面工具"></div>
+          <small class="field-tip">工具由希沃管家 / 桌面侧边栏提供；如果电脑上装的位置特殊，可把上方「目标」改成工具 exe 的完整路径</small>
+        </div>
 
         <!-- 图标：预设 / 自定义字符 / 本地图片 -->
         <div class="field">
@@ -514,6 +554,16 @@
                 <option value="link">链接</option>
                 <option value="app">齿轮</option>
                 <option value="star">星标</option>
+                <!-- 希沃桌面工具专用预设（v2.6.0）：不在列表里露出，
+                     由工具选择器自动套用，仅编辑已有条目时回显 -->
+                <option value="s-annotate" hidden>批注</option>
+                <option value="s-calendar" hidden>日历</option>
+                <option value="s-random" hidden>随机抽选</option>
+                <option value="s-people" hidden>人数统计</option>
+                <option value="s-magnifier" hidden>放大镜</option>
+                <option value="s-timer" hidden>计时</option>
+                <option value="s-half" hidden>降半屏</option>
+                <option value="s-screenshot" hidden>截屏</option>
               </select>
               <div class="icon-row">
                 <input type="text" id="itemIconChar" maxlength="4" placeholder="自定义字符" />
@@ -525,6 +575,21 @@
             <span id="iconPathName" class="icon-path-name"></span>
             <button id="btnClearIcon" class="link-btn" type="button">清除图片</button>
           </div>
+        </div>
+
+        <!-- 自由布局参数（v2.6.0）：仅「自由」布局模式 + 编辑已有条目时出现 -->
+        <div class="field hidden" id="itemLayoutField">
+          <span>布局参数（自由模式）</span>
+          <label class="layout-param">
+            <span>宽度</span>
+            <input type="range" id="itemLayoutW" min="56" max="200" step="2" />
+            <span id="itemLayoutWVal" class="val">84</span>
+          </label>
+          <label class="layout-param">
+            <span>高度</span>
+            <input type="range" id="itemLayoutH" min="56" max="200" step="2" />
+            <span id="itemLayoutHVal" class="val">84</span>
+          </label>
         </div>
 
         <label class="field">

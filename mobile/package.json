@@ -1,6 +1,6 @@
 {
   "name": "fclasspal-mobile",
-  "version": "2.5.3",
+  "version": "2.6.0",
   "private": true,
   "description": "FClassPal 安卓壳（Capacitor）：复用桌面的 renderer/，产出一个真 .apk",
   "scripts": {

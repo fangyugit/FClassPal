@@ -27,7 +27,7 @@
 
   var MOBILE_KEY = 'fclasspal-mobile-config';
   var FALLBACK_ACCENT = '#6750A4';   // 与桌面版 DEFAULT_CONFIG.accentColor 一致
-  var APP_VERSION = '2.5.3-fix';
+  var APP_VERSION = '2.6.0';
 
   /* ---------------------------------------------------------------- 原生插件 */
   function plugin() {
@@ -619,6 +619,12 @@
         return soft('launchApp', payload, { launched: false }).then(function (r) {
           if (r && r.launched) return { success: true };
           return { success: false, error: '找不到这个应用，可能已卸载' };
+        });
+      }
+      if (type === 'seewo') {
+        return Promise.resolve({
+          success: false,
+          error: '希沃桌面工具是电脑端功能，安卓版用不了'
         });
       }
       return Promise.resolve({

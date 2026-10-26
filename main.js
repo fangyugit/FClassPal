@@ -1152,10 +1152,102 @@ ipcMain.handle('save-config', (event, config) => {
   return true;
 });
 
+/* ---------- 希沃桌面工具（v2.6.0）----------
+ * 目标两种形态：
+ *   ① seewo:<id> —— 在希沃安装目录（Program Files*\\Seewo）里按关键字搜
+ *      工具 exe（批注 DesktopAnnotation、人数统计 RollCall、放大镜 DesktopMagnifier、
+ *      截屏 DesktopScreenshot、计时 DesktopTimer……），找到就 spawn；
+ *   ② 完整 exe/lnk 路径 —— 用户在编辑弹窗里手动指定的，直接打开。
+ * 希沃各版本工具的落盘名字并不统一（EasySetup 部署包实证的只有五个
+ * Desktop*.exe + RollCall.exe，日历/随机抽选/降半屏随大版本走），
+ * 所以用关键字模糊匹配 + 多个安装根目录兜底，找不到就明确报错不装死。 */
+const SEEWO_TOOL_MATCH = {
+  annotate:   [/^desktopannotation/i, /^annotation/i, /easimark/i],
+  calendar:   [/calendar/i],
+  random:     [/random/i, /draw/i],
+  rollcall:   [/rollcall/i, /peoplecount/i, /^statistic/i],
+  magnifier:  [/magnif/i],
+  timer:      [/timer/i, /^clock/i],
+  half:       [/halfscreen/i, /half/i],
+  screenshot: [/screenshot/i, /snapshot/i, /printscreen/i]
+};
+const SEEWO_TOOL_NAMES = {
+  annotate: '批注', calendar: '日历', random: '随机抽选', rollcall: '人数统计',
+  magnifier: '放大镜', timer: '计时', half: '降半屏', screenshot: '截屏'
+};
+
+function findSeewoToolExe(toolId) {
+  const patterns = SEEWO_TOOL_MATCH[toolId];
+  if (!patterns) return null;
+  const bases = [];
+  ['ProgramFiles(x86)', 'ProgramFiles', 'ProgramW6432', 'LocalAppData'].forEach((k) => {
+    const root = process.env[k];
+    if (root) {
+      bases.push(path.join(root, 'Seewo'));
+      bases.push(path.join(root, 'SEEWO'));
+    }
+  });
+  const hit = [];
+  const walk = (dir, depth) => {
+    if (depth > 4 || hit.length) return;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    for (const ent of entries) {
+      const fp = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        walk(fp, depth + 1);
+      } else if (/\.exe$/i.test(ent.name) && !/^uninstall/i.test(ent.name)) {
+        if (patterns.some((re) => re.test(ent.name))) hit.push(fp);
+      }
+      if (hit.length) return;
+    }
+  };
+  for (const b of bases) {
+    walk(b, 0);
+    if (hit.length) break;
+  }
+  return hit.length ? hit[0] : null;
+}
+
+async function launchSeewoTool(item) {
+  const target = String(item.target || '').trim();
+  // ① 用户手动指定了 exe / lnk
+  if (/\.(exe|lnk)$/i.test(target)) {
+    if (fs.existsSync(target)) {
+      await shell.openPath(target);
+      return { success: true };
+    }
+    return { success: false, error: '找不到这个文件：' + target };
+  }
+  // ② seewo:<id> 或裸 id
+  const id = target.replace(/^seewo:/i, '').trim().toLowerCase();
+  if (!SEEWO_TOOL_MATCH[id]) {
+    return { success: false, error: '未知的希沃桌面工具：' + (target || '(空)') };
+  }
+  const exe = findSeewoToolExe(id);
+  if (!exe) {
+    return {
+      success: false,
+      error: '没有找到「' + (SEEWO_TOOL_NAMES[id] || id) + '」——这台电脑可能没装希沃管家/桌面侧边栏。' +
+        '可在编辑里把目标改成工具 exe 的完整路径'
+    };
+  }
+  try {
+    const child = spawn(exe, [], { detached: true, stdio: 'ignore' });
+    child.on('error', () => { /* spawn 失败已经拿不到反馈通道了，静默 */ });
+    child.unref();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: '启动失败：' + e.message };
+  }
+}
+
 ipcMain.handle('open-target', async (event, item) => {
   try {
     if (item.type === 'web') {
       await shell.openExternal(item.target);
+    } else if (item.type === 'seewo') {
+      return await launchSeewoTool(item);
     } else if (item.type === 'app' || item.type === 'file' || item.type === 'folder') {
       if (!fs.existsSync(item.target)) {
         return { success: false, error: '目标不存在：' + item.target };
