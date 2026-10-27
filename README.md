@@ -8,7 +8,7 @@
 
 ## 使用
 
-双击即用 使用本应用建议卸载希沃桌面助手/隐藏桌面管家（可使用[HugoAura-Enhanced](https://github.com/blingbling-bow/HugoAura-Enhanced)中的功能彻底隐藏掉）
+双击即用 使用本应用建议卸载希沃桌面助手/隐藏桌面管家（可通过注入注册表文件(https://github.com/blingbling-bow/HugoAura-Enhanced)彻底隐藏掉）
 
 ## 功能
 
