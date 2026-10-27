@@ -442,19 +442,19 @@ const checks = [
     html.includes('id="itemIconScale"') && html.includes('id="itemShowRing"') &&
     html.includes('id="itemShowLabel"') &&
     /l\.iconScale = Math\.max\(0\.5, Math\.min\(2,/.test(app)],
-  ['v2.6.2: 主界面触摸白光 + 所有按钮玻璃质感与按压白光',
-    app.includes("light.className = 'touch-light'") &&
-    app.includes('function bindPressLight') &&
-    app.includes("d.className = 'press-light'") &&
-    css.includes('.touch-light.on') && css.includes('@keyframes pl-fade') &&
-    /\.text-btn,\s*\n\.primary-btn,/.test(css) &&
+  ['v2.6.2-fix: 全局白光斑已移除（按键不再怪异缩放/闪），玻璃质感只在液态玻璃',
+    !app.includes('touch-light') && !app.includes('press-light') &&
+    !css.includes('.touch-light') && !css.includes('@keyframes pl-fade') &&
+    app.includes('function bindSliderHot') &&
+    /body\.theme-glass \.text-btn,/.test(css) &&
+    !/^\.text-btn,\s*\n\.primary-btn,/m.test(css) &&
     /html body\.dark \.debug-box/.test(css)],
-  ['v2.6.2: 滑块珠子按住放大、松开回缩（五套内置皮肤逐条覆盖）',
+  ['v2.6.2-fix: 滑块放大只做液态玻璃珠（.slider-hot 联动 .sl-bead），其它主题原样',
     app.includes("classList.add('slider-hot')") &&
     app.includes("classList.remove('slider-hot')") &&
-    /input\[type="range"\]\.slider-hot::-webkit-slider-thumb/.test(css) &&
-    /body\.theme-miuix input\[type="range"\]\.slider-hot::-webkit-slider-thumb/.test(css) &&
-    /body\.theme-harmony input\[type="range"\]\.slider-hot::-webkit-slider-thumb/.test(css)],
+    /body\.theme-glass \.sl-wrap input\[type="range"\]\.slider-hot ~ \.sl-bead/.test(css) &&
+    !/input\[type="range"\]\.slider-hot::-webkit-slider-thumb/.test(css) &&
+    !/body\.theme-miuix input\[type="range"\]\.slider-hot/.test(css)],
   ['v2.6.2: 透明度条触摸可见（手指按下主界面即出现，按住期间不被收走）',
     /widget\.addEventListener\('pointerdown', \(e\) => \{\s*\n\s*if \(e\.pointerType === 'mouse'\) return;/.test(app) &&
     app.includes('holdingBar') && /opacityBar\.addEventListener\('pointerdown'/.test(app)],

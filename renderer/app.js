@@ -3118,73 +3118,18 @@ $('btnSettingsClose').addEventListener('click', () => $('settingsPanel').classLi
   }, { passive: true });
 })();
 
-/* ---------- 全局按压白光（v2.6.2） ----------
- * 用户要「主界面触摸按上去要有像鼠标那样的白光效果，松手消失」，而且
- * 「软件的其他按键也做成玻璃效果，按上去有白光松开消失」。
- * 原来的白光只有 sheen 光斑，且**只跟鼠标**（触摸直接 return）；按钮那边只有
- * MD3 一套 ripple，别的主题按下去没有反馈。
- * 现在两层：
- *   ① 主界面：一个专门的 .touch-light 光斑，pointerdown 亮起、pointerup 熄灭，
- *      任何主题任何输入都在（不受 .sheen 在各主题里 display:none 影响）；
- *   ② 按钮：pointerdown 在按钮里插一个 .press-light 白色光斑，动画结束自己移除。
- *      pointer-events:none，不会挡住按钮自己的点击。 */
-(function bindPressLight() {
-  const light = document.createElement('div');
-  light.className = 'touch-light';
-  light.setAttribute('aria-hidden', 'true');
-  widget.appendChild(light);
-  let offTimer = 0;
-
-  widget.addEventListener('pointerdown', (e) => {
-    if (e.button !== undefined && e.button !== 0) return;
-    const t = e.target;
-    /* 标题栏拖窗口、右下手柄缩放、滑条自己拖：这些手势本身有明确反馈，
-     * 再叠一片白光只会干扰（而且拖窗口时它会跟着整屏扫）。 */
-    if (t && t.closest && t.closest('#titlebar, #resizeHandle, input[type="range"], .opacity-bar')) return;
-    const r = widget.getBoundingClientRect();
-    light.style.left = (e.clientX - r.left) + 'px';
-    light.style.top = (e.clientY - r.top) + 'px';
-    if (offTimer) { clearTimeout(offTimer); offTimer = 0; }
-    light.classList.add('on');
-  }, true);
-
-  const dim = () => {
-    if (offTimer) clearTimeout(offTimer);
-    offTimer = setTimeout(() => { offTimer = 0; light.classList.remove('on'); }, 20);
-  };
-  document.addEventListener('pointerup', dim, true);
-  document.addEventListener('pointercancel', dim, true);
-
-  /* ② 按钮白光：只在"看起来是按钮/卡片"的元素上生成 */
-  const PRESS_SEL = 'button, .ctx-item, .item, .swatch, .tselect-item, .rail-btn, ' +
-    '.seg-btn, .text-btn, .primary-btn, .ghost-btn, .danger-btn, .pick-btn, .add-card';
-  document.addEventListener('pointerdown', (e) => {
-    if (e.button !== undefined && e.button !== 0) return;
-    const t = e.target;
-    if (!t || !t.closest) return;
-    const host = t.closest(PRESS_SEL);
-    if (!host || host.disabled) return;
-    if (host.closest('#titlebar, #resizeHandle')) return;
-    const rr = host.getBoundingClientRect();
-    if (!rr.width || !rr.height) return;
-    /* 宿主必须是定位元素，否则绝对定位的光斑会跑到视口角上 */
-    if (getComputedStyle(host).position === 'static') host.classList.add('pl-static');
-    const d = document.createElement('span');
-    d.className = 'press-light';
-    d.style.left = (e.clientX - rr.left) + 'px';
-    d.style.top = (e.clientY - rr.top) + 'px';
-    d.style.setProperty('--pl-r', Math.max(rr.width, rr.height) * 0.9 + 'px');
-    host.appendChild(d);
-    const drop = () => { if (d.parentNode) d.parentNode.removeChild(d); };
-    d.addEventListener('animationend', drop, { once: true });
-    setTimeout(drop, 800);      // 兜底：动画被中断也要收走
-  }, true);
-
-  /* ---------- 液态玻璃调节条：按住放大、松开回缩（v2.6.2） ----------
-   * 原生 range 的珠子是 ::-webkit-slider-thumb，JS 抓不到那个伪元素，
-   * 只能靠类名把放大态挂在 input 上（CSS 里写 .slider-hot::-webkit-slider-thumb）。
-   * 触摸也要能按住 —— 所以监听 pointerdown/up/cancel，而不是只看 :active
-   * （触摸滚动/失焦时 :active 会莫名其妙一直亮着）。 */
+/* ---------- 滑块按压放大（v2.6.2 保留项；v2.6.2-fix 收窄） ----------
+ * v2.6.2 做过两层全局白光光斑（主界面一层、按钮里一层），用户实测：
+ * 「所有按键点击时候都会很奇怪的放大缩小，完全不可用」「窗口又闪了」——
+ * 光斑的 scale 动画在触屏上就是一团乱缩放的白影，两套已整体移除，不做替代。
+ * 只保留用户点名要的液态玻璃滑块：按住/拖动时珠子放大、松开回缩。
+ * 原生 range 的珠子是 ::-webkit-slider-thumb，JS 抓不到那个伪元素，
+ * 只能靠类名把放大态挂在 input 上（CSS 里写 .slider-hot，**只在
+ * body.theme-glass 下生效**；玻璃主题的真身是 .sl-bead，用 ~ 兄弟选择器
+ * 联动，与它自己的 :active 态同一套视觉）。
+ * 触摸也要能按住 —— 所以监听 pointerdown/up/cancel，而不是只看 :active
+ * （触摸滚动/失焦时 :active 会莫名其妙一直亮着）。 */
+(function bindSliderHot() {
   const hotOn = (el) => { if (el && el.type === 'range') el.classList.add('slider-hot'); };
   const hotOff = (el) => { if (el && el.type === 'range') el.classList.remove('slider-hot'); };
   document.addEventListener('pointerdown', (e) => {

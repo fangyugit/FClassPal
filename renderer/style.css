@@ -3699,69 +3699,24 @@ body.edit-mode #content.free-layout .item { touch-action: none; }
   flex: 0 0 auto;
 }
 
-/* ---------- ③ 按压白光 ---------- */
-/* 主界面：手指按下去亮一片白光，松手淡出。跟主题无关（.sheen 在不少主题里
- * 是 display:none，不能复用它）。 */
-.touch-light {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 340px;
-  height: 340px;
-  margin: -170px 0 0 -170px;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 3;
-  opacity: 0;
-  transform: scale(0.55);
-  background: radial-gradient(circle,
-    rgb(255 255 255 / 0.62) 0%,
-    rgb(255 255 255 / 0.30) 34%,
-    rgb(255 255 255 / 0) 70%);
-  mix-blend-mode: screen;
-  transition: opacity 0.34s ease, transform 0.42s cubic-bezier(0.2, 0.8, 0.3, 1);
-  will-change: opacity, transform;
-}
-.touch-light.on {
-  opacity: 1;
-  transform: scale(1);
-  transition: opacity 0.1s ease-out, transform 0.16s ease-out;
-}
-/* 按钮：按下时在按点生成一片白光，动画结束自己移除（见 app.js bindPressLight） */
-.press-light {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: calc(var(--pl-r, 120px) * 2);
-  height: calc(var(--pl-r, 120px) * 2);
-  margin-left: calc(var(--pl-r, 120px) * -1);
-  margin-top: calc(var(--pl-r, 120px) * -1);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 0;
-  background: radial-gradient(circle,
-    rgb(255 255 255 / 0.8) 0%,
-    rgb(255 255 255 / 0.30) 44%,
-    rgb(255 255 255 / 0) 72%);
-  animation: pl-fade 0.55s ease-out forwards;
-}
-@keyframes pl-fade {
-  from { opacity: 1; transform: scale(0.35); }
-  to { opacity: 0; transform: scale(1); }
-}
-.pl-static { position: relative; }
+/* ---------- ③ 按压反馈（v2.6.2-fix 收窄） ----------
+ * v2.6.2 曾给主界面和所有按钮加白色光斑，用户实测「所有按键点击时候都会
+ * 很奇怪的放大缩小，完全不可用」「窗口又闪了」——光斑的 scale 动画在触屏上
+ * 就是一团乱缩放的白影，已整体移除：按压反馈回归各主题自己的 :active 态，
+ * 窗口不再多画任何东西。 */
 
-/* 按钮的玻璃质感 + 按压白光（低特异性，主题包/内置主题自己的规则照旧能盖） */
-.text-btn,
-.primary-btn,
-.ghost-btn,
-.pick-btn,
-.seg-btn,
-.rail-btn,
-.ctx-item,
-.theme-mini {
+/* 玻璃质感**只在液态玻璃主题**生效（v2.6.2-fix）：其它主题的按键保持原样，
+ * 不再叠加半透渐变 / 受光高光 / 按压内发光。 */
+body.theme-glass .text-btn,
+body.theme-glass .primary-btn,
+body.theme-glass .ghost-btn,
+body.theme-glass .pick-btn,
+body.theme-glass .seg-btn,
+body.theme-glass .rail-btn,
+body.theme-glass .ctx-item,
+body.theme-glass .theme-mini {
   position: relative;
-  overflow: hidden;                       /* 白光裁剪在按钮内，不糊到旁边 */
+  overflow: hidden;
   isolation: isolate;
   /* 刻意**不用** backdrop-filter：设置面板一开就是几十个按钮，逐颗开模糊在核显
    * 机器上直接掉帧。玻璃感由"半透渐变 + 顶部受光 + 内高光"给，视觉差别很小，
@@ -3774,45 +3729,39 @@ body.edit-mode #content.free-layout .item { touch-action: none; }
     inset 0 1px 0 rgb(255 255 255 / 0.9),
     inset 0 -1px 0 rgb(255 255 255 / 0.28),
     0 4px 12px -8px rgb(20 40 100 / 0.42);
-  transition: background 0.15s, box-shadow 0.15s, transform 0.1s, color 0.15s;
+  transition: background 0.15s, box-shadow 0.15s, color 0.15s;
 }
-.text-btn:active,
-.primary-btn:active,
-.ghost-btn:active,
-.pick-btn:active,
-.seg-btn:active,
-.rail-btn:active,
-.ctx-item:active,
-.theme-mini:active {
+body.theme-glass .text-btn:active,
+body.theme-glass .primary-btn:active,
+body.theme-glass .ghost-btn:active,
+body.theme-glass .pick-btn:active,
+body.theme-glass .seg-btn:active,
+body.theme-glass .rail-btn:active,
+body.theme-glass .ctx-item:active,
+body.theme-glass .theme-mini:active {
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 0.95),
     inset 0 0 20px rgb(255 255 255 / 0.6),
     0 2px 8px -6px rgb(20 40 100 / 0.4);
 }
-.text-btn > *,
-.primary-btn > *,
-.ghost-btn > *,
-.seg-btn > *,
-.ctx-item > * { position: relative; z-index: 1; }
+body.theme-glass .text-btn > *,
+body.theme-glass .primary-btn > *,
+body.theme-glass .ghost-btn > *,
+body.theme-glass .seg-btn > *,
+body.theme-glass .ctx-item > * { position: relative; z-index: 1; }
 
-/* 滑块珠子：按住/拖动时放大，松开回缩（v2.6.2 用户点名）
- * 伪元素吃不到 JS，所以由 app.js 在 pointerdown/up 上切 .slider-hot 类。
- * 五个主题各自有珠子样式，这里逐条覆盖，保证哪套皮肤都放大。 */
-input[type="range"]::-webkit-slider-thumb {
-  transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.3, 1.35), box-shadow 0.16s ease;
-}
-input[type="range"].slider-hot::-webkit-slider-thumb,
-body.theme-glass input[type="range"].slider-hot::-webkit-slider-thumb,
-body.theme-md3 input[type="range"].slider-hot::-webkit-slider-thumb,
-body.theme-fluent input[type="range"].slider-hot::-webkit-slider-thumb,
-body.theme-miuix input[type="range"].slider-hot::-webkit-slider-thumb,
-body.theme-harmony input[type="range"].slider-hot::-webkit-slider-thumb {
-  transform: scale(1.5);
+/* 滑块珠子：按住/拖动时放大、松开回缩 —— **只做液态玻璃主题**（v2.6.2-fix）。
+ * 玻璃主题的真身是 .sl-bead（原生 thumb 在玻璃主题里 opacity:0），
+ * JS 在 pointerdown/up 上切 .slider-hot（:active 在触摸下不可靠），
+ * 这里用 ~ 兄弟选择器联动，视觉与它自己的 :active 态完全一致。
+ * 其它主题的滑块保持原样，不再放大。 */
+body.theme-glass .sl-wrap input[type="range"].slider-hot ~ .sl-bead {
+  transform: scale(1.42);
   box-shadow:
-    inset 0 -2px 3px rgb(58 99 242 / 0.42),
-    inset 0 1px 1px #fff,
-    0 4px 12px -1px rgb(14 28 68 / 0.5),
-    0 0 0 6px rgb(255 255 255 / 0.5);
+    inset 0 1.5px 1.5px rgba(255, 255, 255, 0.95),
+    inset 0 -1.5px 2.5px rgba(255, 255, 255, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.18),
+    0 4px 11px rgba(0, 0, 0, 0.24);
 }
 
 /* ---------- ④ 更新弹窗 / 调试台 ---------- */
