@@ -4899,13 +4899,20 @@ function wearItemNode(it) {
   return node;
 }
 
-/* 脱敏快照：不含 target / iconPath / 自定义快捷键等本地信息 */
+/* 脱敏快照：不含 target / iconPath / 自定义快捷键等本地信息。
+ * v2.6.4A：多带一份设置（手表的「电脑设置」页要显示/调整它们），
+ * themes 只带 id + 显示名，不带主题包内容。 */
 function wearStateSnapshot() {
   return {
     app: 'FClassPal',
     title: config.title || 'FClassPal',
     theme: currentTheme,
     locked: !!config.locked,
+    opacity: typeof config.opacity === 'number' ? config.opacity : 0.55,
+    winW: Math.round(bounds.width),
+    winH: Math.round(bounds.height),
+    layout: layoutMode(),
+    themes: THEMES.map((id) => ({ id, name: THEME_LABEL[id] || id })),
     groups: (config.groups || []).map((g) => ({
       id: g.id || '',
       name: g.name || '',
@@ -4997,6 +5004,36 @@ async function handleWearAction(a) {
     config.groups.splice(to, 0, g);
     persist(); render();
     return reply('分组顺序已调整');
+  }
+
+  /* v2.6.4A：手表「电脑设置」页的远程调整。只开放这几项，
+   * 每一项都走桌面端同一个应用函数，改完 persist + 推新快照。 */
+  if (act === 'set') {
+    if (a.key === 'opacity') {
+      applyOpacity(Math.min(1, Math.max(0.2, Number(a.value) || 0.55)));
+    } else if (a.key === 'size') {
+      if (config.locked) throw new Error('窗口已锁定，先在电脑上解锁');
+      changeSize(Number(a.delta) >= 0 ? 40 : -40);
+    } else if (a.key === 'layout') {
+      const m = a.value === 'free' ? 'free' : 'grid';
+      if (m !== layoutMode()) {
+        ensureLayoutConfig();
+        config.layout.mode = m;
+        persist(); render(); syncLayoutSeg();
+      }
+    } else if (a.key === 'theme') {
+      const t = String(a.value || '');
+      if (THEMES.indexOf(t) < 0) throw new Error('电脑上没有这个主题');
+      if (t !== currentTheme) {
+        config.theme = t;
+        persist();
+        applyTheme(t);
+      }
+    } else {
+      throw new Error('不认识的设置项：' + a.key);
+    }
+    pushWearState();
+    return reply('已调整');
   }
 
   throw new Error('不认识的动作：' + act);

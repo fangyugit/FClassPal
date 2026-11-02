@@ -1316,38 +1316,55 @@ let wearStateAt = 0;
 let wearActionSeq = 0;
 const wearActionPending = new Map();   // reqId -> { resolve, timer }
 
-function wearCfg() {
-  const cfg = loadConfig() || {};
-  if (!cfg.wear || typeof cfg.wear !== 'object') {
-    cfg.wear = { enabled: false, port: lanServer.DEFAULT_PORT, code: '', devices: [] };
-    saveConfig(cfg);
-  }
-  if (!Array.isArray(cfg.wear.devices)) cfg.wear.devices = [];
-  if (typeof cfg.wear.port !== 'number') cfg.wear.port = lanServer.DEFAULT_PORT;
-  return cfg.wear;
+/* v2.6.4A：wear 段独立成 wear.json，不再放 config.json。
+ * 根因：渲染层才是 config 的写入者（拖窗口/调透明度都会整份 persist），
+ * 手表刚配对上的设备（主进程写进 config.json 的）会被渲染层下一次
+ * persist 用内存里的旧副本整个冲掉 → 手表下轮轮询就 401「配对已失效」。
+ * 独立文件后渲染层永远碰不到它，配对一次长期有效。 */
+const WEAR_FILE = path.join(CONFIG_DIR, 'wear.json');
+
+function wearSave(w) {
+  ensureConfigDir();
+  fs.writeFileSync(WEAR_FILE, JSON.stringify(w, null, 2), 'utf-8');
 }
+
+function wearStore() {
+  try {
+    const j = JSON.parse(fs.readFileSync(WEAR_FILE, 'utf-8'));
+    if (j && typeof j === 'object') {
+      if (!Array.isArray(j.devices)) j.devices = [];
+      if (typeof j.port !== 'number') j.port = lanServer.DEFAULT_PORT;
+      return j;
+    }
+  } catch (e) { /* 不存在或坏档：走下面的迁移 */ }
+  /* 一次性迁移：把老版本存在 config.json 里的 wear 段搬过来 */
+  const cfg = loadConfig() || {};
+  const w = (cfg.wear && typeof cfg.wear === 'object') ? cfg.wear
+    : { enabled: false, port: lanServer.DEFAULT_PORT, code: '', devices: [] };
+  if (!Array.isArray(w.devices)) w.devices = [];
+  if (typeof w.port !== 'number') w.port = lanServer.DEFAULT_PORT;
+  wearSave(w);
+  if (cfg.wear) { delete cfg.wear; saveConfig(cfg); }
+  return w;
+}
+
+function wearCfg() { return wearStore(); }
 
 /* 6 位配对码：不用 0/1 之类容易看错的组合没必要剔，纯数字最便于念给手表听 */
 function wearNewCode() {
-  const cfg = loadConfig() || {};
-  const w = cfg.wear || {};
+  const w = wearStore();
   w.code = String(Math.floor(100000 + Math.random() * 900000));
-  w.enabled = w.enabled !== false ? true : w.enabled;
-  cfg.wear = w;
-  saveConfig(cfg);
+  wearSave(w);
   return w.code;
 }
 
 function wearDeviceByToken(token) {
   if (!token) return null;
-  const w = wearCfg();
-  return w.devices.find((d) => d && d.token === token) || null;
+  return wearStore().devices.find((d) => d && d.token === token) || null;
 }
 
 function wearRegisterDevice(name, ip) {
-  const cfg = loadConfig() || {};
-  const w = cfg.wear || {};
-  if (!Array.isArray(w.devices)) w.devices = [];
+  const w = wearStore();
   const dev = {
     id: 'w-' + Date.now().toString(36),
     name: (name || 'WearOS').slice(0, 40),
@@ -1356,21 +1373,18 @@ function wearRegisterDevice(name, ip) {
     lastSeen: Date.now()
   };
   w.devices.push(dev);
-  cfg.wear = w;
-  saveConfig(cfg);
+  wearSave(w);
   return dev;
 }
 
 function wearTouchDevice(id) {
-  const cfg = loadConfig() || {};
-  const w = cfg.wear || {};
+  const w = wearStore();
   const d = (w.devices || []).find((x) => x && x.id === id);
   if (!d) return;
   /* 手表是轮询的（几秒一次），每次都写盘就太费了 —— 15s 内只落一次 */
   if (d.lastSeen && Date.now() - d.lastSeen < 15000) return;
   d.lastSeen = Date.now();
-  cfg.wear = w;
-  saveConfig(cfg);
+  wearSave(w);
 }
 
 /* 动作转发：渲染层执行完回 'wear-action-result'，这里带超时兜底 */
@@ -1412,11 +1426,9 @@ function wearHooks() {
     registerDevice: (name, ip) => wearRegisterDevice(name, ip),
     touchDevice: (id) => wearTouchDevice(id),
     removeDevice: (id) => {
-      const cfg = loadConfig() || {};
-      const w = cfg.wear || {};
+      const w = wearStore();
       w.devices = (w.devices || []).filter((d) => d && d.id !== id);
-      cfg.wear = w;
-      saveConfig(cfg);
+      wearSave(w);
     },
     action: async (body) => {
       const r = await wearDispatchAction({
@@ -1467,13 +1479,11 @@ function wearStatus() {
 ipcMain.handle('wear-status', () => wearStatus());
 
 ipcMain.handle('wear-set-enabled', async (event, on) => {
-  const cfg = loadConfig() || {};
-  const w = cfg.wear || {};
+  const w = wearStore();
   w.enabled = !!on;
   if (!w.port) w.port = lanServer.DEFAULT_PORT;
   if (!Array.isArray(w.devices)) w.devices = [];
-  cfg.wear = w;
-  saveConfig(cfg);
+  wearSave(w);
   if (w.enabled) {
     if (!w.code) wearNewCode();
     await startWearServer();
@@ -1489,11 +1499,9 @@ ipcMain.handle('wear-new-code', () => {
 });
 
 ipcMain.handle('wear-unpair', (event, id) => {
-  const cfg = loadConfig() || {};
-  const w = cfg.wear || {};
+  const w = wearStore();
   w.devices = (w.devices || []).filter((d) => d && d.id !== id);
-  cfg.wear = w;
-  saveConfig(cfg);
+  wearSave(w);
   return wearStatus();
 });
 

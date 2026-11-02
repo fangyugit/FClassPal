@@ -7,8 +7,8 @@ android {
         applicationId 'com.fclasspal.wear'
         minSdk 26            // Wear OS 2.x 起
         targetSdk 34
-        versionCode 20604
-        versionName '2.6.4'
+        versionCode 20605
+        versionName '2.6.4A'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

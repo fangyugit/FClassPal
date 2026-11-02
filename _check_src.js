@@ -11,7 +11,7 @@ const mapJs = (() => { try { return fs.readFileSync('renderer/lg-displacement-ma
 const mapJs2 = (() => { try { return fs.readFileSync('vendor/monet.js','utf-8').toString(); } catch (e) { return ''; } })();
 /* v2.6.4：局域网服务必须真的进了 asar —— 它是 main.js 的运行时 require，
  * 漏进 build.files 的开发态全绿、打包态直接启动崩溃（v2.4.6 踩过的坑）。 */
-const lan = fs.readFileSync('lan-server.js','utf-8').toString();
+const lan = (() => { try { return fs.readFileSync('lan-server.js','utf-8').toString(); } catch (e) { return ''; } })();
 /* WearOS 壳的源码不进桌面 asar（手表是独立 App），所以从工作区直接读 */
 const wearDir = path.join('wearos', 'app', 'src', 'main');
 const rd = (p) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '');
@@ -516,7 +516,22 @@ const checks = [
     /"renameItem"/.test(wearMain) && /"moveGroup"/.test(wearMain) &&
     /FCP_DISCOVER/.test(wearDiscovery) &&
     /class Api/.test(wearApi) && /HttpURLConnection/.test(wearApi) &&
-    /compileSdk 35/.test(wearGradle) && /versionName '2\.6\.4'/.test(wearGradle)],
+    /compileSdk 35/.test(wearGradle) && /versionName '2\.6\.4A'/.test(wearGradle)],
+
+  ['v2.6.4A: 手表独立启动器（本机应用/网页添加、主题与配置导入目录）',
+    /showAppPicker/.test(wearMain) && /addWebDialog/.test(wearMain) &&
+    /ACTION_VIEW, Uri\.parse/.test(wearMain) &&
+    /getLaunchIntentForPackage/.test(wearMain) &&
+    /"themes"/.test(wearMain) && /optJSONArray\("groups"\) != null/.test(wearMain) &&
+    wearManifest.includes('<queries>')],
+  ['v2.6.4A: 远程设置（快照带设置字段 + set 动作走桌面端同一函数）',
+    /opacity: typeof config\.opacity === 'number'/.test(app) &&
+    /themes: THEMES\.map/.test(app) && /winW: Math\.round\(bounds\.width\)/.test(app) &&
+    /act === 'set'/.test(app) && app.includes('applyOpacity(Math.min(1, Math.max(0.2') &&
+    app.includes('changeSize(Number(a.delta) >= 0 ? 40 : -40)')],
+  ['v2.6.4A: 配对信息独立成 wear.json（渲染层 persist 不再冲掉配对设备）',
+    /WEAR_FILE = path\.join\(CONFIG_DIR, 'wear\.json'\)/.test(main) &&
+    /function wearStore\(\)/.test(main) && /function wearSave\(w\)/.test(main)],
 
   ['v2.6.2: 更新弹窗带更新日志 + 忽略/去更新两个出口',
     html.includes('id="updateModal"') && html.includes('id="updateNotes"') &&
