@@ -11,6 +11,12 @@ mobile/www/
 mobile/android/
 mobile/node_modules/
 
+# WearOS 壳（v2.6.4）：源码进库，gradle 产物不进
+wearos/.gradle/
+wearos/build/
+wearos/app/build/
+wearos/local.properties
+
 # scratch / probe workspace — only curated test & asset-pipeline scripts are kept
 _ep_m/
 _ep*/
@@ -22,6 +28,7 @@ _rt/*
 !_rt/_ghsync.py
 !_rt/_iconcheck.js
 !_rt/_iconshot.js
+!_rt/_lancheck.js
 !_rt/_monetcheck.js
 !_rt/_mobilecheck.js
 !_rt/_mkandroidicons.js

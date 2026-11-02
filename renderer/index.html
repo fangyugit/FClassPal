@@ -24,6 +24,8 @@
     <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+    <!-- v2.6.4 WearOS 手表（线性表身 + 表冠） -->
+    <symbol id="i-watch" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="4"/><path d="M9 6V3.5A1.5 1.5 0 0 1 10.5 2h3A1.5 1.5 0 0 1 15 3.5V6"/><path d="M9 18v2.5A1.5 1.5 0 0 0 10.5 22h3a1.5 1.5 0 0 0 1.5-1.5V18"/><path d="M20 11v2"/></symbol>
     <symbol id="i-board" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
     <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
@@ -432,6 +434,28 @@
       <div class="row" id="rowUsage">
         <span>使用统计</span>
         <div class="usage-list" id="usageList"></div>
+      </div>
+
+      <!-- WearOS 手表（v2.6.4）：同一局域网里配对后，手表上能看分组、点开快捷方式、
+           改名/调顺序。配对码是 6 位数字，念给手表或手输；token 配对后长存。
+           桌面端不监听公网、不做穿透，关掉开关服务就停。 -->
+      <div class="wear-box" id="wearBox">
+        <div class="wear-head">
+          <svg class="ic" aria-hidden="true"><use href="#i-watch"/></svg>
+          <span>WearOS 手表</span>
+        </div>
+        <label class="row toggle">
+          <span>局域网连接</span>
+          <input type="checkbox" id="setWearEnabled" />
+        </label>
+        <div class="wear-panel hidden" id="wearPanel">
+          <div class="wear-code-row">
+            <div class="wear-code" id="wearCode">------</div>
+            <button id="btnWearNewCode" class="text-btn">换一个码</button>
+          </div>
+          <div class="wear-hint" id="wearHost">手表端「配对电脑」里输这个 IP 与 6 位码</div>
+          <div class="wear-devices" id="wearDevices"></div>
+        </div>
       </div>
         </section>
 

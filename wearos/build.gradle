@@ -1,0 +1,22 @@
+/* 只依赖 AGP 本身：手表端零第三方库，构建机不需要再下 Compose/Wear 那一套，
+ * 8GB 内存的机器也扛得住。仓库给国内镜像优先，再退官方。 */
+buildscript {
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+    }
+}
+
+allprojects {
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        google()
+        mavenCentral()
+    }
+}

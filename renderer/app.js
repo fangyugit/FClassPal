@@ -184,7 +184,7 @@ const API = window.widgetAPI || (function () {
     getEnv: () => Promise.resolve({ transparent: true, platform: 'browser', release: '0' }),
     // 关于界面：预览模式没有主进程，版本号给个占位；链接用新窗口模拟
     /* 预览模式的版本号：与 package.json 保持一致（_check.js 有同源断言，别让它漂） */
-    getAppVersion: () => Promise.resolve('2.6.2'),
+    getAppVersion: () => Promise.resolve('2.6.4'),
     openExternal: (url) => { window.open(url, '_blank'); return Promise.resolve(true); },
     // 预览模式取不到真实壁纸：返回 null，让 #envLayer 用内置渐变基底，
     // MD3 则退回 CSS 里的 baseline 配色
@@ -590,6 +590,7 @@ function persist() {
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
     API.saveConfig(config);
+    pushWearState();   // v2.6.4：手表轮询 /fcp/state 拿到的就是这一份
   }, 150);
 }
 
@@ -2963,6 +2964,7 @@ function openSettings() {
   syncSettingsControls();
   syncLayoutSeg();   // v2.6.0：布局模式分段按钮跟着配置走
   syncDebugControls();   // v2.6.2：每日随机主题 / 调试区（含平台效果、更新服务器）
+  syncWearControls();    // v2.6.4：WearOS 局域网开关 / 配对码 / 设备名册
   describePalette(wallInfo && wallInfo.palette);
   $('settingsPanel').classList.remove('hidden');
 }
@@ -4731,26 +4733,107 @@ $('btnManageGroups').addEventListener('click', () => {
 });
 $('btnGroupClose').addEventListener('click', () => groupModal.classList.add('hidden'));
 
+/* ---------- 分组管理（v2.6.4：排序 + 重命名） ----------
+ * 排序用 ↑ ↓ 两个按钮而不是拖拽：分组弹窗在触屏上是要用手指点的，
+ * 拖拽排序和"弹窗本身可滚动"会互相抢手势；两个箭头既准确又不会有歧义。
+ * 重命名就地改（点「改名」变输入框，回车/失焦保存，Esc 取消），
+ * 改完立刻 persist + render，主界面标题同步。 */
 function renderGroupList() {
   const list = $('groupList');
   list.innerHTML = '';
   config.groups.forEach((g, idx) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span>${escapeHtml(g.name)} <small style="color:#888">(${g.items.length})</small></span>`;
-    const del = document.createElement('button');
-    del.className = 'del-group';
-    del.textContent = '删除';
-    del.addEventListener('click', () => {
+    li.className = 'group-row';
+
+    const main = document.createElement('div');
+    main.className = 'group-row-main';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'group-row-name';
+    nameEl.textContent = g.name;
+    const cnt = document.createElement('small');
+    cnt.className = 'group-row-count';
+    cnt.textContent = '(' + (g.items || []).length + ')';
+    main.appendChild(nameEl);
+    main.appendChild(cnt);
+
+    const ops = document.createElement('div');
+    ops.className = 'group-row-ops';
+
+    const mkBtn = (cls, label, icon, handler, disabled) => {
+      const b = document.createElement('button');
+      b.className = cls;
+      if (icon) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'ic');
+        const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+        use.setAttribute('href', icon);
+        svg.appendChild(use);
+        b.appendChild(svg);
+      }
+      if (label) b.appendChild(document.createTextNode(label));
+      if (disabled) b.disabled = true;
+      b.addEventListener('click', handler);
+      return b;
+    };
+
+    /* ↑ ↓ 只换位置，不动内容；到顶/到底自动禁用，避免点了没反应 */
+    ops.appendChild(mkBtn('mini-btn', '', '#i-up', () => moveGroup(idx, -1), idx === 0));
+    ops.appendChild(mkBtn('mini-btn', '', '#i-down', () => moveGroup(idx, 1),
+      idx === config.groups.length - 1));
+    ops.appendChild(mkBtn('mini-btn mini-text', '改名', null, () => startGroupRename(li, main, g, nameEl)));
+    ops.appendChild(mkBtn('del-group', '', '#i-trash', () => {
       if (confirm(`确定删除分组「${g.name}」及其下所有快捷方式？`)) {
         config.groups.splice(idx, 1);
         persist();
         renderGroupList();
         render();
       }
-    });
-    li.appendChild(del);
+    }, config.groups.length <= 1));   // 最后一个分组不许删（否则没有落点了）
+
+    li.appendChild(main);
+    li.appendChild(ops);
     list.appendChild(li);
   });
+}
+
+function moveGroup(idx, delta) {
+  const to = idx + delta;
+  if (to < 0 || to >= config.groups.length) return;
+  const [g] = config.groups.splice(idx, 1);
+  config.groups.splice(to, 0, g);
+  persist();
+  renderGroupList();
+  render();
+}
+
+/* 就地改名：把名字那一格换成 input，回车/失焦保存、Esc 取消 */
+function startGroupRename(li, main, g, nameEl) {
+  if (li.querySelector('.group-rename-input')) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'group-rename-input';
+  input.value = g.name;
+  main.replaceChild(input, nameEl);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = (save) => {
+    if (done) return;
+    done = true;
+    const v = input.value.trim();
+    if (save && v && v !== g.name) {
+      g.name = v;
+      persist();
+      render();
+    }
+    renderGroupList();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    e.stopPropagation();   // 别让面板的快捷键（Esc 关面板）跟着响应
+  });
+  input.addEventListener('blur', () => finish(true));
 }
 
 $('btnAddGroup').addEventListener('click', () => {
@@ -4762,6 +4845,256 @@ $('btnAddGroup').addEventListener('click', () => {
   renderGroupList();
   render();
 });
+
+/* ============================================================================
+ * WearOS 局域网配对（v2.6.4）
+ *
+ * 数据流（见 lan-server.js 顶部）：
+ *   · 渲染层是 config 的唯一拥有者 → 每次保存后把**脱敏快照**推给主进程
+ *     （只含 id/名字/图标/结构，**不带 target 路径**，手表上不该看到电脑的
+ *     文件路径）；主进程缓存后供手表轮询 /fcp/state。
+ *   · 手表发来的动作由主进程转成 'wear-action' 回到这里执行（改 config + 重绘），
+ *     执行完把最新快照一起回传，主进程直接当 HTTP 响应体给手表。
+ * ==========================================================================*/
+let wearInfo = null;
+
+function wearSupported() { return typeof API.wearStatus === 'function'; }
+
+/* 统一遍历：分组 → 条目 → 文件夹子项（第三个参数是"所在数组"，便于移动/删除） */
+function walkItemTree(fn) {
+  (config.groups || []).forEach((g, gi) => {
+    (g.items || []).forEach((it, ii) => {
+      fn(it, { kind: 'item', group: g, gi, arr: g.items, index: ii });
+      if (isFolder(it)) {
+        (it.children || []).forEach((c, ci) => {
+          fn(c, { kind: 'child', group: g, gi, arr: it.children, index: ci, parent: it });
+        });
+      }
+    });
+  });
+}
+
+/* 老数据里条目没有稳定 id（使用统计里有 name|target 兜底的老逻辑）。
+ * 手表端必须按 id 操作，所以启动时补一遍并落盘，之后就不再变。 */
+function ensureIds() {
+  let dirty = false;
+  (config.groups || []).forEach((g, gi) => {
+    if (!g.id) { g.id = 'g-' + (gi + 1) + '-' + Date.now().toString(36); dirty = true; }
+  });
+  walkItemTree((it) => {
+    if (!it.id) { it.id = 'i-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6); dirty = true; }
+  });
+  if (dirty) persist();
+  return dirty;
+}
+
+function wearItemNode(it) {
+  const node = {
+    id: it.id || '',
+    name: it.name || '',
+    kind: isFolder(it) ? 'folder' : (it.type || 'app'),
+    icon: it.icon || 'i-star'
+  };
+  if (isFolder(it)) node.items = (it.children || []).map(wearItemNode);
+  return node;
+}
+
+/* 脱敏快照：不含 target / iconPath / 自定义快捷键等本地信息 */
+function wearStateSnapshot() {
+  return {
+    app: 'FClassPal',
+    title: config.title || 'FClassPal',
+    theme: currentTheme,
+    locked: !!config.locked,
+    groups: (config.groups || []).map((g) => ({
+      id: g.id || '',
+      name: g.name || '',
+      items: (g.items || []).map(wearItemNode)
+    }))
+  };
+}
+
+function pushWearState() {
+  if (typeof API.wearPushState !== 'function') return;
+  try { API.wearPushState(wearStateSnapshot()); } catch (e) { /* 手表那条线不该影响界面 */ }
+}
+
+function findWearItem(id) {
+  let hit = null;
+  walkItemTree((it, loc) => { if (!hit && it.id === id) hit = { it, loc }; });
+  return hit;
+}
+
+/* 手表动作执行器：所有改动都走这里，保证和桌面端一条路径（persist + render） */
+async function handleWearAction(a) {
+  const act = a && a.action;
+  const reply = (msg) => ({ reqId: a && a.reqId, ok: true, result: { message: msg }, state: wearStateSnapshot() });
+
+  if (act === 'refresh' || !act) return reply('已同步');
+
+  if (act === 'launch') {
+    const hit = findWearItem(a.itemId);
+    if (!hit) throw new Error('未找到该快捷方式');
+    if (isFolder(hit.it)) throw new Error('这是文件夹');
+    await openItem(hit.it);
+    return reply('已在电脑上打开：' + hit.it.name);
+  }
+
+  if (act === 'renameItem') {
+    const hit = findWearItem(a.itemId);
+    if (!hit) throw new Error('未找到该快捷方式');
+    const name = String(a.name || '').trim().slice(0, 40);
+    if (!name) throw new Error('名称不能为空');
+    hit.it.name = name;
+    persist(); render();
+    return reply('已改名为 ' + name);
+  }
+
+  if (act === 'moveItem') {
+    const hit = findWearItem(a.itemId);
+    if (!hit) throw new Error('未找到该快捷方式');
+    const arr = hit.loc.arr;
+    const i = hit.loc.index;
+    const to = a.dir === 'up' ? i - 1 : i + 1;
+    if (to < 0 || to >= arr.length) throw new Error('已经在边上');
+    const [moved] = arr.splice(i, 1);
+    arr.splice(to, 0, moved);
+    persist(); render();
+    return reply('顺序已调整');
+  }
+
+  if (act === 'deleteItem') {
+    const hit = findWearItem(a.itemId);
+    if (!hit) throw new Error('未找到该快捷方式');
+    const name = hit.it.name;
+    hit.loc.arr.splice(hit.loc.index, 1);
+    /* 文件夹被清空就连壳一起删（与桌面端行为一致） */
+    if (hit.loc.kind === 'child' && hit.loc.parent && !hit.loc.parent.children.length) {
+      const g = config.groups[hit.loc.gi];
+      const pi = g.items.indexOf(hit.loc.parent);
+      if (pi >= 0) g.items.splice(pi, 1);
+    }
+    persist(); render();
+    return reply('已删除 ' + name);
+  }
+
+  if (act === 'renameGroup') {
+    const g = (config.groups || []).find((x) => x.id === a.groupId);
+    if (!g) throw new Error('未找到该分组');
+    const name = String(a.name || '').trim().slice(0, 40);
+    if (!name) throw new Error('名称不能为空');
+    g.name = name;
+    persist(); render();
+    return reply('分组已改名为 ' + name);
+  }
+
+  if (act === 'moveGroup') {
+    const i = (config.groups || []).findIndex((x) => x.id === a.groupId);
+    if (i < 0) throw new Error('未找到该分组');
+    const to = a.dir === 'up' ? i - 1 : i + 1;
+    if (to < 0 || to >= config.groups.length) throw new Error('已经在边上');
+    const [g] = config.groups.splice(i, 1);
+    config.groups.splice(to, 0, g);
+    persist(); render();
+    return reply('分组顺序已调整');
+  }
+
+  throw new Error('不认识的动作：' + act);
+}
+
+if (typeof API.onWearAction === 'function') {
+  API.onWearAction((a) => {
+    handleWearAction(a)
+      .then((r) => API.wearActionResult(r))
+      .catch((e) => API.wearActionResult({
+        reqId: a && a.reqId, ok: false, error: String((e && e.message) || e)
+      }));
+  });
+}
+
+/* ---------- 设置面板：WearOS 那一块 ---------- */
+function syncWearControls() {
+  const box = $('wearBox');
+  if (!box) return;
+  /* 安卓/预览模式没有这套 IPC：整块藏起来，别让用户点了没反应 */
+  box.classList.toggle('hidden', !wearSupported());
+  if (!wearSupported()) return;
+  API.wearStatus().then((info) => {
+    wearInfo = info;
+    $('setWearEnabled').checked = !!info.enabled;
+    $('wearPanel').classList.toggle('hidden', !info.enabled);
+    $('wearCode').textContent = info.code ? info.code.replace(/(\d{3})(\d{3})/, '$1 $2') : '------';
+    const addrs = (info.addresses || []).join(' / ') || '未获取到局域网地址';
+    $('wearHost').textContent = info.running
+      ? '地址 ' + addrs + ' · 端口 ' + info.port + ' · 手表端「配对电脑」里填这个'
+      : '服务没起来（端口被占或被防火墙拦住），换一个码再试';
+    renderWearDevices(info.devices || []);
+  }).catch(() => { /* 主进程没准备好就下次打开设置再说 */ });
+}
+
+function renderWearDevices(devices) {
+  const box = $('wearDevices');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!devices.length) {
+    const empty = document.createElement('div');
+    empty.className = 'wear-empty';
+    empty.textContent = '还没有手表配对';
+    box.appendChild(empty);
+    return;
+  }
+  devices.forEach((d) => {
+    const row = document.createElement('div');
+    row.className = 'wear-dev-row';
+    const name = document.createElement('span');
+    name.className = 'wear-dev-name';
+    name.textContent = d.name || 'WearOS';
+    const meta = document.createElement('small');
+    meta.className = 'wear-dev-meta';
+    meta.textContent = d.ip || '';
+    const del = document.createElement('button');
+    del.className = 'del-group';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'ic');
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    use.setAttribute('href', '#i-x');
+    svg.appendChild(use);
+    del.appendChild(svg);
+    del.title = '解除这台手表的配对';
+    del.addEventListener('click', () => {
+      API.wearUnpair(d.id).then((info) => {
+        wearInfo = info;
+        renderWearDevices(info.devices || []);
+        toast('已解除配对');
+      });
+    });
+    row.appendChild(name);
+    row.appendChild(meta);
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+
+function bindWearUI() {
+  const chk = $('setWearEnabled');
+  if (!chk) return;
+  chk.addEventListener('change', () => {
+    API.wearSetEnabled(chk.checked).then((info) => {
+      wearInfo = info;
+      $('wearPanel').classList.toggle('hidden', !info.enabled);
+      syncWearControls();
+      toast(info.enabled ? 'WearOS 局域网已开启' : 'WearOS 局域网已关闭');
+    });
+  });
+  $('btnWearNewCode').addEventListener('click', () => {
+    API.wearNewCode().then((info) => {
+      wearInfo = info;
+      syncWearControls();
+      toast('配对码已更新');
+    });
+  });
+}
+bindWearUI();
 
 /* ---------- 右键 / 长按 弹出菜单 ---------- */
 let ctxOpen = false;
@@ -5045,6 +5378,7 @@ if (typeof API.onTrayAction === 'function') {
 (async function init() {
   config = await API.getConfig();
   ensureLayoutConfig();   // v2.6.0：layout 字段兜底（老配置没有它）
+  ensureIds();            // v2.6.4：给老数据补稳定 id（WearOS 手表按 id 操作）
   bounds = {
     x: config.x ?? 100, y: config.y ?? 100,
     width: config.width ?? 480, height: config.height ?? 420
@@ -5151,4 +5485,6 @@ if (typeof API.onTrayAction === 'function') {
   /* v2.6.2：首屏稳定后静默查一次更新 —— 有新版就弹更新日志，「忽略过」的版本不弹。
    * 延迟 4s 是为了不跟首屏的壁纸取色/主题包加载抢网络与主线程。 */
   setTimeout(() => { runCheckUpdate(true); }, 4000);
+  /* v2.6.4：把手表的快照先推一次，手表一联上就能看到分组（不必等用户改配置） */
+  pushWearState();
 })();

@@ -8,6 +8,7 @@ const os = require('os');
 const { spawn, execFile } = require('child_process');
 const { pathToFileURL, fileURLToPath } = require('url');
 const https = require('https');   // v2.5.0：检测更新拉 GitHub latest release
+const crypto = require('crypto'); // v2.6.4：WearOS 配对 token
 
 // 配置存储路径
 /* ★ 真实用户目录只有正式启动（用户双击 exe / npm start）才允许用。
@@ -937,6 +938,9 @@ app.whenReady().then(() => {
   createTray();
   startUsbWatcher();
   startWallpaperWatcher();   // 换壁纸时把新壁纸推给渲染层重画
+  /* WearOS 局域网服务（v2.6.4）：上次开着就自动起来。起不来（端口全占 /
+   * 被防火墙拦）只影响手表，不影响桌面端任何功能，所以不 await、不报错弹窗。 */
+  startWearServer().catch(() => {});
 
   /* 启动时同步一次自启动注册表状态，保证配置与系统一致 */
   try {
@@ -956,6 +960,7 @@ app.on('before-quit', () => {
   app.isQuitting = true;
   stopUsbWatcher();
   stopWallpaperWatcher();
+  try { stopWearServer(); } catch (e) { /* 已停 */ }
 });
 
 app.on('activate', () => {
@@ -1293,6 +1298,205 @@ ipcMain.handle('open-external', (event, url) => {
   }
   return false;
 });
+
+/* ============================================================================
+ * WearOS 局域网配对（v2.6.4）
+ *
+ * 分工（见 lan-server.js 顶部注释）：
+ *   · 主进程只管"服务、配对码、设备名册"，以及把动作转给渲染层；
+ *   · 渲染层是 config 的唯一拥有者 —— 手表要改名/调顺序，主进程发
+ *     'wear-action' 给渲染层，渲染层改完 persist + render，再把最新状态
+ *     通过 'wear-action-result' 回传，主进程拿它当 HTTP 响应体还给手表。
+ *   · 渲染层平时也会 pushState（每次保存配置后），手表轮询 /fcp/state 就能
+ *     看到电脑上的最新分组。
+ * ==========================================================================*/
+const lanServer = require('./lan-server');
+let wearState = null;                  // 渲染层推上来的最新快照
+let wearStateAt = 0;
+let wearActionSeq = 0;
+const wearActionPending = new Map();   // reqId -> { resolve, timer }
+
+function wearCfg() {
+  const cfg = loadConfig() || {};
+  if (!cfg.wear || typeof cfg.wear !== 'object') {
+    cfg.wear = { enabled: false, port: lanServer.DEFAULT_PORT, code: '', devices: [] };
+    saveConfig(cfg);
+  }
+  if (!Array.isArray(cfg.wear.devices)) cfg.wear.devices = [];
+  if (typeof cfg.wear.port !== 'number') cfg.wear.port = lanServer.DEFAULT_PORT;
+  return cfg.wear;
+}
+
+/* 6 位配对码：不用 0/1 之类容易看错的组合没必要剔，纯数字最便于念给手表听 */
+function wearNewCode() {
+  const cfg = loadConfig() || {};
+  const w = cfg.wear || {};
+  w.code = String(Math.floor(100000 + Math.random() * 900000));
+  w.enabled = w.enabled !== false ? true : w.enabled;
+  cfg.wear = w;
+  saveConfig(cfg);
+  return w.code;
+}
+
+function wearDeviceByToken(token) {
+  if (!token) return null;
+  const w = wearCfg();
+  return w.devices.find((d) => d && d.token === token) || null;
+}
+
+function wearRegisterDevice(name, ip) {
+  const cfg = loadConfig() || {};
+  const w = cfg.wear || {};
+  if (!Array.isArray(w.devices)) w.devices = [];
+  const dev = {
+    id: 'w-' + Date.now().toString(36),
+    name: (name || 'WearOS').slice(0, 40),
+    token: crypto.randomBytes(16).toString('hex'),
+    ip: ip || '',
+    lastSeen: Date.now()
+  };
+  w.devices.push(dev);
+  cfg.wear = w;
+  saveConfig(cfg);
+  return dev;
+}
+
+function wearTouchDevice(id) {
+  const cfg = loadConfig() || {};
+  const w = cfg.wear || {};
+  const d = (w.devices || []).find((x) => x && x.id === id);
+  if (!d) return;
+  /* 手表是轮询的（几秒一次），每次都写盘就太费了 —— 15s 内只落一次 */
+  if (d.lastSeen && Date.now() - d.lastSeen < 15000) return;
+  d.lastSeen = Date.now();
+  cfg.wear = w;
+  saveConfig(cfg);
+}
+
+/* 动作转发：渲染层执行完回 'wear-action-result'，这里带超时兜底 */
+function wearDispatchAction(action) {
+  return new Promise((resolve, reject) => {
+    if (!mainWindow || mainWindow.isDestroyed()) { reject(new Error('window-gone')); return; }
+    const reqId = ++wearActionSeq;
+    const timer = setTimeout(() => {
+      wearActionPending.delete(reqId);
+      reject(new Error('timeout'));
+    }, 4000);
+    wearActionPending.set(reqId, { resolve, timer });
+    mainWindow.webContents.send('wear-action', Object.assign({ reqId }, action));
+  });
+}
+
+ipcMain.on('wear-action-result', (event, payload) => {
+  const id = payload && payload.reqId;
+  const rec = wearActionPending.get(id);
+  if (!rec) return;
+  wearActionPending.delete(id);
+  clearTimeout(rec.timer);
+  rec.resolve(payload || {});
+});
+
+ipcMain.on('wear-push-state', (event, state) => {
+  wearState = state && typeof state === 'object' ? state : null;
+  wearStateAt = Date.now();
+});
+
+function wearHooks() {
+  return {
+    name: os.hostname(),
+    version: app.getVersion(),
+    port: wearCfg().port,
+    pairCode: () => wearCfg().code || wearNewCode(),
+    state: () => wearState || { groups: [], stale: true, at: wearStateAt },
+    verifyToken: (t) => wearDeviceByToken(t),
+    registerDevice: (name, ip) => wearRegisterDevice(name, ip),
+    touchDevice: (id) => wearTouchDevice(id),
+    removeDevice: (id) => {
+      const cfg = loadConfig() || {};
+      const w = cfg.wear || {};
+      w.devices = (w.devices || []).filter((d) => d && d.id !== id);
+      cfg.wear = w;
+      saveConfig(cfg);
+    },
+    action: async (body) => {
+      const r = await wearDispatchAction({
+        action: body.action,
+        itemId: body.itemId || '',
+        groupId: body.groupId || '',
+        name: body.name || '',
+        dir: body.dir || ''
+      });
+      if (r && r.ok === false) throw new Error(r.error || 'action-failed');
+      return r && r.result ? r.result : {};
+    }
+  };
+}
+
+async function startWearServer() {
+  const w = wearCfg();
+  if (!w.enabled) return { running: false, enabled: false };
+  if (!w.code) wearNewCode();
+  try {
+    await lanServer.start(wearHooks());
+  } catch (e) {
+    return { running: false, enabled: true, error: String(e && e.message || e) };
+  }
+  return wearStatus();
+}
+
+function stopWearServer() {
+  lanServer.stop();
+}
+
+function wearStatus() {
+  const w = wearCfg();
+  const d = lanServer.describe();
+  return {
+    enabled: !!w.enabled,
+    running: !!d.running,
+    port: d.port,
+    code: w.code || '',
+    addresses: d.addresses,
+    host: d.name,
+    devices: (w.devices || []).map((x) => ({
+      id: x.id, name: x.name, ip: x.ip || '', lastSeen: x.lastSeen || 0
+    }))
+  };
+}
+
+ipcMain.handle('wear-status', () => wearStatus());
+
+ipcMain.handle('wear-set-enabled', async (event, on) => {
+  const cfg = loadConfig() || {};
+  const w = cfg.wear || {};
+  w.enabled = !!on;
+  if (!w.port) w.port = lanServer.DEFAULT_PORT;
+  if (!Array.isArray(w.devices)) w.devices = [];
+  cfg.wear = w;
+  saveConfig(cfg);
+  if (w.enabled) {
+    if (!w.code) wearNewCode();
+    await startWearServer();
+  } else {
+    stopWearServer();
+  }
+  return wearStatus();
+});
+
+ipcMain.handle('wear-new-code', () => {
+  wearNewCode();
+  return wearStatus();
+});
+
+ipcMain.handle('wear-unpair', (event, id) => {
+  const cfg = loadConfig() || {};
+  const w = cfg.wear || {};
+  w.devices = (w.devices || []).filter((d) => d && d.id !== id);
+  cfg.wear = w;
+  saveConfig(cfg);
+  return wearStatus();
+});
+
 
 ipcMain.handle('select-app', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {

@@ -1,0 +1,4 @@
+/* FClassPal · WearOS 壳（v2.6.4）—— 独立 Gradle 工程，与 mobile/ 的手机壳互不干扰：
+ * 手机壳是 Capacitor（带 WebView），手表壳是纯原生（WearOS 没有 WebView）。 */
+rootProject.name = 'FClassPalWear'
+include ':app'

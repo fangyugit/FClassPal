@@ -1,0 +1,53 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.fclasspal.wear'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.fclasspal.wear'
+        minSdk 26            // Wear OS 2.x 起
+        targetSdk 34
+        versionCode 20604
+        versionName '2.6.4'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    lint {
+        abortOnError false
+    }
+}
+
+dependencies {
+    /* 故意留空：界面全用 framework 视图，见 MainActivity 顶部说明 */
+}
+
+/* 与手机壳共用同一个签名库（_signing/android.keystore，gitignore 不进库）。
+ * 手表是独立包名 com.fclasspal.wear，所以共用一个库不会和手机版冲突；
+ * 好处是以后升级不用用户卸载重装（签名一致）。缺文件就出未签名包，构建不失败。 */
+def fcpSign = rootProject.file('../_signing/signing.properties')
+if (fcpSign.exists()) {
+    def props = new Properties()
+    fcpSign.withInputStream { props.load(it) }
+    android {
+        signingConfigs {
+            release {
+                storeFile new File(fcpSign.getParentFile(), props['storeFile'])
+                storePassword props['storePassword']
+                keyAlias props['keyAlias']
+                keyPassword props['keyPassword']
+            }
+        }
+        buildTypes {
+            release {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}

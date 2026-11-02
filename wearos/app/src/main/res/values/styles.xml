@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 纯 framework 主题：不引 AndroidX / MDC，WearOS 上只要深底、无 ActionBar。
+     MD3 观感由代码里的配色与圆角给（见 MainActivity 顶部常量）。 -->
+<resources>
+    <style name="WearTheme" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">#FF0D1014</item>
+        <item name="android:colorAccent">#FFA8C7FA</item>
+        <item name="android:statusBarColor">#FF0D1014</item>
+        <item name="android:navigationBarColor">#FF0D1014</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>

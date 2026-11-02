@@ -68,6 +68,21 @@ contextBridge.exposeInMainWorld('widgetAPI', {
   factoryReset: () => ipcRenderer.invoke('factory-reset'),
   // v2.6.2：调试台用 —— 在文件管理器里打开配置目录
   openConfigDir: () => ipcRenderer.invoke('open-config-dir'),
+  /* v2.6.4：WearOS 局域网配对。
+   * pushState 由渲染层在每次保存配置后调用（渲染层是 config 的唯一拥有者），
+   * 主进程把它缓存起来供手表轮询；手表的动作则通过 onWearAction 回到渲染层执行，
+   * 执行结果用 wearActionResult 回传（主进程拿它当 HTTP 响应体）。 */
+  wearStatus: () => ipcRenderer.invoke('wear-status'),
+  wearSetEnabled: (on) => ipcRenderer.invoke('wear-set-enabled', !!on),
+  wearNewCode: () => ipcRenderer.invoke('wear-new-code'),
+  wearUnpair: (id) => ipcRenderer.invoke('wear-unpair', id),
+  wearPushState: (state) => ipcRenderer.send('wear-push-state', state),
+  wearActionResult: (payload) => ipcRenderer.send('wear-action-result', payload),
+  onWearAction: (callback) => {
+    const handler = (_e, action) => callback(action);
+    ipcRenderer.on('wear-action', handler);
+    return () => ipcRenderer.removeListener('wear-action', handler);
+  },
   // U 盘列表变化（插入/拔出）时回调，参数为驱动数组
   onUsbChange: (callback) => {
     const handler = (_e, drives) => callback(drives);

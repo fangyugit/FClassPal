@@ -3825,3 +3825,159 @@ html body.dark .debug-box {
 }
 html body.dark .psec-title { border-bottom-color: rgb(255 255 255 / 0.14); }
 html body.dark .panel-rail { border-right-color: rgb(255 255 255 / 0.12); }
+
+/* ============================================================================
+ * v2.6.4
+ * ① 分组管理：排序（↑↓）+ 就地改名
+ * ② WearOS 局域网配对面板
+ * 颜色全走主题 token（--text / --text-soft / --accent / --accent-soft），
+ * 所以五套内置皮肤与深色模式都不用再逐条覆盖；只有需要"实心底"的地方
+ * 才用一条 html body.dark 的兜底（见最后两条）。
+ * ==========================================================================*/
+
+/* ---------- ① 分组：一行 = 名称 + 四个操作 ---------- */
+.group-list li.group-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 4px;
+}
+.group-row-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.group-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.group-row-count {
+  flex: 0 0 auto;
+  font-size: 0.76rem;
+  color: var(--text-soft);
+}
+.group-row-ops {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+/* 30×30 的方形图标按钮：上下移用箭头，改名叫 .mini-text 变文字按钮 */
+.mini-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+.mini-btn .ic { width: 15px; height: 15px; }
+.mini-btn.mini-text { width: auto; padding: 0 10px; }
+.mini-btn:disabled { opacity: 0.34; cursor: default; }
+.group-list li .del-group {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 9px;
+}
+.group-list li .del-group .ic { width: 15px; height: 15px; }
+.group-list li .del-group:disabled { opacity: 0.34; cursor: default; }
+.group-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--accent-border, rgba(58, 99, 242, 0.42));
+  border-radius: 9px;
+  background: rgb(255 255 255 / 0.9);
+  color: var(--text);
+  font-size: 0.88rem;
+  outline: none;
+}
+html body.dark .group-rename-input { background: rgb(10 13 20 / 0.6); }
+
+/* ---------- ② WearOS 配对面板 ---------- */
+.wear-box {
+  margin-top: 14px;
+  padding: 10px 12px 6px;
+  border-radius: 14px;
+  border: 1px dashed var(--accent-border, rgba(58, 99, 242, 0.38));
+  background: var(--accent-soft, rgba(58, 99, 242, 0.08));
+}
+.wear-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+.wear-head .ic { width: 15px; height: 15px; }
+.wear-panel { margin-top: 2px; }
+.wear-code-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 6px 0 4px;
+}
+/* 配对码要念给手表听：等宽、大字、字间距拉开 */
+.wear-code {
+  font-family: ui-monospace, "Consolas", "SF Mono", monospace;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  user-select: all;
+}
+.wear-hint {
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+  word-break: break-all;
+}
+.wear-devices { margin-top: 8px; }
+.wear-empty {
+  font-size: 0.76rem;
+  color: var(--text-soft);
+  padding: 4px 0;
+}
+.wear-dev-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(80, 100, 160, 0.12);
+}
+.wear-dev-name {
+  font-size: 0.84rem;
+  color: var(--text);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wear-dev-meta {
+  font-size: 0.72rem;
+  color: var(--text-soft);
+  flex: 0 0 auto;
+}
+html body.dark .wear-dev-row { border-top-color: rgb(255 255 255 / 0.12); }

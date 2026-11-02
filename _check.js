@@ -10,6 +10,17 @@ const html = extractFile(asar, 'renderer/index.html').toString();
 const mapJs = (() => { try { return extractFile(asar, 'renderer/lg-displacement-map.js').toString(); } catch (e) { return ''; } })();
 // v1.8：预打包好的 Monet 库（单个 CJS 文件），必须真的进了 asar
 const mapJs2 = (() => { try { return extractFile(asar, 'vendor/monet.js').toString(); } catch (e) { return ''; } })();
+/* v2.6.4：局域网服务必须真的进了 asar —— 它是 main.js 的运行时 require，
+ * 漏进 build.files 的开发态全绿、打包态直接启动崩溃（v2.4.6 踩过的坑）。 */
+const lan = (() => { try { return extractFile(asar, 'lan-server.js').toString(); } catch (e) { return ''; } })();
+/* WearOS 壳的源码不进桌面 asar（手表是独立 App），所以从工作区直接读 */
+const wearDir = path.join('wearos', 'app', 'src', 'main');
+const rd = (p) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '');
+const wearManifest = rd(path.join(wearDir, 'AndroidManifest.xml'));
+const wearMain = rd(path.join(wearDir, 'java', 'com', 'fclasspal', 'wear', 'MainActivity.java'));
+const wearDiscovery = rd(path.join(wearDir, 'java', 'com', 'fclasspal', 'wear', 'Discovery.java'));
+const wearGradle = rd(path.join('wearos', 'app', 'build.gradle'));
+const wearApi = rd(path.join(wearDir, 'java', 'com', 'fclasspal', 'wear', 'Api.java'));
 const cssNC = css.replace(/\/\*[\s\S]*?\*\//g, '');
 // 同样剥掉 main.js 的块注释："某 API 已移除"这类断言不能被注释里的旧写法误伤
 const mainNC = main.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -460,6 +471,54 @@ const checks = [
   ['v2.6.2: 透明度条触摸可见（手指按下主界面即出现，按住期间不被收走）',
     /widget\.addEventListener\('pointerdown', \(e\) => \{\s*\n\s*if \(e\.pointerType === 'mouse'\) return;/.test(app) &&
     app.includes('holdingBar') && /opacityBar\.addEventListener\('pointerdown'/.test(app)],
+  /* ---------- v2.6.4 ---------- */
+  ['v2.6.4: 分组排序（↑↓ 上下移，边界禁用）+ 就地重命名',
+    app.includes('function moveGroup') && app.includes('function startGroupRename') &&
+    /className = 'group-row'/.test(app) && /'group-rename-input'/.test(app) &&
+    /e\.key === 'Enter'/.test(app) && /e\.key === 'Escape'/.test(app) &&
+    /config\.groups\.splice\(to, 0, g\)/.test(app) &&
+    app.includes("'#i-up'") && app.includes("'#i-down'") && app.includes("'#i-trash'") &&
+    css.includes('.group-row-ops') && css.includes('.group-rename-input')],
+  ['v2.6.4: WearOS 局域网服务（HTTP + UDP 发现 + 6 位码配对 + token 鉴权）',
+    fs.existsSync('lan-server.js') &&
+    /const DEFAULT_PORT = 47820;/.test(lan) && /const DISCOVERY_PORT = 47822;/.test(lan) &&
+    /API_PREFIX = '\/fcp'/.test(lan) && /'\/pair'/.test(lan) && /'\/state'/.test(lan) &&
+    /'\/action'/.test(lan) && /Bearer/.test(lan) && /PAIR_MAX_FAIL/.test(lan) &&
+    /setBroadcast\(true\)/.test(lan) && /fcp-here/.test(lan)],
+  ['v2.6.4: 主进程挂上局域网服务（配置持久化 + 动作转发 + IPC）',
+    /require\('\.\/lan-server'\)/.test(main) && /function wearCfg\(/.test(main) &&
+    /ipcMain\.handle\('wear-status'/.test(main) && /ipcMain\.handle\('wear-set-enabled'/.test(main) &&
+    /ipcMain\.handle\('wear-new-code'/.test(main) && /ipcMain\.handle\('wear-unpair'/.test(main) &&
+    /ipcMain\.on\('wear-push-state'/.test(main) && /ipcMain\.on\('wear-action-result'/.test(main) &&
+    /startWearServer\(\)/.test(main) && /stopWearServer\(\)/.test(main) &&
+    /crypto\.randomBytes\(16\)/.test(main) && /require\('crypto'\)/.test(main)],
+  ['v2.6.4: 渲染层 wear 桥（脱敏快照 + 动作执行 + 设置面板）',
+    app.includes('function wearStateSnapshot') && app.includes('function handleWearAction') &&
+    app.includes('function pushWearState') && app.includes('function ensureIds') &&
+    /API\.onWearAction\(/.test(app) && /API\.wearActionResult\(/.test(app) &&
+    /pushWearState\(\);/.test(app) &&
+    !/target: it\.target/.test(app.slice(app.indexOf('function wearItemNode'), app.indexOf('function wearItemNode') + 800)) &&
+    html.includes('id="wearBox"') && html.includes('id="wearCode"') && html.includes('id="wearDevices"') &&
+    html.includes('id="setWearEnabled"') && html.includes('id="i-watch"') &&
+    pre.includes("wearPushState:") && pre.includes("onWearAction:") &&
+    pre.includes("wearActionResult:")],
+  ['v2.6.4: preload 暴露 6 个 wear 方法',
+    ['wearStatus', 'wearSetEnabled', 'wearNewCode', 'wearUnpair', 'wearPushState', 'wearActionResult']
+      .every((k) => pre.includes(k + ':'))],
+  ['v2.6.4: WearOS 原生壳（无 WebView，Java + framework 视图，方/圆屏自适应）',
+    fs.existsSync('wearos/app/src/main/AndroidManifest.xml') &&
+    fs.existsSync('wearos/app/src/main/java/com/fclasspal/wear/MainActivity.java') &&
+    fs.existsSync('wearos/app/src/main/java/com/fclasspal/wear/Api.java') &&
+    fs.existsSync('wearos/app/src/main/java/com/fclasspal/wear/Discovery.java') &&
+    /android\.hardware\.type\.watch/.test(wearManifest) &&
+    /usesCleartextTraffic="true"/.test(wearManifest) &&
+    /standalone/.test(wearManifest) &&
+    !/import android\.webkit/.test(wearMain) && /isScreenRound\(\)/.test(wearMain) &&
+    /"renameItem"/.test(wearMain) && /"moveGroup"/.test(wearMain) &&
+    /FCP_DISCOVER/.test(wearDiscovery) &&
+    /class Api/.test(wearApi) && /HttpURLConnection/.test(wearApi) &&
+    /compileSdk 35/.test(wearGradle) && /versionName '2\.6\.4'/.test(wearGradle)],
+
   ['v2.6.2: 更新弹窗带更新日志 + 忽略/去更新两个出口',
     html.includes('id="updateModal"') && html.includes('id="updateNotes"') &&
     html.includes('id="btnUpdateIgnore"') && html.includes('id="btnUpdateGo"') &&
