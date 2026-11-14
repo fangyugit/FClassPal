@@ -1,5 +1,5 @@
 /* ============================================================================
- * FClassPal · WearOS 壳（v2.6.4A）
+ * FClassPal · WearOS 壳（v2.6.5A）
  *
  * WearOS 没有 WebView（系统不带，Android System WebView 也跑不动），所以整套
  * 界面用原生 Java + framework 视图手写，不引 AndroidX / Compose，依赖为零。
@@ -13,6 +13,12 @@
  *   ④ 电脑模式：配对后看电脑的分组 / 条目，点一下在电脑上打开，长按编辑
  *      （改名 / 排序 / 删除，与之前一致）。
  *   ⑤ 电脑设置：配对后可以直接在手表上调电脑的透明度 / 窗口大小 / 布局 / 主题。
+ *
+ * v2.6.5A 增补：
+ *   ⑥ 应用图标：本机条目与「＋应用」选择器都显示真实应用图标（内存 + 磁盘两级缓存），
+ *      网页条目画「首字色块」，取不到图标也不会留空框；
+ *   ⑦ 最近使用：本机列表顶上一排最近打开的图标，一步直达；
+ *   ⑧ 选择应用带搜索框（手表上一屏只看得到 4 项，翻 50 个应用是折磨）。
  *
  * 文案纪律：界面里**不放使用说明**，控件自身可读即可。
  *
@@ -28,6 +34,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -36,14 +43,19 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.BaseAdapter;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.ListView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -60,6 +72,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
 
@@ -97,6 +111,9 @@ public class MainActivity extends Activity {
     private String themeId = "md3";
 
     private LinearLayout col;
+    /* 图标解码排一个后台线程就够：一次最多几十个，串行也不会互相抢 IO，
+     * 而且顺序天然是"屏幕上的从上到下"，先出来的先看见。 */
+    private final ExecutorService iconPool = Executors.newSingleThreadExecutor();
     private EditText ipInput;
     private EditText codeInput;
     private Runnable pollTask;
@@ -125,6 +142,13 @@ public class MainActivity extends Activity {
 
         tab = isPaired() ? TAB_PC : TAB_LOCAL;
         if (isPaired()) refresh(true); else render();
+    }
+
+    @Override
+    protected void onDestroy() {
+        stopPoll();
+        try { iconPool.shutdownNow(); } catch (Exception ignored) {}
+        super.onDestroy();
     }
 
     @Override
@@ -333,6 +357,62 @@ public class MainActivity extends Activity {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(8);
         col.addView(box, lp);
+    }
+
+    /* 带图标的一行：左图标 + 右文字。图标先落一块「首字色块」占位，
+     * 系统图标在后台线程解码完再贴上去 —— 所以整屏是"立刻出现、图标陆续补上"，
+     * 不会因为要解 50 个 APK 的图标而卡住一屏空白。 */
+    private void cardIcon(String title, String sub, String pkg,
+                          View.OnClickListener click, View.OnLongClickListener longClick) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.HORIZONTAL);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setPadding(dp(10), dp(7), dp(12), dp(7));
+        box.setBackground(ripple(bg(cSurface, round ? 24 : 16)));
+
+        final int px = dp(38);
+        ImageView iv = new ImageView(this);
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(px, px);
+        ilp.rightMargin = dp(10);
+        iv.setLayoutParams(ilp);
+        iv.setImageBitmap(AppIcons.letterTile(title, px, cSurfaceHi));
+        box.addView(iv);
+
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        TextView t = text(title, 15, cOn, true);
+        t.setSingleLine(true);
+        t.setEllipsize(TextUtils.TruncateAt.END);
+        texts.addView(t);
+        if (sub != null && sub.length() > 0) {
+            TextView sv = text(sub, 11, cOnVar, false);
+            sv.setSingleLine(true);
+            sv.setEllipsize(TextUtils.TruncateAt.END);
+            texts.addView(sv);
+        }
+        box.addView(texts, new LinearLayout.LayoutParams(0,
+            ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        if (click != null) { box.setOnClickListener(click); box.setClickable(true); }
+        if (longClick != null) { box.setOnLongClickListener(longClick); }
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(8);
+        col.addView(box, lp);
+
+        if (pkg != null && pkg.length() > 0) loadIcon(iv, pkg, title, px);
+    }
+
+    /** 后台解码图标 → 主线程贴上（视图已经不在屏幕上也无害）。 */
+    private void loadIcon(final ImageView iv, final String pkg, final String label, final int px) {
+        try {
+            iconPool.execute(() -> {
+                final Bitmap b = AppIcons.of(MainActivity.this, pkg, px, label, cSurfaceHi);
+                ui.post(() -> iv.setImageBitmap(b));
+            });
+        } catch (Exception ignored) {
+            /* 线程池已关（界面正在销毁）——占位图留着就行 */
+        }
     }
 
     /* 胶囊按钮 */
@@ -653,6 +733,8 @@ public class MainActivity extends Activity {
         })));
         col.addView(row);
 
+        renderRecentRow();
+
         JSONArray gs = lGroups();
         if (gs.length() == 0) { centerNote("还没有分组"); return; }
         for (int i = 0; i < gs.length(); i++) {
@@ -662,9 +744,76 @@ public class MainActivity extends Activity {
             final String gname = g.optString("name", "分组");
             JSONArray items = g.optJSONArray("items");
             final int n = items == null ? 0 : items.length();
-            card(gname, n + " 项",
+            /* 分组卡带第一个应用条目自己的图标：一屏 3 个分组时，眼睛先认图再读字 */
+            String gPkg = null;
+            for (int k = 0; items != null && k < items.length(); k++) {
+                JSONObject first = items.optJSONObject(k);
+                if (first == null) continue;
+                String p = first.optString("pkg", "");
+                if (p.length() > 0) { gPkg = p; break; }
+            }
+            cardIcon(gname, n + " 项", gPkg,
                 v -> { openGroupId = gid; render(); },
                 v -> { lGroupMenu(gid, gname); return true; });
+        }
+    }
+
+    /* ---------- 最近使用 ----------
+     * 手表一屏只有 4 项，分组一多就要滚好几屏。最近打开的几个直接摆在顶上，
+     * 一步直达；最多留 5 个，点一次换一次顺序。 */
+    private JSONArray lRecent() {
+        JSONArray r = localConfig.optJSONArray("recent");
+        if (r == null) {
+            r = new JSONArray();
+            try { localConfig.put("recent", r); } catch (JSONException e) { /* 不会发生 */ }
+        }
+        return r;
+    }
+
+    private void pushRecent(String itemId) {
+        if (itemId == null || itemId.isEmpty()) return;
+        JSONArray r = lRecent();
+        JSONArray next = new JSONArray();
+        next.put(itemId);
+        for (int i = 0; i < r.length() && next.length() < 5; i++) {
+            String id = r.optString(i);
+            if (id.isEmpty() || id.equals(itemId)) continue;
+            next.put(id);
+        }
+        try { localConfig.put("recent", next); } catch (JSONException e) { return; }
+        saveLocal();
+    }
+
+    private void renderRecentRow() {
+        JSONArray r = localConfig.optJSONArray("recent");
+        if (r == null || r.length() == 0) return;
+        LinearLayout row = null;
+        int px = dp(round ? 40 : 36);
+        int shown = 0;
+        for (int i = 0; i < r.length() && shown < 5; i++) {
+            final JSONObject it = findLItem(r.optString(i));
+            if (it == null) continue;                       /* 条目被删了：跳过，不报错 */
+            final String name = it.optString("name", "");
+            final String pkg = it.optString("pkg", "");
+            if (row == null) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                rlp.bottomMargin = dp(10);
+                col.addView(row, rlp);
+            }
+            ImageView iv = new ImageView(this);
+            iv.setImageBitmap(AppIcons.letterTile(name, px, cSurfaceHi));
+            iv.setBackground(ripple(bg(cSurface, round ? 20 : 14)));
+            iv.setPadding(dp(5), dp(5), dp(5), dp(5));
+            iv.setOnClickListener(v -> launchLocalItem(it));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px + dp(10), px + dp(10));
+            lp.rightMargin = dp(8);
+            row.addView(iv, lp);
+            if (pkg.length() > 0) loadIcon(iv, pkg, name, px);
+            shown++;
         }
     }
 
@@ -682,10 +831,11 @@ public class MainActivity extends Activity {
             final JSONObject it = items.optJSONObject(i);
             if (it == null) continue;
             final String id = it.optString("id");
-            String sub = "web".equals(it.optString("kind", "app")) ? "网页" : "";
-            card(it.optString("name", "未命名"), sub,
+            final String name = it.optString("name", "未命名");
+            boolean web = "web".equals(it.optString("kind", "app"));
+            cardIcon(name, web ? "网页" : null, it.optString("pkg", ""),
                 v -> launchLocalItem(it),
-                v -> { lItemMenu(id, it.optString("name", "")); return true; });
+                v -> { lItemMenu(id, name); return true; });
         }
     }
 
@@ -767,6 +917,7 @@ public class MainActivity extends Activity {
 
     /* ---------- 本机启动 ---------- */
     private void launchLocalItem(JSONObject it) {
+        pushRecent(it.optString("id", ""));
         String kind = it.optString("kind", "app");
         try {
             Intent i;
@@ -784,6 +935,9 @@ public class MainActivity extends Activity {
     }
 
     /* 加手表上已装的应用（列表选择） */
+    /* 添加应用：带图标的可搜索列表。
+     * 手表屏幕一屏只放得下 4 行，装了几十个应用时纯翻页找太费劲 ——
+     * 顶上给一个过滤框（滴答输入 / 语音输入都行），下面是图标 + 名字。 */
     private void showAppPicker() {
         PackageManager pm = getPackageManager();
         Intent qi = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
@@ -797,18 +951,89 @@ public class MainActivity extends Activity {
             pkgs.add(ri.activityInfo.packageName);
         }
         if (labels.isEmpty()) { toast("没有可选的应用"); return; }
-        /* 标签和应用包名绑在一起按名字排序，选第几个就是第几个 */
+        /* 标签与应用包名绑在一起按名字排序，列表下标 -> 原始下标只在这里算一次 */
         Integer[] order = new Integer[labels.size()];
         for (int i = 0; i < order.length; i++) order[i] = i;
         java.util.Arrays.sort(order, (a, b) -> labels.get(a).compareToIgnoreCase(labels.get(b)));
         final String[] shown = new String[order.length];
         final String[] pkgs2 = new String[order.length];
         for (int i = 0; i < order.length; i++) { shown[i] = labels.get(order[i]); pkgs2[i] = pkgs.get(order[i]); }
-        new AlertDialog.Builder(this)
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(10), dp(4), dp(10), 0);
+
+        final EditText filter = new EditText(this);
+        filter.setHint("搜索");
+        filter.setSingleLine(true);
+        filter.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        filter.setTextColor(Color.parseColor(cOn));
+        filter.setHintTextColor(Color.parseColor(cOnVar));
+        box.addView(filter);
+
+        final ListView lv = new ListView(this);
+        box.addView(lv, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(200)));
+
+        final List<Integer> idx = new ArrayList<Integer>();
+        final BaseAdapter adapter = new BaseAdapter() {
+            @Override
+            public int getCount() { return idx.size(); }
+            @Override
+            public Object getItem(int i) { return shown[idx.get(i)]; }
+            @Override
+            public long getItemId(int i) { return idx.get(i); }
+            @Override
+            public View getView(int i, View reuse, ViewGroup parent) {
+                int k = idx.get(i);
+                LinearLayout row = new LinearLayout(MainActivity.this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(4), dp(6), dp(4), dp(6));
+                int px = dp(30);
+                ImageView iv = new ImageView(MainActivity.this);
+                LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(px, px);
+                ilp.rightMargin = dp(8);
+                iv.setLayoutParams(ilp);
+                iv.setImageBitmap(AppIcons.letterTile(shown[k], px, cSurfaceHi));
+                row.addView(iv);
+                TextView t = text(shown[k], 14, cOn, false);
+                t.setSingleLine(true);
+                t.setEllipsize(TextUtils.TruncateAt.END);
+                row.addView(t);
+                if (pkgs2[k].length() > 0) loadIcon(iv, pkgs2[k], shown[k], px);
+                return row;
+            }
+        };
+        lv.setAdapter(adapter);
+
+        final AlertDialog dlg = new AlertDialog.Builder(this)
             .setTitle("添加应用")
-            .setItems(shown, (d, w) -> addLocalItem(shown[w], "app", pkgs2[w], null))
+            .setView(box)
             .setNegativeButton("取消", null)
-            .show();
+            .create();
+
+        final Runnable refilter = () -> {
+            String q = filter.getText().toString().trim().toLowerCase();
+            idx.clear();
+            for (int i = 0; i < shown.length; i++) {
+                if (q.isEmpty() || shown[i].toLowerCase().contains(q)) idx.add(i);
+            }
+            adapter.notifyDataSetChanged();
+        };
+        filter.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(Editable e) { refilter.run(); }
+        });
+        lv.setOnItemClickListener((parent, view, pos, id) -> {
+            if (pos < 0 || pos >= idx.size()) return;
+            int k = idx.get(pos);
+            dlg.dismiss();
+            addLocalItem(shown[k], "app", pkgs2[k], null);
+        });
+        refilter.run();
+        dlg.show();
     }
 
     private void addWebDialog() {

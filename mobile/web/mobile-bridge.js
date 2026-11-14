@@ -1280,5 +1280,136 @@
   /* 启动时预热：系统明暗 + 壁纸（两者都是原生调用，异步进行，不挡首帧） */
   refreshSystemAppearance().then(function () { return refreshWallpaperUI(); });
 
+  /* ==================================================================
+   * 局域网联动（v2.6.6）——两个方向
+   *
+   * ① 被连接：本机当主机。原生 LanServer（lan/LanServer.java）跑一套与
+   *    桌面版 lan-server.js 逐字一致的协议，于是手表或另一台手机连上这台
+   *    手机后，看到的界面与连电脑时完全一样。这里把原生接口包成 wear*，
+   *    渲染层原有的「WearOS 手表」设置块因此**一行都不用改**就能用。
+   * ② 模拟 WearOS：本机当客户端，接口挂在 window.FCP_LAN 上，界面在
+   *    mobile-wear.js。
+   *
+   * 为什么状态与动作都在这一层：手机的分组/条目就是渲染层的 config，
+   * 原生只当搬运工 —— 手表发来的动作会被渲染层 handleWearAction 执行
+   * （和桌面端同一条路径），执行完把结果回给原生当 HTTP 响应体。
+   * ================================================================== */
+  var LAN_SRV_KEY = 'fcp-lan-srv';
+  var lanSrvOn = false;
+  try { lanSrvOn = localStorage.getItem(LAN_SRV_KEY) === '1'; } catch (e) { lanSrvOn = false; }
+
+  function srvInfo() {
+    return call('lanSrvInfo', {}).then(function (r) {
+      var info = {};
+      try { info = JSON.parse(r.json || '{}'); } catch (e) { info = {}; }
+      return { code: r.code || '', info: info };
+    }, function () { return null; });
+  }
+
+  function wearStatus() {
+    return srvInfo().then(function (res) {
+      if (!res) {
+        return { enabled: false, running: false, port: 0, addresses: [], code: '', devices: [] };
+      }
+      return {
+        enabled: lanSrvOn,
+        running: !!res.info.running,
+        port: res.info.port || 0,
+        addresses: res.info.addresses || [],
+        name: res.info.name || '',
+        code: res.code || '',
+        devices: res.info.devices || []
+      };
+    });
+  }
+
+  API.wearStatus = wearStatus;
+
+  API.wearSetEnabled = function (on) {
+    lanSrvOn = !!on;
+    try { localStorage.setItem(LAN_SRV_KEY, lanSrvOn ? '1' : '0'); } catch (e) {}
+    var p = lanSrvOn ? call('lanSrvStart', {}) : call('lanSrvStop', {});
+    return p.then(wearStatus, wearStatus);
+  };
+
+  API.wearNewCode = function () {
+    return call('lanSrvNewCode', {}).then(wearStatus, wearStatus);
+  };
+
+  API.wearUnpair = function (id) {
+    return call('lanSrvUnpair', { id: id }).then(wearStatus, wearStatus);
+  };
+
+  /* 渲染层每次配置变动都调它；原生只缓存这份 JSON，等对端来拉。 */
+  API.wearPushState = function (state) {
+    call('lanSrvSetState', { state: JSON.stringify(state || {}) }).catch(function () {});
+  };
+
+  /* 渲染层执行完动作 → 交回阻塞中的 HTTP 线程（reqId 就是原生给的 callId）。 */
+  API.wearActionResult = function (payload) {
+    var p = payload || {};
+    call('lanSrvActionResult', {
+      callId: p.reqId || 0,
+      result: JSON.stringify(p)
+    }).catch(function () {});
+  };
+
+  /* 对端动作进来 → 转给渲染层的 handleWearAction（它自己会 wearActionResult 回去） */
+  API.onWearAction = function (cb) {
+    var p = plugin();
+    if (!p || typeof p.addListener !== 'function') return function () {};
+    var handle = p.addListener('lanAction', function (ev) {
+      var body = {};
+      try { body = JSON.parse((ev && ev.json) || '{}'); } catch (e) { body = {}; }
+      body.reqId = ev && ev.callId;
+      try { cb(body); } catch (e) { /* 界面层出错不该把原生回调拖垮 */ }
+    });
+    return function () { try { if (handle && handle.remove) handle.remove(); } catch (e) {} };
+  };
+
+  /* 上次开过就自动起来：用户不该每次开 App 都去设置里点一次 */
+  if (lanSrvOn) { call('lanSrvStart', {}).catch(function () {}); }
+
+  /* ---------- 模拟 WearOS：客户端接口（界面见 mobile-wear.js） ---------- */
+  window.FCP_LAN = {
+    discover: function (waitMs) {
+      return call('lanDiscover', { waitMs: waitMs || 1800 }).then(function (r) {
+        var list = [];
+        try { list = JSON.parse(r.json || '[]'); } catch (e) { list = []; }
+        return list;
+      }, function () {
+        return [];   // 没有原生插件：当做"一台都没搜到"，界面会提示手输 IP
+      });
+    },
+    pair: function (ip, port, code) {
+      return call('lanPair', { ip: ip, port: port || 47820, code: String(code || '') })
+        .then(function (r) {
+          var body = {};
+          try { body = JSON.parse(r.json || '{}'); } catch (e) { body = {}; }
+          return { ok: !!r.ok, body: body, error: r.error || body.error || '' };
+        }, function () { return { ok: false, body: {}, error: 'no-plugin' }; });
+    },
+    pairing: function () {
+      return call('lanPairing', {}).then(function (r) { return r; }, function () {
+        return { paired: false, ip: '', port: 47820, name: '' };
+      });
+    },
+    forget: function () { return call('lanForget', {}).catch(function () {}); },
+    state: function () {
+      return call('lanState', {}).then(function (r) {
+        var body = {};
+        try { body = JSON.parse(r.json || '{}'); } catch (e) { body = {}; }
+        return { ok: !!r.ok, state: body.state || null, error: r.error || body.error || '' };
+      }, function () { return { ok: false, state: null, error: 'no-plugin' }; });
+    },
+    action: function (action, data) {
+      return call('lanAction', { action: action, data: data || {} }).then(function (r) {
+        var body = {};
+        try { body = JSON.parse(r.json || '{}'); } catch (e) { body = {}; }
+        return { ok: !!r.ok, body: body };
+      }, function () { return { ok: false, body: {} }; });
+    }
+  };
+
   window.widgetAPI = API;
 })();

@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.SharedPreferences;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -41,7 +42,13 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
+
+import com.fclasspal.widget.lan.LanApi;
+import com.fclasspal.widget.lan.LanDiscovery;
+import com.fclasspal.widget.lan.LanServer;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -55,6 +62,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -1419,4 +1430,342 @@ public class PalBridgePlugin extends Plugin {
         }
         call.resolve();
     }
+
+    /* =======================================================================
+     * 局域网联动（v2.6.6）——两个方向，一套协议
+     *
+     * ① 模拟 WearOS（本机是客户端）：发现 → 输 6 位码配对 → 拉快照 →
+     *    动作回给对端执行。协议与手表端逐字一致，所以"连电脑"和"连另一台手机"
+     *    走的是同一段代码。
+     * ② 被连接（本机是主机）：LanServer 起来后，手表或另一台手机就能像连电脑
+     *    一样连我们，点一下让这台手机打开某个应用。
+     *
+     * 为什么全部走原生：Capacitor 页面是 https://localhost 源，fetch http://192.168.x.x
+     * 会被混合内容策略拦掉，UDP 广播在 JS 里更没有 API。
+     *
+     * 返回约定：一律 {ok:true, json:"<对端原始 JSON>"}，JS 侧自己 parse ——
+     * 省掉 JSObject/JSONObject 来回转换，也方便把对端的 error 原样透给界面。
+     * ===================================================================== */
+
+    private static final String PREF_LAN = "fcp_lan";
+    private LanServer lanServer;
+    private final AtomicInteger lanCallSeq = new AtomicInteger();
+    private final ConcurrentHashMap<Integer, LanPending> lanPending = new ConcurrentHashMap<>();
+    /** WebView 推上来的状态快照（JSON 字符串）。原生不解析它，只负责转给对端。 */
+    private volatile String lanStateJson = "{}";
+
+    private static final class LanPending {
+        final CountDownLatch latch = new CountDownLatch(1);
+        volatile JSONObject result;
+    }
+
+    private SharedPreferences lanPrefs() {
+        return getContext().getSharedPreferences(PREF_LAN, Context.MODE_PRIVATE);
+    }
+
+    private String lanVersion() {
+        try {
+            return getContext().getPackageManager()
+                .getPackageInfo(getContext().getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** 6 位配对码：落 prefs，用户不点「换一个」就一直有效（和电脑端一致）。 */
+    private String lanPairCode() {
+        String c = lanPrefs().getString("code", "");
+        if (c != null && c.length() == 6) return c;
+        return lanNewCode();
+    }
+
+    private String lanNewCode() {
+        java.security.SecureRandom r = new java.security.SecureRandom();
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < 6; i++) b.append(r.nextInt(10));
+        String c = b.toString();
+        lanPrefs().edit().putString("code", c).apply();
+        return c;
+    }
+
+    /** 设备名：机型号 + 后缀，手表上看到的是"Redmi K60 FClassPal"这种。 */
+    private String lanDeviceName() {
+        String model = Build.MODEL == null ? "安卓手机" : Build.MODEL.trim();
+        return (model + " · FClassPal").trim();
+    }
+
+    /* ---------- 主机侧的钩子 ---------- */
+    private final LanServer.Ctx lanCtx = new LanServer.Ctx() {
+        @Override public String name() { return lanDeviceName(); }
+        @Override public String version() { return lanVersion(); }
+        @Override public String pairCode() { return lanPairCode(); }
+
+        @Override public JSONObject state() {
+            try { return new JSONObject(lanStateJson); }
+            catch (JSONException e) { return new JSONObject(); }
+        }
+
+        @Override public JSONObject action(JSONObject body, String deviceName) {
+            return lanRunAction(body, deviceName);
+        }
+
+        @Override public void devicesChanged(JSONArray devices) {
+            lanPrefs().edit().putString("devices", devices == null ? "[]" : devices.toString()).apply();
+            JSObject o = new JSObject();
+            o.put("json", devices == null ? "[]" : devices.toString());
+            notifyListeners("lanDevices", o);
+        }
+    };
+
+    /**
+     * 把对端动作交给 WebView 执行并等结果。
+     * 超时 4s：WebView 被系统挂起（后台省电）时不能把 HTTP 线程一起拖死，
+     * 超时就让对端收到 ok:false，界面提示"手机没响应"，而不是等到 TCP 超时。
+     */
+    private JSONObject lanRunAction(JSONObject body, String deviceName) {
+        int callId = lanCallSeq.incrementAndGet();
+        LanPending p = new LanPending();
+        lanPending.put(callId, p);
+        try {
+            JSObject o = new JSObject();
+            o.put("callId", callId);
+            o.put("device", deviceName == null ? "" : deviceName);
+            o.put("json", body == null ? "{}" : body.toString());
+            notifyListeners("lanAction", o);
+            if (!p.latch.await(4, TimeUnit.SECONDS)) {
+                JSONObject to = new JSONObject();
+                try { to.put("ok", false); to.put("error", "timeout"); } catch (JSONException ignored) {}
+                return to;
+            }
+            return p.result == null ? new JSONObject() : p.result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new JSONObject();
+        } finally {
+            lanPending.remove(callId);
+        }
+    }
+
+    /* ---------- ② 被连接：主机 ---------- */
+
+    @PluginMethod
+    public void lanSrvStart(PluginCall call) {
+        try {
+            if (lanServer == null) {
+                JSONArray stored = null;
+                try { stored = new JSONArray(lanPrefs().getString("devices", "[]")); }
+                catch (JSONException ignored) { stored = new JSONArray(); }
+                lanServer = new LanServer(lanCtx, stored);
+            }
+            JSONObject info = lanServer.start();
+            JSObject out = new JSObject();
+            out.put("ok", true);
+            out.put("json", info.toString());
+            call.resolve(out);
+        } catch (Exception e) {
+            JSObject out = new JSObject();
+            out.put("ok", false);
+            out.put("error", String.valueOf(e.getMessage()));
+            call.resolve(out);
+        }
+    }
+
+    @PluginMethod
+    public void lanSrvStop(PluginCall call) {
+        if (lanServer != null) lanServer.stop();
+        JSObject out = new JSObject();
+        out.put("ok", true);
+        call.resolve(out);
+    }
+
+    @PluginMethod
+    public void lanSrvInfo(PluginCall call) {
+        JSONObject info;
+        if (lanServer == null) {
+            info = new JSONObject();
+            try {
+                info.put("running", false);
+                info.put("port", 0);
+                info.put("name", lanDeviceName());
+                info.put("addresses", new JSONArray());
+                info.put("devices", new JSONArray());
+            } catch (JSONException ignored) {}
+        } else {
+            info = lanServer.info();
+        }
+        JSObject out = new JSObject();
+        out.put("ok", true);
+        out.put("code", lanPairCode());
+        out.put("json", info.toString());
+        call.resolve(out);
+    }
+
+    @PluginMethod
+    public void lanSrvNewCode(PluginCall call) {
+        JSObject out = new JSObject();
+        out.put("ok", true);
+        out.put("code", lanNewCode());
+        call.resolve(out);
+    }
+
+    @PluginMethod
+    public void lanSrvUnpair(PluginCall call) {
+        String id = call.getString("id", "");
+        if (lanServer != null && id != null && id.length() > 0) lanServer.removeDevice(id);
+        JSObject out = new JSObject();
+        out.put("ok", true);
+        call.resolve(out);
+    }
+
+    /** 渲染层把最新快照推上来（原生只缓存，等对端来拉）。 */
+    @PluginMethod
+    public void lanSrvSetState(PluginCall call) {
+        String st = call.getString("state", "{}");
+        if (st != null && st.length() > 0) lanStateJson = st;
+        call.resolve();
+    }
+
+    /** WebView 执行完一个动作，把结果交回阻塞中的 HTTP 线程。 */
+    @PluginMethod
+    public void lanSrvActionResult(PluginCall call) {
+        Integer callId = call.getInt("callId", -1);
+        LanPending p = callId == null ? null : lanPending.get(callId);
+        if (p != null) {
+            try { p.result = new JSONObject(call.getString("result", "{}")); }
+            catch (JSONException e) { p.result = new JSONObject(); }
+            p.latch.countDown();
+        }
+        call.resolve();
+    }
+
+    /* ---------- ① 模拟 WearOS：客户端 ---------- */
+
+    @PluginMethod
+    public void lanDiscover(PluginCall call) {
+        final int wait = call.getInt("waitMs", 1800);
+        new Thread(new Runnable() {
+            @Override public void run() {
+                List<JSONObject> found = LanDiscovery.findAll(wait);
+                JSONArray arr = new JSONArray();
+                for (JSONObject o : found) arr.put(o);
+                JSObject out = new JSObject();
+                out.put("ok", true);
+                out.put("json", arr.toString());
+                call.resolve(out);
+            }
+        }, "fcp-lan-discover").start();
+    }
+
+    /** 配对：成功后把 ip/port/token/name 记进 prefs，之后所有请求直接用。 */
+    @PluginMethod
+    public void lanPair(PluginCall call) {
+        final String ip = call.getString("ip", "");
+        final int port = call.getInt("port", 47820);
+        final String code = call.getString("code", "");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                JSObject out = new JSObject();
+                try {
+                    JSONObject body = new JSONObject();
+                    body.put("code", code);
+                    body.put("device", lanDeviceName());
+                    JSONObject r = LanApi.request("POST", ip, port, "/fcp/pair", body, null, 4000);
+                    out.put("json", r.toString());
+                    out.put("ok", r.optInt("status", 0) == 200 && r.optBoolean("ok"));
+                    if (out.optBoolean("ok", false)) {
+                        lanPrefs().edit()
+                            .putString("ip", ip)
+                            .putInt("port", port)
+                            .putString("token", r.optString("token"))
+                            .putString("pcName", r.optString("name", ip))
+                            .apply();
+                    }
+                } catch (Exception e) {
+                    out.put("ok", false);
+                    out.put("error", String.valueOf(e.getMessage()));
+                }
+                call.resolve(out);
+            }
+        }, "fcp-lan-pair").start();
+    }
+
+    /** 当前记住的配对（界面开屏时先问这个，能直接进"已连接"状态）。 */
+    @PluginMethod
+    public void lanPairing(PluginCall call) {
+        SharedPreferences p = lanPrefs();
+        String ip = p.getString("ip", "");
+        JSObject out = new JSObject();
+        out.put("paired", ip != null && ip.length() > 0 && p.getString("token", "").length() > 0);
+        out.put("ip", ip == null ? "" : ip);
+        out.put("port", p.getInt("port", 47820));
+        out.put("name", p.getString("pcName", ""));
+        call.resolve(out);
+    }
+
+    @PluginMethod
+    public void lanForget(PluginCall call) {
+        lanPrefs().edit().remove("ip").remove("port").remove("token").remove("pcName").apply();
+        JSObject out = new JSObject();
+        out.put("ok", true);
+        call.resolve(out);
+    }
+
+    @PluginMethod
+    public void lanState(PluginCall call) {
+        lanClient("GET", "/fcp/state", null, call);
+    }
+
+    @PluginMethod
+    public void lanAction(PluginCall call) {
+        String action = call.getString("action", "");
+        JSONObject body = new JSONObject();
+        try {
+            body.put("action", action);
+            JSObject extra = call.getObject("data");
+            if (extra != null) {
+                java.util.Iterator<String> it = extra.keys();
+                while (it.hasNext()) {
+                    String k = it.next();
+                    body.put(k, extra.get(k));
+                }
+            }
+        } catch (JSONException ignored) {}
+        lanClient("POST", "/fcp/action", body, call);
+    }
+
+    @PluginMethod
+    public void lanUnpair(PluginCall call) {
+        lanClient("POST", "/fcp/unpair", new JSONObject(), call);
+    }
+
+    /** 统一的客户端请求：全部后台线程，结果回 {ok, json}。 */
+    private void lanClient(final String method, final String path, final JSONObject body,
+                           final PluginCall call) {
+        SharedPreferences p = lanPrefs();
+        final String ip = p.getString("ip", "");
+        final int port = p.getInt("port", 47820);
+        final String token = p.getString("token", "");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                JSObject out = new JSObject();
+                if (ip == null || ip.isEmpty() || token == null || token.isEmpty()) {
+                    out.put("ok", false);
+                    out.put("error", "not-paired");
+                    call.resolve(out);
+                    return;
+                }
+                try {
+                    JSONObject r = LanApi.request(method, ip, port, path, body, token, 4000);
+                    out.put("json", r.toString());
+                    out.put("ok", r.optBoolean("ok"));
+                    out.put("status", r.optInt("status", 0));
+                } catch (Exception e) {
+                    out.put("ok", false);
+                    out.put("error", String.valueOf(e.getMessage()));
+                }
+                call.resolve(out);
+            }
+        }, "fcp-lan-client").start();
+    }
+
 }

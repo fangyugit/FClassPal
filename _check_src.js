@@ -535,7 +535,9 @@ const checks = [
     /"renameItem"/.test(wearMain) && /"moveGroup"/.test(wearMain) &&
     /FCP_DISCOVER/.test(wearDiscovery) &&
     /class Api/.test(wearApi) && /HttpURLConnection/.test(wearApi) &&
-    /compileSdk 35/.test(wearGradle) && /versionName '2\.6\.4A'/.test(wearGradle)],
+    /compileSdk 35/.test(wearGradle) &&
+    /* 手表端版本号独立演进（2.6.4A → 2.6.5A），只要求是 2.6.x 且 versionCode 单调增 */
+    /versionName '2\.6\.\d+A?'/.test(wearGradle) && /versionCode 206\d\d/.test(wearGradle)],
 
   ['v2.6.4A: 手表独立启动器（本机应用/网页添加、主题与配置导入目录）',
     /showAppPicker/.test(wearMain) && /addWebDialog/.test(wearMain) &&
@@ -1236,6 +1238,40 @@ const checks = [
       return mb.includes("APP_VERSION = '" + v + "'") || mb.includes("APP_VERSION = '" + v + "-fix'");
     })() &&
     JSON.parse(fs.readFileSync('mobile/package.json', 'utf8')).version === srcPkg.version],
+  ['v2.6.6: 安卓「模拟 WearOS」= 原生局域网客户端（混合内容策略拦得住 fetch，拦不住原生）',
+    fs.existsSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/lan/LanApi.java') &&
+    fs.existsSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/lan/LanDiscovery.java') &&
+    fs.readFileSync('mobile/web/mobile-wear.js', 'utf8').includes('window.FCP_LAN') &&
+    /FCP_LAN = \{[\s\S]{0,900}?discover:/.test(bridge) &&
+    /FCP_LAN = \{[\s\S]{0,1600}?pair:/.test(bridge) &&
+    /lanPair\(/.test(fs.readFileSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/PalBridgePlugin.java', 'utf8')) &&
+    /FCP_DISCOVER/.test(fs.readFileSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/lan/LanDiscovery.java', 'utf8'))],
+  ['v2.6.6: 安卓「被连接」= 手机自己跑一套与桌面逐字一致的协议',
+    (() => {
+      const j = fs.readFileSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/lan/LanServer.java', 'utf8');
+      return ['/pair', '/state', '/action', '/unpair', 'fcp-here', 'too-many-tries']
+        .every((k) => j.includes(k)) &&
+        j.includes('DEVICES') === false &&          // 设备不能只在内存里：必须走 devicesChanged 持久化
+        j.includes('devicesChanged');
+    })()],
+  ['v2.6.6: 手机端 wear* 桥接（渲染层原有手表设置块不改一行就能用）',
+    ['wearStatus', 'wearSetEnabled', 'wearNewCode', 'wearUnpair', 'wearPushState',
+      'wearActionResult', 'onWearAction'].every((k) => bridge.includes('API.' + k + ' =')) &&
+    /lanAction[\s\S]{0,400}?body\.reqId = /.test(bridge)],
+  ['v2.6.6: 面板脚本进装配（mobile-wear.js 在 app.js 之前、桥接之后）',
+    fs.readFileSync('mobile/tools/assemble-web.js', 'utf8').includes('mobile-wear.js') &&
+    /atWear > atBridge/.test(fs.readFileSync('mobile/tools/assemble-web.js', 'utf8')) &&
+    fs.existsSync('mobile/web/mobile-wear.js')],
+  ['v2.6.5A: 手表端应用图标（内存 + 磁盘两级缓存 / 取不到落回首字色块）',
+    (() => {
+      const a = fs.readFileSync('wearos/app/src/main/java/com/fclasspal/wear/AppIcons.java', 'utf8');
+      const m = fs.readFileSync('wearos/app/src/main/java/com/fclasspal/wear/MainActivity.java', 'utf8');
+      return /MAX_MEM/.test(a) && /getCacheDir\(\), "icons"/.test(a) &&
+        /static Bitmap letterTile\(/.test(a) &&
+        /private void cardIcon\(/.test(m) && /private void loadIcon\(/.test(m) &&
+        /newSingleThreadExecutor/.test(m) && /pushRecent\(/.test(m) &&
+        /BaseAdapter/.test(m) && /TextWatcher/.test(m);
+    })()],
   ['v2.4.6: 应用图标 = 加号卡片（重绘源 + 安卓满幅前景层修圆角）',
     fs.existsSync('build/icon_fullsquare.png') &&
     fs.readFileSync('_rt/_mkandroidicons.js', 'utf8').includes('icon_fullsquare.png') &&

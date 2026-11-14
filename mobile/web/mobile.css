@@ -114,3 +114,124 @@ html.mobile.float #widget {
 html.mobile.float .titlebar {
   cursor: grab;   /* 悬浮窗模式标题栏真的能拖窗口 */
 }
+
+/* ============================================================================
+ * v2.6.6 · 设置面板里的「电脑联动」（mobile-wear.js）
+ *
+ * 这一节是手机端自己追加的 DOM，渲染层完全不知道它存在；所以样式一律挂
+ * html.mobile 之下、只用主题变量（--text / --text-soft / --accent）——
+ * 换主题、换明暗都跟着走，不需要为每套主题再写一遍。
+ * ==========================================================================*/
+html.mobile .fl-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+html.mobile .fl-status {
+  font-size: 13px;
+  color: var(--text, #E6E1E5);
+  opacity: 0.92;
+}
+
+html.mobile .fl-note {
+  font-size: 12px;
+  color: var(--text-soft, #A8A2AD);
+}
+
+html.mobile .fl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+html.mobile .fl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+html.mobile .fl-kids {
+  padding-left: 18px;
+}
+
+/* 一行 = 一个可点的目标（分组 / 条目 / 发现到的主机） */
+html.mobile .fl-row-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.10));
+  color: var(--text, #E6E1E5);
+  font: inherit;
+}
+
+html.mobile .fl-row-item:active {
+  background: var(--surface-3, rgba(255, 255, 255, 0.18));
+}
+
+html.mobile .fl-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+html.mobile .fl-row-name {
+  flex: 1 1 auto;
+  font-size: 14px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html.mobile .fl-row-meta {
+  font-size: 11px;
+  color: var(--text-soft, #A8A2AD);
+  white-space: nowrap;
+}
+
+/* 小按钮：胶囊，主色那档用 --accent */
+html.mobile .fl-btn {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text, #E6E1E5);
+  background: var(--surface-2, rgba(255, 255, 255, 0.12));
+}
+
+html.mobile .fl-btn:active {
+  background: var(--surface-3, rgba(255, 255, 255, 0.20));
+}
+
+html.mobile .fl-btn.primary {
+  color: var(--on-accent, #fff);
+  background: var(--accent, #6750A4);
+}
+
+html.mobile .fl-btn.danger {
+  color: var(--danger, #F2B8B5);
+}
+
+/* 输入框：地址与配对码并排 */
+html.mobile .fl-input {
+  flex: 1 1 120px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--surface-3, rgba(255, 255, 255, 0.22));
+  border-radius: 12px;
+  background: var(--surface-1, rgba(0, 0, 0, 0.18));
+  color: var(--text, #E6E1E5);
+  font: inherit;
+  font-size: 14px;
+}
+
+html.mobile .fl-code {
+  flex: 0 0 96px;
+  letter-spacing: 3px;
+  text-align: center;
+}

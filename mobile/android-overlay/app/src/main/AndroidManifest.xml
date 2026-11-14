@@ -59,6 +59,11 @@
     </application>
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 局域网联动（v2.6.6）：UDP 广播发现 + 读网卡地址，缺了这两个在部分 ROM 上
+         收不到 fcp-here 回包（表现是"自动发现一台都搜不到，手输 IP 却能连"）。 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <!-- 悬浮窗实时模糊（v2.4.6）：MediaProjection 录屏采集。Android 14 起采集期间
          必须有一个 foregroundServiceType="mediaProjection" 的前台服务在跑

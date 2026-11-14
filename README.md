@@ -34,6 +34,13 @@
   **「liquid glass」**——折射是贴边一圈真透镜（约 22px 环带沿法线把背景折进来，**中心区域
   零位移**，壁纸与文字始终清晰），配一圈连续 1px 镜面边、更通透的底与浮空投影；
   按钮按下有 4.5% 的回弹，主界面图标与拖动把手不动
+- **手机也能当「手表」用**（v2.6.5 安卓端）：设置 →「电脑联动」里自动发现或手输地址 + 6 位配对码，
+  配对后手机上能看到电脑的分组与条目，**点一下让电脑打开**，还能远程调电脑的透明度 / 窗口大小 /
+  布局 / 主题。协议与手表端完全一致
+- **手机也能被连**（v2.6.5 安卓端）：设置 →「WearOS 手表」打开开关后，这台手机自己就是主机，
+  手表（或另一台手机）可以像连电脑一样连它，看分组、点开条目、改名排序，改动两边同步
+- **手表端带图标了**（v2.6.5A）：应用列表显示真实应用图标（内存 + 磁盘缓存），列表顶上一排
+  「最近使用」一步直达，添加应用时可搜索过滤
 
 ## 内置六套皮肤 + 可安装主题包
 
@@ -99,7 +106,7 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 | macOS | `FClassPal-2.6.5-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
 | Android | `FClassPal-2.6.5-android.apk`| arm64 / armv7 / x86_64 |
 | Android | `FClassPal-2.6.5-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
-| WearOS | [FClassPal-2.6.4A-wearos.apk](https://github.com/fangyugit/FclassPal/releases/download/v2.6.4/FClassPal-2.6.4A-wearos.apk)（手表端原生应用，需与电脑同一 Wi-Fi；本轮未随桌面版改版，仍在 v2.6.4 发布页） | Wear OS 2 及以上，方屏 / 圆屏 |
+| WearOS | [FClassPal-2.6.5A-wearos.apk](https://github.com/fangyugit/FclassPal/releases/download/v2.6.5/FClassPal-2.6.5A-wearos.apk)（手表端原生应用，需与电脑或手机同一 Wi-Fi；带应用图标与最近使用） | Wear OS 2 及以上，方屏 / 圆屏 |
 
 以上都在 [v2.6.5 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.5)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
 

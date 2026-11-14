@@ -109,7 +109,10 @@ function main() {
   html = html.replace(ANCHOR_STYLE, ANCHOR_STYLE + '\n  <link rel="stylesheet" href="mobile.css" />');
 
   if (html.indexOf(ANCHOR_SCRIPT) < 0) die('index.html 里找不到 lg-displacement-map.js 的 <script>，装配锚点失效');
-  html = html.replace(ANCHOR_SCRIPT, '<script src="mobile-bridge.js"></script>\n  ' + ANCHOR_SCRIPT);
+  /* mobile-wear.js 紧跟在桥接之后：它要用 window.FCP_LAN（桥接末尾才挂上去的），
+   * 而它自己只在 DOMContentLoaded / 点设置时动手，所以放在 app.js 之前也安全。 */
+  html = html.replace(ANCHOR_SCRIPT,
+    '<script src="mobile-bridge.js"></script>\n  <script src="mobile-wear.js"></script>\n  ' + ANCHOR_SCRIPT);
 
   // 刘海屏适配：webview 覆盖到状态栏/手势条下面，靠 env(safe-area-inset-*) 让开
   if (html.indexOf(ANCHOR_VIEWPORT) > 0 && html.indexOf('viewport-fit=cover') < 0) {
@@ -121,16 +124,18 @@ function main() {
   // 装配自检：三处注入必须都在，否则打包出来的就是白屏包
   const check = fs.readFileSync(idxPath, 'utf8');
   const atBridge = check.indexOf('<script src="mobile-bridge.js"></script>');
+  const atWear = check.indexOf('<script src="mobile-wear.js"></script>');
   const atApp = check.indexOf('<script src="app.js"></script>');
   const ok =
     check.indexOf('<link rel="stylesheet" href="mobile.css" />') > 0 &&
     atBridge > 0 &&
+    atWear > atBridge &&          // 手机端「连电脑」面板要用桥接挂出来的 FCP_LAN
     check.indexOf('viewport-fit=cover') > 0 &&
     atBridge < atApp;   // 必须早于 app.js：它顶层就取 window.widgetAPI
   if (!ok) die('注入自检未通过（mobile.css / mobile-bridge.js / viewport-fit 或桥接顺序不对）');
 
   const total = fs.readdirSync(OUT).length;
-  log('注入完成：mobile.css + mobile-bridge.js（在 app.js 之前）+ viewport-fit=cover');
+  log('注入完成：mobile.css + mobile-bridge.js + mobile-wear.js（都在 app.js 之前）+ viewport-fit=cover');
   log('www/ 就绪：' + total + ' 个顶层条目 -> ' + OUT);
 }
 
