@@ -184,7 +184,7 @@ const API = window.widgetAPI || (function () {
     getEnv: () => Promise.resolve({ transparent: true, platform: 'browser', release: '0' }),
     // 关于界面：预览模式没有主进程，版本号给个占位；链接用新窗口模拟
     /* 预览模式的版本号：与 package.json 保持一致（_check.js 有同源断言，别让它漂） */
-    getAppVersion: () => Promise.resolve('2.6.4'),
+    getAppVersion: () => Promise.resolve('2.6.5'),
     openExternal: (url) => { window.open(url, '_blank'); return Promise.resolve(true); },
     // 预览模式取不到真实壁纸：返回 null，让 #envLayer 用内置渐变基底，
     // MD3 则退回 CSS 里的 baseline 配色
@@ -296,17 +296,22 @@ const ctxMenu = $('ctxMenu');
  * 填一次，装/删/排序之后再填一次；界面各处（下拉栏、推荐主色、固定配色判定、
  * 动效门控 FLAT_THEMES）都只读这一份，新增/删除主题不用回来改代码。
  * 安卓壳没有主进程 → 拿不到主题包，注册表就停在"内置五套"，界面照常可用。 */
-const BUILTIN_THEMES = ['glass', 'md3', 'fluent', 'miuix', 'harmony'];
+const BUILTIN_THEMES = ['glass', 'liquidglass', 'md3', 'fluent', 'miuix', 'harmony'];
 const BUILTIN_LABEL = {
   /* v2.6.2 用户要求改名：鸿蒙 → 经典、MIUI → 渐色。
    * 只改**展示名**，id 保持 miuix / harmony —— id 是配置文件、主题包、探针断言
-   * 共用的键，动它等于把所有老配置和主题包一起打翻。 */
-  glass: '液态玻璃', md3: 'MD3', fluent: 'Fluent', miuix: '渐色', harmony: '经典'
+   * 共用的键，动它等于把所有老配置和主题包一起打翻。
+   * v2.6.5：原来的「液态玻璃」拆成两套 —— 旧实现（liquid-glass-react 线性位移场 =
+   * 整块背景等比收缩）改名「玻璃」，id 仍是 glass，老配置继续落在它上面；
+   * 新实现（SDF 边框透镜 + 苹果液态玻璃表面语言）叫「liquid glass」，id = liquidglass。 */
+  glass: '玻璃', liquidglass: 'liquid glass',
+  md3: 'MD3', fluent: 'Fluent', miuix: '渐色', harmony: '经典'
 };
 /* 每套主题的推荐主色：从「莫奈取色」切到「手动指定」时用它当起点，
  * 这样每套风格一上手就是自己的味道（而不是一律基线紫）。 */
 const BUILTIN_ACCENT = {
-  glass: '#6750A4', md3: '#6750A4', fluent: '#0B57D0', miuix: '#3482FF', harmony: '#0A59F7'
+  glass: '#6750A4', liquidglass: '#0A84FF',
+  md3: '#6750A4', fluent: '#0B57D0', miuix: '#3482FF', harmony: '#0A59F7'
 };
 /* 固定配色（不跟壁纸取色）的内置主题。
  * v2.6.2：清空 —— 用户要求「渐色 / 经典 都要开放颜色的自由选择」。
@@ -323,8 +328,13 @@ const BRAND_ACCENT_THEMES = ['miuix', 'harmony'];
  * 经典 = 原「鸿蒙」那套（id 仍是 harmony）。 */
 const DEFAULT_THEME = 'harmony';
 
+/* 玻璃族（v2.6.5）：共用 .glass-warp 折射层 + body.theme-glass 那套基线皮肤。
+ * 判定只认这一份清单 —— 换主题时要清哪些类、谁进「平面系」都由它推。 */
+const GLASS_FAMILY = ['glass', 'liquidglass'];
+
 let THEMES = BUILTIN_THEMES.slice();
-let FLAT_THEMES = BUILTIN_THEMES.filter((t) => t !== 'glass');
+/* 「平面系」= 没有折射/厚度语言的主题。玻璃族都不在里面。 */
+let FLAT_THEMES = BUILTIN_THEMES.filter((t) => GLASS_FAMILY.indexOf(t) < 0);
 let THEME_LABEL = Object.assign({}, BUILTIN_LABEL);
 let THEME_ACCENT = Object.assign({}, BUILTIN_ACCENT);
 let FIXED_PALETTE_THEMES = BUILTIN_FIXED.slice();
@@ -356,7 +366,12 @@ function applyTheme(theme) {
    * :not(.theme-fluent)...` 的九段长链清楚得多，新增主题也不用回来改。
    * 注意它和 theme-md3 那批不是一回事：那一批是"皮肤覆盖"，glass 是基线皮肤，
    * 所以下面这行只管标记，皮肤覆盖块仍然只由 FLAT_THEMES 提供。 */
-  document.body.classList.toggle('theme-glass', t === 'glass');
+  document.body.classList.toggle('theme-glass', GLASS_FAMILY.indexOf(t) >= 0);
+  /* v2.6.5：liquid glass 与「玻璃」是**同一族** —— 共用 theme-glass 这个基线皮肤
+   * 标记，于是滑块/面纱/overLight/拖拽降载那一大批 body.theme-glass 规则全部复用，
+   * 不用复制一份。差异只用 lg2 这个附加标记去叠：透镜滤镜 #liquidGlass2、
+   * 高光边框、投影与按钮语言。 */
+  document.body.classList.toggle('lg2', t === 'liquidglass');
   /* 动态配色主题标记（v2.4.0）：取色跟着底材（壁纸/自定义背景）走的主题。
    * 黑暗模式下它们的 --md3-* 角色由主进程的 Monet 暗色方案整份给出，CSS 层
    * 必须"别插手"—— body.dark:not(.dyn) 才去压表面角色。 */
@@ -370,6 +385,10 @@ function applyTheme(theme) {
    * （多留一圈白）、玻璃会沿用 MD3 的 10.98%（圆角处切掉一点点）。
    * 只重写几何量，颜色那边「跟随主题」本来就是 CSS 回退链，不需要钩子。 */
   refreshIconLook();
+  /* v2.6.5：切到 liquid glass 时按当前尺寸现算一遍透镜位移场。
+   * 放在 applyTheme 里而不是只在启动时做，是因为用户很可能直接在设置里换主题，
+   * 那时窗口尺寸早就定好了；refreshLensMap 自带节流，重复调用无副作用。 */
+  if (t === 'liquidglass') refreshLensMap();
   syncThemeSelect();          /* 老样式下拉：跟着当前主题显示名字与色点 */
 }
 
@@ -2033,6 +2052,66 @@ function enableLiquidGlass() {
   } catch (e) { /* 探测失败就维持普通玻璃观感 */ }
 }
 
+/* ---------- liquid glass 主题：按元素尺寸现算透镜位移场（v2.6.5） ----------
+ * 为什么必须"现算"：这张场是**边框环带**场，环带宽度是恒定像素值（lg2-lens 的
+ * BAND=22px），中心严格零位移。如果像旧贴图那样预烘焙一张 256×256 然后靠
+ * preserveAspectRatio 拉伸，22px 的环带在 900px 宽的窗口上会被拉成 77px，
+ * 在 60px 高的窄条上会被压成 1.5px —— 同一个滤镜在两种尺寸下判若两人。
+ * 所以按当前窗口的实际 CSS 像素生成一张长宽比一致的贴图，滤镜里用
+ * preserveAspectRatio="none" 铺满，环带处处都是 22px。
+ *
+ * 代价是一次 480×N 的 SDF 计算 + 一次 canvas PNG 编码，几十毫秒级；只在
+ * "切到该主题 / 窗口尺寸变了 / 圆角变了"时跑，且 120ms 节流，拖动缩放不会卡。
+ * 与旧主题的关系：旧 #liquidGlass 那条链一个字节都不动，glass 主题照旧。 */
+let lensTimer = 0;
+let lensKey = '';
+
+function paintLensMap() {
+  lensTimer = 0;
+  if (currentTheme !== 'liquidglass') return;
+  const warp = document.getElementById('glassWarp');
+  const img = document.getElementById('lg2Map');
+  const lens = window.LG2_LENS;
+  if (!warp || !img || !lens) return;
+  const w = Math.round(warp.clientWidth);
+  const h = Math.round(warp.clientHeight);
+  if (w < 8 || h < 8) return;
+  /* 圆角跟着主题走（config.cornerRadius 为 null 时由 CSS --radius 决定），
+   * 所以要读真实计算值，不能写死。 */
+  let radius = 0;
+  try {
+    radius = parseFloat(getComputedStyle(warp).borderTopLeftRadius) || 0;
+  } catch (e) { radius = 0; }
+  const key = w + 'x' + h + '@' + radius;
+  if (key === lensKey) return;            /* 尺寸圆角都没变，不必重画 */
+  let url = '';
+  try {
+    url = lens.toDataURL(lens.field(w, h, radius));
+  } catch (e) { url = ''; }
+  if (!url) { document.body.classList.remove('lg2-ready'); return; }
+  img.setAttribute('href', url);
+  img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', url);
+  lensKey = key;
+  /* 与旧主题同一个约定：滤镜确认可用才挂（filter:url() 指向不存在/为空的滤镜
+   * 会让整个元素不渲染，宁可退回普通磨砂玻璃）。 */
+  document.body.classList.add('lg2-ready');
+}
+
+/** 节流版：切主题、改尺寸、改圆角都调它。 */
+function refreshLensMap() {
+  if (lensTimer) clearTimeout(lensTimer);
+  lensTimer = setTimeout(paintLensMap, 120);
+}
+
+/* 尺寸变化（拖右下角改大小、远程从手表改、快捷键）都要重算：
+ * resize 事件在窗口 bounds 变化后触发，这里只排队不重活。 */
+window.addEventListener('resize', () => {
+  if (currentTheme === 'liquidglass') {
+    lensKey = '';                 /* 尺寸必然变了，让 key 失效 */
+    refreshLensMap();
+  }
+});
+
 /* ---------- 折射基底：把桌面壁纸按屏幕坐标画进 #envLayer ----------
  * 为什么需要：mica 是 DWM 在窗口外画的位图层，Chromium 的 backdrop-filter
  * 看不到它；而 .glass-warp 的 backdrop 又被 isolation 限制在 widget 内部。
@@ -3571,7 +3650,7 @@ function applyThemeRegistry(cards) {
   });
   BUILTIN_THEMES.forEach((id) => { if (list.indexOf(id) < 0) list.push(id); });
   THEMES = list;
-  FLAT_THEMES = list.filter((t) => t !== 'glass');
+  FLAT_THEMES = list.filter((t) => GLASS_FAMILY.indexOf(t) < 0);
   THEME_LABEL = label;
   THEME_ACCENT = accent;
   FIXED_PALETTE_THEMES = fixed;
@@ -5024,11 +5103,14 @@ async function handleWearAction(a) {
     } else if (a.key === 'theme') {
       const t = String(a.value || '');
       if (THEMES.indexOf(t) < 0) throw new Error('电脑上没有这个主题');
-      if (t !== currentTheme) {
+      /* 比对的是 config.theme 而不是 currentTheme（v2.6.5 顺手修）：applyTheme
+       * 本身不写 config，万一两者漂了，手表点"当前主题"就永远修不回来 ——
+       * 表现是"手表上点了没反应，重启电脑又变回旧主题"。 */
+      if (t !== config.theme) {
         config.theme = t;
         persist();
-        applyTheme(t);
       }
+      if (t !== currentTheme) applyTheme(t);
     } else {
       throw new Error('不认识的设置项：' + a.key);
     }

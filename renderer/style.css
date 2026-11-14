@@ -3981,3 +3981,246 @@ html body.dark .group-rename-input { background: rgb(10 13 20 / 0.6); }
   flex: 0 0 auto;
 }
 html body.dark .wear-dev-row { border-top-color: rgb(255 255 255 / 0.12); }
+
+/* ============================================================
+ * v2.6.5：玻璃主题拆成两套
+ *
+ *   body.theme-glass             id=glass        展示名「玻璃」    —— 旧实现，一行未改
+ *   body.theme-glass.lg2         id=liquidglass  展示名「liquid glass」—— 本次新增
+ *
+ * 两套共用 theme-glass 这个基线皮肤标记，所以下面这些**自动继续生效**、
+ * 不需要复制一份：苹果风滑块（body.theme-glass input[type=range]）、滑块玻璃珠
+ * （.sl-bead / #liquidThumb）、overLight 亮底自适应、拖动/缩放的降载
+ * （body.is-moving / is-resizing 上的 !important）。
+ * 新主题只在 lg2 下**增补/覆盖**四件事，其余一律保持旧观感：
+ *
+ *   ① 透镜换滤镜   #liquidGlass2（边框环带 SDF 场，中心严格不动）
+ *                  旧 #liquidGlass 是整块背景等比收缩 —— 这两者的差别，
+ *                  就是「玻璃」与「liquid glass」的差别本身。
+ *   ② 换受光语言   旧版是四条互不相干的内阴影；新版是**一圈连续的 1px 镜面环**
+ *                  （::after 用 mask 挖空中心，只留边框那一圈渐变），左上最亮、
+ *                  沿边衰减、右下再回一点。这是苹果液态玻璃最有辨识度的一笔。
+ *   ③ 换底色       旧版白面纱偏厚（0.38/0.14/0.20）；新版压到 0.30/0.05/0.16
+ *                  并把 backdrop 的 saturate 提到 185%、brightness 提 5%，
+ *                  让壁纸的颜色"润"进来而不是被白雾盖住。
+ *   ④ 换投影       更大更软（浮在桌面上），不再是薄薄一层贴边阴影。
+ *
+ * ※ 按压缩放（v2.6.5.1 补）：v2.6.2-fix 砍掉的**不是**按钮自身的缩放，而是
+ *   覆盖全屏的那层白光斑（340px、scale 0.35→1）—— 它在触屏上是"一团白影乱长"，
+ *   还让窗口每帧重合成（用户："所有按键都会奇怪地放大缩小"+"窗口又闪了"）。
+ *   按钮自己 4% 的按下回弹是另一回事，苹果液态玻璃的手感本来就是这个"捏一下"。
+ *   所以这里加回来，但守住三条线：
+ *     · 幅度小（0.955，30px 的按钮只缩 1.3px，不会"变形"）
+ *     · 只挂按钮，**主界面 / 图标卡片 / 拖动把手一律不动**（那些是手势区，
+ *       缩放会跟拖动抢观感，就是当初被骂的场景）
+ *     · 只动 transform，不新增任何图层、不进 filter 链
+ *   系统开了"减少动态效果"时整体关掉。
+ *
+ * ※ 特异性提醒：下面一律用 body.theme-glass.lg2（0,2,1）而不是 body.lg2（0,1,1），
+ *   否则赢不过 html body.dark（0,2,2）与 body.theme-glass.over-light（0,2,1）
+ *   那些已经存在的规则，深色/亮底场景会出现"只有一半生效"的怪相。
+ * ============================================================ */
+
+body.theme-glass.lg2 {
+  /* 透镜要看清背后的结构，模糊就得轻；旧主题 6px，这里稍高一点点，
+   * 但饱和度和亮度都往上提，观感是"通透"而不是"糊"。 */
+  --lg-blur: 8px;
+  --glass-hi: rgba(255, 255, 255, 0.95);
+  --glass-edge: rgba(255, 255, 255, 0.34);
+}
+body.theme-glass.lg2.over-light { --lg-blur: 13px; }
+
+/* ① 折射层：blur/saturate 与 filter 分开写（同旧主题的铁律——
+ *    url() 写进 backdrop-filter 会让**整条声明**作废）。 */
+body.theme-glass.lg2 .glass-warp {
+  backdrop-filter: blur(var(--lg-blur, 8px)) saturate(185%) brightness(1.05);
+  -webkit-backdrop-filter: blur(var(--lg-blur, 8px)) saturate(185%) brightness(1.05);
+}
+/* 贴图没生成成功（canvas 不可用等）时明确洗掉旧滤镜，别让 #liquidGlass 顶上来 */
+body.theme-glass.lg2 .glass-warp {
+  filter: none;
+  -webkit-filter: none;
+}
+/* 挂新滤镜。(0,3,1) 稳赢 body.lg-ready .glass-warp 的 (0,2,1) */
+body.theme-glass.lg2.lg2-ready .glass-warp {
+  filter: url(#liquidGlass2);
+  -webkit-filter: url(#liquidGlass2);
+}
+
+/* ② 表面层：更清的底 + 更软的浮空投影 */
+body.theme-glass.lg2 .glass-veil {
+  border: 0;                    /* 描边交给下面那圈镜面环，避免两层边叠出双线 */
+  background:
+    radial-gradient(128% 72% at 50% -20%,
+      rgba(255, 255, 255, calc(0.30 * var(--glass-alpha))) 0%,
+      rgba(255, 255, 255, 0) 60%),
+    linear-gradient(160deg,
+      rgba(255, 255, 255, calc(0.26 * var(--glass-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.05 * var(--glass-alpha))) 44%,
+      rgba(255, 255, 255, calc(0.16 * var(--glass-alpha))) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -14px 22px -20px rgba(24, 46, 104, 0.34),
+    0 26px 60px -22px rgba(6, 14, 38, 0.46),
+    0 8px 20px -10px rgba(6, 14, 38, 0.24),
+    0 1px 2px -1px rgba(6, 14, 38, 0.18);
+}
+
+/* ②b 镜面环：1px 连续高光。
+ * 做法是"外边一圈留 1px 渐变边框、中间挖空"——padding:1px + 双层 mask 做
+ * xor/exclude。比四条 inset 内阴影好在：圆角处高光连续，不会在拐角断成四段，
+ * 也永远不会因为圆角大于半径而露出直角。 */
+body.theme-glass.lg2 .glass-veil::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(146deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(255, 255, 255, 0.52) 14%,
+    rgba(255, 255, 255, 0.10) 32%,
+    rgba(255, 255, 255, 0) 50%,
+    rgba(255, 255, 255, 0.18) 72%,
+    rgba(255, 255, 255, 0.66) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* 深色：白雾要更薄（否则一片惨白），镜面环反而要更亮（深底上那圈白边是
+ * 唯一能看出"这里有块玻璃"的东西）。 */
+html body.dark.theme-glass.lg2 .glass-veil {
+  background:
+    radial-gradient(128% 72% at 50% -20%,
+      rgba(255, 255, 255, calc(0.16 * var(--glass-alpha))) 0%,
+      rgba(255, 255, 255, 0) 60%),
+    linear-gradient(160deg,
+      rgba(255, 255, 255, calc(0.13 * var(--glass-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.03 * var(--glass-alpha))) 46%,
+      rgba(255, 255, 255, calc(0.08 * var(--glass-alpha))) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),
+    inset 0 -14px 22px -20px rgba(0, 0, 0, 0.45),
+    0 26px 60px -22px rgba(0, 0, 0, 0.60),
+    0 8px 20px -10px rgba(0, 0, 0, 0.36),
+    0 1px 2px -1px rgba(0, 0, 0, 0.28);
+}
+html body.dark.theme-glass.lg2 .glass-veil::after {
+  background: linear-gradient(146deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(255, 255, 255, 0.40) 14%,
+    rgba(255, 255, 255, 0.06) 32%,
+    rgba(255, 255, 255, 0) 50%,
+    rgba(255, 255, 255, 0.12) 72%,
+    rgba(255, 255, 255, 0.50) 100%);
+}
+
+/* ③ 按键语言：旧主题是"厚玻璃块"（160deg 白渐变 + 三四条内阴影），
+ * 新主题改成苹果那种**极薄的一层玻璃片**：几乎透明的底 + 一圈 1px 白环 +
+ * 一点点顶缘受光。按压只把底压暗、把环提亮，位移为 0。 */
+body.theme-glass.lg2 .text-btn,
+body.theme-glass.lg2 .primary-btn,
+body.theme-glass.lg2 .ghost-btn,
+body.theme-glass.lg2 .pick-btn,
+body.theme-glass.lg2 .seg-btn,
+body.theme-glass.lg2 .rail-btn,
+body.theme-glass.lg2 .ctx-item,
+body.theme-glass.lg2 .theme-mini {
+  background-image: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.26) 0%,
+    rgba(255, 255, 255, 0.10) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 1px 2px -1px rgba(10, 24, 60, 0.20);
+  transition: background 0.14s, box-shadow 0.14s, color 0.14s;
+}
+body.theme-glass.lg2 .text-btn:active,
+body.theme-glass.lg2 .primary-btn:active,
+body.theme-glass.lg2 .ghost-btn:active,
+body.theme-glass.lg2 .pick-btn:active,
+body.theme-glass.lg2 .seg-btn:active,
+body.theme-glass.lg2 .rail-btn:active,
+body.theme-glass.lg2 .ctx-item:active,
+body.theme-glass.lg2 .theme-mini:active {
+  background-image: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.04) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.62),
+    inset 0 1px 2px rgba(10, 24, 60, 0.16),
+    0 1px 1px -1px rgba(10, 24, 60, 0.16);
+}
+/* 按下的"捏一下"：只改 transform。单独成条，探针能一条正则定位到它，
+ * 也方便以后想调幅度时只动这里。 */
+body.theme-glass.lg2 .text-btn:active,
+body.theme-glass.lg2 .primary-btn:active,
+body.theme-glass.lg2 .ghost-btn:active,
+body.theme-glass.lg2 .pick-btn:active,
+body.theme-glass.lg2 .seg-btn:active,
+body.theme-glass.lg2 .rail-btn:active,
+body.theme-glass.lg2 .ctx-item:active,
+body.theme-glass.lg2 .theme-mini:active {
+  transform: scale(0.955);
+  transition-duration: 0.12s;
+}
+/* 系统"减少动态效果"：整体关掉，别跟用户的可访问性设置较劲 */
+@media (prefers-reduced-motion: reduce) {
+  body.theme-glass.lg2 .text-btn,
+  body.theme-glass.lg2 .primary-btn,
+  body.theme-glass.lg2 .ghost-btn,
+  body.theme-glass.lg2 .pick-btn,
+  body.theme-glass.lg2 .seg-btn,
+  body.theme-glass.lg2 .rail-btn,
+  body.theme-glass.lg2 .ctx-item,
+  body.theme-glass.lg2 .theme-mini {
+    transition: background 0.14s, box-shadow 0.14s, color 0.14s;
+  }
+  body.theme-glass.lg2 .text-btn:active,
+  body.theme-glass.lg2 .primary-btn:active,
+  body.theme-glass.lg2 .ghost-btn:active,
+  body.theme-glass.lg2 .pick-btn:active,
+  body.theme-glass.lg2 .seg-btn:active,
+  body.theme-glass.lg2 .rail-btn:active,
+  body.theme-glass.lg2 .ctx-item:active,
+  body.theme-glass.lg2 .theme-mini:active {
+    transform: none;
+  }
+}
+
+html body.dark.theme-glass.lg2 .text-btn,
+html body.dark.theme-glass.lg2 .primary-btn,
+html body.dark.theme-glass.lg2 .ghost-btn,
+html body.dark.theme-glass.lg2 .pick-btn,
+html body.dark.theme-glass.lg2 .seg-btn,
+html body.dark.theme-glass.lg2 .rail-btn,
+html body.dark.theme-glass.lg2 .ctx-item,
+html body.dark.theme-glass.lg2 .theme-mini {
+  background-image: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.05) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 1px 2px -1px rgba(0, 0, 0, 0.36);
+}
+
+/* ④ 透明度条也换同一套（旧主题那条厚玻璃芯片在 liquid glass 里显得突兀） */
+body.theme-glass.lg2 .opacity-bar {
+  border: 0;
+  background:
+    radial-gradient(120% 150% at 50% -40%,
+      rgba(255, 255, 255, calc(0.30 * var(--glass-alpha))) 0%,
+      rgba(255, 255, 255, 0) 70%),
+    linear-gradient(158deg,
+      rgba(255, 255, 255, calc(0.22 * var(--glass-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.08 * var(--glass-alpha))) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    0 12px 26px -12px rgba(6, 14, 38, 0.42),
+    0 2px 6px -3px rgba(6, 14, 38, 0.20);
+}

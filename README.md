@@ -2,7 +2,7 @@
 
 > FClassPal是一个主要为班级大屏打造的桌面快捷方式启动器小部件 可用于替代希沃管家助手/桌面助手
 
-![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android%20%C2%B7%20WearOS-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-1008%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.6.4-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
+![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android%20%C2%B7%20WearOS-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-1008%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.6.5-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **FClassPal**是一个常驻桌面的启动器小部件，用于替代希沃管家助手/桌面助手 把常用的应用、文件、文件夹和网页钉在桌面一角，顺手管理 U 盘的弹出。无任务栏图标——右键或长按唤醒菜单，其余时间安静地贴在桌面上。
 
@@ -30,10 +30,14 @@
 - **WearOS 手表联动**（v2.6.4）：电脑端开一下「局域网连接」，手表输 6 位配对码（或自动发现）就能直连——手表上能看分组、**点一下让电脑打开**那个快捷方式，长按还能改名 / 调顺序 / 删除。只走局域网、不连外网，关掉开关服务即停
 - **WearOS 原生表盘应用**（v2.6.4）：独立 APK，原生 Java 实现（手表没有 WebView），方屏圆屏自适应、MD3 深色风格，零第三方依赖
 - **触控优先**：Pointer Events 全链路，长按 = 右键，触摸屏上不闪不抖；液态玻璃主题的调节条珠子按住会放大
+- **两套玻璃主题**（v2.6.5）：原来的「液态玻璃」更名为**「玻璃」**（观感未变），另加一套
+  **「liquid glass」**——折射是贴边一圈真透镜（约 22px 环带沿法线把背景折进来，**中心区域
+  零位移**，壁纸与文字始终清晰），配一圈连续 1px 镜面边、更通透的底与浮空投影；
+  按钮按下有 4.5% 的回弹，主界面图标与拖动把手不动
 
-## 内置五套皮肤 + 可安装主题包
+## 内置六套皮肤 + 可安装主题包
 
-从 v2.5.0 起，应用本体只带五套内置皮肤，其余主题以 `.fcpt` **主题包**独立分发
+从 v2.5.0 起，应用本体只带内置皮肤（v2.6.5 起六套），其余主题以 `.fcpt` **主题包**独立分发
 （[FClassPal-theme](https://github.com/fangyugit/FClassPal-theme) 仓库提供规范、
 示例与下载）。安装包的 `themes/` 目录**随附三丽鸥角色的 8 套**，可在主题管理里一键
 离线安装；另外 5 套（洛天依 / 乐正绫 / 初音未来 / 重音Teto / DS鲸鱼娘）到上面那个
@@ -87,17 +91,17 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 
 | 平台 | 产物 | 处理器架构 |
 |---|---|---|
-| Windows | [FClassPal-2.6.4.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.6.4/FClassPal-2.6.4.exe)（单文件版，约 73MB） | x64 |
-| Linux | `FClassPal-2.6.4-linux-x64.tar.gz`| x64 |
-| Linux | `FClassPal-2.6.4-linux-arm64.tar.gz` | arm64 |
-| Linux | [FClassPal-2.6.4-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.6.4/FClassPal-2.6.4-linux-loong64.tar.gz)（适配龙芯架构） | LoongArch64 |
-| macOS | `FClassPal-2.6.4-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
-| macOS | `FClassPal-2.6.4-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
-| Android | `FClassPal-2.6.4-android.apk`| arm64 / armv7 / x86_64 |
-| Android | `FClassPal-2.6.4-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
-| WearOS | `FClassPal-2.6.4-wearos.apk`（手表端原生应用，需与电脑同一 Wi-Fi） | Wear OS 2 及以上，方屏 / 圆屏 |
+| Windows | [FClassPal-2.6.5.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.6.5/FClassPal-2.6.5.exe)（单文件版，约 63MB） | x64 |
+| Linux | `FClassPal-2.6.5-linux-x64.tar.gz`| x64 |
+| Linux | `FClassPal-2.6.5-linux-arm64.tar.gz` | arm64 |
+| Linux | [FClassPal-2.6.5-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.6.5/FClassPal-2.6.5-linux-loong64.tar.gz)（适配龙芯架构） | LoongArch64 |
+| macOS | `FClassPal-2.6.5-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
+| macOS | `FClassPal-2.6.5-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
+| Android | `FClassPal-2.6.5-android.apk`| arm64 / armv7 / x86_64 |
+| Android | `FClassPal-2.6.5-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
+| WearOS | [FClassPal-2.6.4A-wearos.apk](https://github.com/fangyugit/FclassPal/releases/download/v2.6.4/FClassPal-2.6.4A-wearos.apk)（手表端原生应用，需与电脑同一 Wi-Fi；本轮未随桌面版改版，仍在 v2.6.4 发布页） | Wear OS 2 及以上，方屏 / 圆屏 |
 
-以上都在 [v2.6.4 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.4)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
+以上都在 [v2.6.5 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.5)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
 
 - 龙芯包解压后执行 `FClassPal-linux-loong64/electron` 即可（这一份的可执行文件仍叫
   `electron`，顶层目录名也沿用它，与其它平台不同）
@@ -148,7 +152,7 @@ FclassPal/
 ├── preload.js           # 上下文隔离桥
 ├── renderer/
 │   ├── index.html       # 无边框 UI：主界面 + 右键菜单 + 设置面板 + 弹窗
-│   ├── style.css        # 内置五套主题（每套是一份独立设计系统）+ 明暗模式 + 自定义背景图
+│   ├── style.css        # 内置六套主题（每套是一份独立设计系统）+ 明暗模式 + 自定义背景图
 │   ├── app.js           # 交互逻辑：拖动 / 菜单 / 主题注册表 / 取色应用
 │   └── lg-displacement-map.js   # 预烘焙折射位移贴图（MIT © 2025 MAX ROVENSKY）
 │   └── theme/           # 角色贴图素材源（v2.5.0 起随主题包分发，asar 已排除）

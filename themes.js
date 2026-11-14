@@ -1,5 +1,5 @@
 /* ---------- 主题包引擎（v2.5.0，v2.5.2 放宽 id 规则）----------
- * 本体只带五套内置主题（glass / md3 / fluent / miuix / harmony），
+ * 本体只带六套内置主题（glass / liquidglass / md3 / fluent / miuix / harmony），
  * 其余角色主题一律以 .fcpt 主题包形式分发，用户导入后落在
  * `~/.desktop-widget/themes/<id>/`，启动时由主进程读出来注入渲染层。
  *
@@ -25,10 +25,17 @@ const ID_RE = /^[a-zA-Z][a-zA-Z0-9-]{1,23}$/;
 const MAX_BYTES = 24 * 1024 * 1024;   // 单个包上限 24MB
 const MAX_ENTRIES = 400;
 
-/* 内置五套：名字与推荐主色是本体唯一事实源，渲染层从 listThemes 拿 */
+/* 内置六套：名字与推荐主色是本体唯一事实源，渲染层从 listThemes 拿。
+ * ※ 这里才是主题列表的真正来源 —— renderer/app.js 里的 BUILTIN_THEMES 只是
+ *   「拿不到主进程数据」时的兜底。v2.6.5 加新主题时先漏了这张表，表现就是
+ *   「新主题根本不在列表里面」（渲染层兜底根本不走）。加/删内置主题必须两边一起改。 */
 const BUILTIN = [
-  { id: 'glass', name: '液态玻璃', accent: '#6750A4', fixedPalette: false,
+  /* v2.6.5：原来这套「液态玻璃」改叫「玻璃」（观感一行未动），
+   * 新版液态玻璃另立一套 id=liquidglass，名字叫「liquid glass」。 */
+  { id: 'glass', name: '玻璃', accent: '#6750A4', fixedPalette: false,
     desc: '基线皮肤：真实壁纸透出 + 液态玻璃高光。' },
+  { id: 'liquidglass', name: 'liquid glass', accent: '#0A84FF', fixedPalette: false,
+    desc: '边框透镜折射 + 一圈连续镜面边 + 通透底，中心始终清晰。' },
   { id: 'md3', name: 'MD3', accent: '#6750A4', fixedPalette: false,
     desc: 'Material Design 3 / Material You，跟随壁纸取色。' },
   { id: 'fluent', name: 'Fluent', accent: '#0B57D0', fixedPalette: false,

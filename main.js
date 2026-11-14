@@ -60,7 +60,7 @@ const DEFAULT_CONFIG = {
   realtime: false,
   /* v2.6.2：默认初始主题改为「经典」（原「鸿蒙」，id 仍是 harmony）。
    * 老配置里已有 theme 字段的照旧生效，这里只影响全新安装。 */
-  theme: 'harmony',    // 界面风格：'harmony'=经典（默认）/ 'glass'=液态玻璃 / 'md3' / 'fluent' / 'miuix'=渐色
+  theme: 'harmony',    // 界面风格：'harmony'=经典（默认）/ 'glass'=玻璃 / 'liquidglass'=liquid glass / 'md3' / 'fluent' / 'miuix'=渐色
   // v2.5.0 起本体只带五套内置皮肤（glass/md3/fluent/miuix/harmony），
   // 角色主题全部拆成独立 .fcpt 主题包，落在 <配置目录>/themes/<id>/。
   // themeOrder 是「主题管理」里拖动排序的结果，只存 id 数组：内置五套永远在前，
@@ -2192,7 +2192,7 @@ ipcMain.handle('export-theme', async () => {
       } catch (e) { scheme.background.enabled = false; scheme.background.path = ''; }
     }
     const THEME_NAMES = {
-      glass: '液态玻璃', md3: 'Material You 3', fluent: 'Fluent', miuix: 'MIUIX',
+      glass: '玻璃', liquidglass: 'liquid glass', md3: 'Material You 3', fluent: 'Fluent', miuix: 'MIUIX',
       harmony: '鸿蒙', kitty: 'Hello Kitty', dog: '玉桂狗', kuromi: '库洛米',
       melody: '美乐蒂', sanrio: '三丽鸥',
       pochacco: '帕恰狗', purin: '布丁狗', NaiWa: '奶蛙', tianyi: '洛天依',

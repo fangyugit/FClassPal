@@ -9,6 +9,9 @@ const html = fs.readFileSync('renderer/index.html','utf-8').toString();
 const mapJs = (() => { try { return fs.readFileSync('renderer/lg-displacement-map.js','utf-8').toString(); } catch (e) { return ''; } })();
 // v1.8：预打包好的 Monet 库（单个 CJS 文件），必须真的进了 asar
 const mapJs2 = (() => { try { return fs.readFileSync('vendor/monet.js','utf-8').toString(); } catch (e) { return ''; } })();
+/* v2.6.5：liquid glass 主题的透镜位移场生成器。它是渲染层的 <script>，
+ * 漏进 build.files 的表现是"新主题边框不折"（滤镜拿不到贴图 → 退回磨砂）。 */
+const lens2 = (() => { try { return fs.readFileSync('renderer/lg2-lens.js','utf-8').toString(); } catch (e) { return ''; } })();
 /* v2.6.4：局域网服务必须真的进了 asar —— 它是 main.js 的运行时 require，
  * 漏进 build.files 的开发态全绿、打包态直接启动崩溃（v2.4.6 踩过的坑）。 */
 const lan = (() => { try { return fs.readFileSync('lan-server.js','utf-8').toString(); } catch (e) { return ''; } })();
@@ -21,6 +24,18 @@ const wearDiscovery = rd(path.join(wearDir, 'java', 'com', 'fclasspal', 'wear', 
 const wearGradle = rd(path.join('wearos', 'app', 'build.gradle'));
 const wearApi = rd(path.join(wearDir, 'java', 'com', 'fclasspal', 'wear', 'Api.java'));
 const cssNC = css.replace(/\/\*[\s\S]*?\*\//g, '');
+/* v2.6.5 起有两套滤镜：#liquidGlass（旧玻璃主题）与 #liquidGlass2（liquid glass）。
+ * 原先按全文计数（三次 feDisplacementMap / R,B 通道）的断言必须收窄到各自的
+ * filter 块，否则新增一套就会把旧断言判红。 */
+const lg1 = (() => {
+  const a = html.indexOf('id="liquidGlass"');
+  const b = html.indexOf('id="liquidGlass2"');
+  return a >= 0 && b > a ? html.slice(a, b) : html;
+})();
+const lg2 = (() => {
+  const a = html.indexOf('id="liquidGlass2"');
+  return a >= 0 ? html.slice(a, html.indexOf('</filter>', a)) : '';
+})();
 // 同样剥掉 main.js 的块注释："某 API 已移除"这类断言不能被注释里的旧写法误伤
 const mainNC = main.replace(/\/\*[\s\S]*?\*\//g, '');
 // 取某条规则的声明体（停在第一个 }），别用 [\s\S]{0,N} 窗口——那会串到下一条规则
@@ -133,12 +148,16 @@ const checks = [
   ['html: 液态玻璃滤镜 #liquidGlass（v1.6 standard）', html.includes('id="liquidGlass"') && /<feImage/.test(html)],
   ['html: feImage 载入预烘焙位移贴图 #lgMap', /<feImage[^>]*id="lgMap"/.test(html) &&
     /preserveAspectRatio="xMidYMid slice"/.test(html)],
-  ['html: 三次 feDisplacementMap 色差链', (html.match(/<feDisplacementMap/g) || []).length === 3],
+  ['html: 三次 feDisplacementMap 色差链（v2.6.5 起只数旧滤镜 #liquidGlass）',
+    (lg1.match(/<feDisplacementMap/g) || []).length === 3],
   ['html: 位移 scale -70/-77/-84（standard 模式取负号）',
     /scale="-70"/.test(html) && /scale="-77"/.test(html) && /scale="-84"/.test(html)],
   ['html: 位移通道 R/B（G 通道均值≈0，Y 必须取 B）',
-    (html.match(/xChannelSelector="R"/g) || []).length === 3 &&
-    (html.match(/yChannelSelector="B"/g) || []).length === 3],
+    (lg1.match(/xChannelSelector="R"/g) || []).length === 3 &&
+    (lg1.match(/yChannelSelector="B"/g) || []).length === 3],
+  ['html: 新滤镜的位移通道取 R/G（贴图 G 通道就是 Y，见 lg2-lens.js 的通道约定）',
+    (lg2.match(/yChannelSelector="G"/g) || []).length === 3 &&
+    !/yChannelSelector="B"/.test(lg2)],
   ['html: 色散掩膜 feFuncA discrete + 反相 table',
     /feFuncA[^>]*type="discrete"/.test(html) && /feFuncA[^>]*type="table"[^>]*tableValues="1 0"/.test(html)],
   ['html: 滤镜区域 -35%/170% + sRGB', /x="-35%" y="-35%" width="170%" height="170%"/.test(html) &&
@@ -154,7 +173,7 @@ const checks = [
     /glass-warp[\s\S]{0,400}glass-veil/.test(html)],
   ['html: 实时模糊开关 + 状态行', html.includes('id="setRealtime"') && html.includes('id="realtimeInfo"')],
   ['html: 贴图脚本先于 app.js 加载',
-    /lg-displacement-map\.js[\s\S]{0,120}app\.js/.test(html)],
+    /lg-displacement-map\.js[\s\S]{0,400}?lg2-lens\.js[\s\S]{0,200}?app\.js/.test(html)],
   ['asar: 位移贴图已随包（v2.3.0 起 PNG dataURL，JPEG 已不被 feImage 渲染）', /LG_DISPLACEMENT_MAP\s*=\s*'data:image\/png;base64,/.test(mapJs)],
   ['css: 滤镜挂在 .glass-warp（非 ::before）',
     /url\(#liquidGlass\)/.test(css) && /body\.lg-ready \.glass-warp/.test(css)],
@@ -560,8 +579,8 @@ const checks = [
     /theme: 'harmony',/.test(main) &&
     /id: 'harmony', name: '经典'/.test(fs.readFileSync('themes.js', 'utf8')) &&
     /id: 'miuix', name: '渐色'/.test(fs.readFileSync('themes.js', 'utf8'))],
-  ['多主题 v2.5.0: 内置五套 + 运行时可刷新注册表（装/删/排序后不用改代码）',
-    /const BUILTIN_THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony'\]/.test(app) &&
+  ['多主题 v2.5.0: 内置六套（v2.6.5 起玻璃拆两套）+ 运行时可刷新注册表',
+    /const BUILTIN_THEMES = \['glass', 'liquidglass', 'md3', 'fluent', 'miuix', 'harmony'\]/.test(app) &&
     /let THEMES = BUILTIN_THEMES\.slice\(\)/.test(app) &&
     /function applyThemeRegistry\(cards\)/.test(app) &&
     /function loadThemeRegistry\(\)/.test(app) &&
@@ -799,8 +818,8 @@ const checks = [
   ['v2.3.1: app.js 填充段同步（事件委托 + 写 value 后补刷）',
     /document\.addEventListener\('input', \(e\) => syncRangeFill\(e\.target\), true\)/.test(app) &&
     /opacityRange\.value = v;\s*\n\s*syncRangeFill\(opacityRange\)/.test(app)],
-  ['v2.3.1: glass 主题挂 theme-glass 标记类',
-    /classList\.toggle\('theme-glass', t === 'glass'\)/.test(app)],
+  ['v2.3.1: glass 主题挂 theme-glass 标记类（v2.6.5 起由 GLASS_FAMILY 族清单判定）',
+    /classList\.toggle\('theme-glass', GLASS_FAMILY\.indexOf\(t\) >= 0\)/.test(app)],
   ['v2.3.1: overLight 链路（阈值 / 状态类 / 折射减半 / 实时采样 / 静态接线）',
     /const OVER_LIGHT_LUM = 0\.62/.test(app) &&
     /setDisplacementScale\(on \? 0\.5 : 1\)/.test(app) &&
@@ -967,7 +986,7 @@ const checks = [
     /function measureIconRadiusPct/.test(app) &&
     /measured === null \? 50 : measured/.test(app)],
   ['★ v2.4.3 换主题要重算内缩几何（否则 MD3 会沿用玻璃的 14.65%，白白多留一圈白）',
-    /function applyTheme[\s\S]{0,2600}?refreshIconLook\(\);\s*\n\s*syncThemeSelect\(\);/.test(app) &&
+    /function applyTheme[\s\S]{0,2600}?refreshIconLook\(\);[\s\S]{0,400}?syncThemeSelect\(\);/.test(app) &&
     /render\(\);[\s\S]{0,320}?refreshIconLook\(\);/.test(app)],
   ['v2.4.2 图标外观：首帧就带着颜色渲染（init 里 auto 模式先 await 取色再 render）',
     /if \(config\.iconBorder === 'auto' && !config\.iconRingColor\) \{[\s\S]{0,200}?await ensureIconColors\(\)[\s\S]{0,120}?render\(\);/.test(app)],
@@ -1246,7 +1265,69 @@ const checks = [
   ['主题包: 渲染层一包一表注入（一个包写坏不许连坐其它主题）',
     app.includes("setAttribute('data-theme-pack'") &&
     app.includes("querySelectorAll('style[data-theme-pack]')") &&
-    !app.includes("getElementById('themePackCss')")]
+    !app.includes("getElementById('themePackCss')")],
+  ['v2.6.5: 玻璃拆两套（旧 glass 展示名「玻璃」/ 新 liquidglass「liquid glass」）',
+    /const GLASS_FAMILY = \['glass', 'liquidglass'\]/.test(app) &&
+    /glass: '玻璃', liquidglass: 'liquid glass',/.test(app) &&
+    /liquidglass: '#0A84FF'/.test(app) &&
+    /classList\.toggle\('theme-glass', GLASS_FAMILY\.indexOf\(t\) >= 0\)/.test(app) &&
+    /classList\.toggle\('lg2', t === 'liquidglass'\)/.test(app) &&
+    /if \(t === 'liquidglass'\) refreshLensMap\(\)/.test(app)],
+  ['v2.6.5: 内置主题表两处同源（主进程 themes.js 才是列表来源，渲染层只是兜底）',
+    /* ★ 曾经踩过：只在 renderer/app.js 的 BUILTIN_THEMES 里加了 liquidglass，
+     *   忘了 themes.js 的 BUILTIN —— 主进程 themeInventory() 根本不会吐出这个 id，
+     *   表现就是「新主题根本不在列表里面」（渲染层那份兜底永远走不到）。
+     *   这里直接对两份清单做集合比对，以后加/删内置主题漏一边就会红。 */
+    (function () {
+      const t = fs.readFileSync('themes.js', 'utf8');
+      const mb = t.slice(t.indexOf('const BUILTIN = ['), t.indexOf('const BUILTIN_IDS'));
+      const mIds = (mb.match(/id: '([a-zA-Z0-9-]+)'/g) || []).map((x) => x.slice(5, -1));
+      const rb = app.slice(app.indexOf('const BUILTIN_THEMES'), app.indexOf('const BUILTIN_LABEL'));
+      const rIds = (rb.match(/'([a-zA-Z0-9-]+)'/g) || []).map((x) => x.slice(1, -1));
+      return mIds.length === 6 && rIds.length === 6 &&
+        mIds.slice().sort().join() === rIds.slice().sort().join() &&
+        /id: 'glass', name: '玻璃'/.test(mb) &&
+        /id: 'liquidglass', name: 'liquid glass'/.test(mb);
+    })()],
+  ['v2.6.5: 平面系判定跟着玻璃族走（两处 registry 重建都算）',
+    (app.match(/FLAT_THEMES = [^;]*GLASS_FAMILY\.indexOf\(t\) < 0/g) || []).length === 2],
+  ['v2.6.5: 旧滤镜 #liquidGlass 原封不动（glass 主题观感不变）',
+    /<filter id="liquidGlass" x="-35%" y="-35%" width="170%" height="170%"/.test(html) &&
+    /body\.lg-ready \.glass-warp/.test(cssNC) &&
+    /url\(#liquidGlass\)/.test(cssNC) &&
+    mapJs.length > 30000],
+  ['v2.6.5: 新滤镜 #liquidGlass2（SDF 边框透镜，遮罩走 B 通道、绝不碰贴图 alpha）',
+    /<filter id="liquidGlass2"/.test(html) &&
+    /preserveAspectRatio="none"/.test(html) &&
+    html.includes('0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0') &&
+    /xChannelSelector="R" yChannelSelector="G"/.test(html) &&
+    ['lg2DispR', 'lg2DispG', 'lg2DispB'].every((id) => html.includes('id="' + id + '"')) &&
+    /tableValues="1 0"/.test(html)],
+  ['v2.6.5: 透镜场生成器（中心零位移 / 环带 sin 曲线 / alpha 恒 255 / 朝内法线）',
+    /function field\(w, h, radius, opts\)/.test(lens2) &&
+    /function toDataURL\(f\)/.test(lens2) &&
+    /Math\.sin\(Math\.PI \* t\)/.test(lens2) &&
+    /data\[k \+ 3\] = 255/.test(lens2) &&
+    /var nx = -gx \/ gl/.test(lens2) &&
+    html.includes('lg2-lens.js')],
+  ['v2.6.5: 按真实尺寸现算（改尺寸/圆角要重算，120ms 节流）',
+    /function paintLensMap\(\)/.test(app) && /function refreshLensMap\(\)/.test(app) &&
+    /setTimeout\(paintLensMap, 120\)/.test(app) &&
+    /clientWidth/.test(app) && /borderTopLeftRadius/.test(app) &&
+    /addEventListener\('resize'/.test(app) &&
+    /lg2-ready/.test(app)],
+  ['v2.6.5: liquid glass 表面语言（1px 镜面环靠 mask 挖空 / 通透底 / 185% 饱和）',
+    /body\.theme-glass\.lg2 \.glass-veil::after/.test(cssNC) &&
+    /mask-composite: exclude/.test(cssNC) &&
+    /body\.theme-glass\.lg2\.lg2-ready \.glass-warp/.test(cssNC) &&
+    /saturate\(185%\)/.test(cssNC)],
+  ['v2.6.5.1: 按压缩放只做按钮且幅度很小（v2.6.2-fix 那次是全屏白光斑，不是这个）',
+    /* 按钮 :active 里必须有 0.95x 的 gel，且必须是 scale 而不是位移 */
+    /body\.theme-glass\.lg2 \.text-btn:active[\s\S]{0,900}?transform: scale\(0\.9\d+\)/.test(cssNC) &&
+    /* 主界面 / 图标卡片 / 拖动把手（手势区）绝不许有 transform —— 那才是当初被骂的场景 */
+    !/body\.theme-glass\.lg2[^{}]*(?:\.item|\.widget|\.sheen|\.item-grip)[^{}]*\{[^}]*transform:/.test(cssNC) &&
+    /* 减少动态效果时要能整体关掉 */
+    /@media \(prefers-reduced-motion: reduce\)/.test(cssNC)]
 ];
 let bad = 0;
 checks.forEach((c) => {

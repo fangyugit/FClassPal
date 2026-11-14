@@ -528,12 +528,13 @@ function hasPackAsset(theme, file) {
 
   /* ---- 十八套独立风格（v2.5.0 起加 8 套角色主题）---- */
   console.log('[Multi theme - independent design systems]');
-  check('app.js: 主题清单 = 内置五套 + 运行期注册表（装/删主题包自动刷新，不再写死 18 套）',
-    /* v2.5.0：本体只编译五套，角色主题是 .fcpt 包。清单由主进程 themes-list 给出，
-     * 所以断言从"字面量 18 套"换成"注册表 + 刷新入口"。 */
-    /const BUILTIN_THEMES = \['glass', 'md3', 'fluent', 'miuix', 'harmony'\]/.test(js) &&
+  check('app.js: 主题清单 = 内置六套（v2.6.5 玻璃拆两套）+ 运行期注册表',
+    /* v2.5.0：本体只编译内置皮肤，角色主题是 .fcpt 包。清单由主进程 themes-list 给出，
+     * 所以断言从"字面量 18 套"换成"注册表 + 刷新入口"。
+     * v2.6.5：玻璃拆成 glass / liquidglass 两套，平面系改由 GLASS_FAMILY 推。 */
+    /const BUILTIN_THEMES = \['glass', 'liquidglass', 'md3', 'fluent', 'miuix', 'harmony'\]/.test(js) &&
     /let THEMES = BUILTIN_THEMES\.slice\(\)/.test(js) &&
-    /let FLAT_THEMES = BUILTIN_THEMES\.filter\(\(t\) => t !== 'glass'\)/.test(js) &&
+    /let FLAT_THEMES = BUILTIN_THEMES\.filter\(\(t\) => GLASS_FAMILY\.indexOf\(t\) < 0\)/.test(js) &&
     /function applyThemeRegistry\(cards\)/.test(js) &&
     /function loadThemeRegistry\(\)/.test(js) &&
     /let FIXED_PALETTE_THEMES = BUILTIN_FIXED\.slice\(\)/.test(js) &&

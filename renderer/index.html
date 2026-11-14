@@ -116,6 +116,63 @@
       <feComposite in="CENTER_ORIGINAL" in2="INVERTED_MASK" operator="in" result="CENTER_CLEAN"/>
       <feComposite in="EDGE_ABERRATION" in2="CENTER_CLEAN" operator="over"/>
     </filter>
+
+    <!-- ====== liquid glass 透镜滤镜（主题 id = liquidglass）======
+         与上面 #liquidGlass 的区别是**位移场从哪来**：
+           · #liquidGlass  用预烘焙的线性 ramp 贴图 → 本质是整块背景等比收缩，
+             中心也在动，没有"只有边框在折"这件事（旧「玻璃」主题保持原样）。
+           · #liquidGlass2 用 renderer/lg2-lens.js 按元素真实像素尺寸现算的
+             圆角矩形 SDF 场 → 中心严格零位移，只有离边框 BAND 像素以内的一圈
+             沿法线朝内折，苹果 NSGlassEffectView 那种"玻璃边框把背景折进来"。
+
+         通道约定（生成器里那份注释是唯一出处，改一个必须改另一个）：
+           R = 位移 X，G = 位移 Y，B = 边缘遮罩，A 恒 255。
+         ※ 遮罩必须走 B 再矩阵搬到 alpha，**不能**像上游那样直接把遮罩做在贴图
+           alpha 上：SVG 滤镜在预乘色空间工作，中心 alpha→0 会把 R/G 一起归零，
+           位移量瞬间变成 -0.5*scale，整块背景被平移出去（旧滤镜的
+           "中心保持干净"那段其实一直是空操作，根因就是这个）。
+
+         scale 取**正**值：方向已经编在贴图里（朝内法线），这里只负责把
+         通道值换算成像素。R/G/B 三个 pass 的 scale 故意差 10%，
+         让边框一圈有极细的色散，这是真玻璃的边。
+         preserveAspectRatio="none"：贴图长宽比本来就等于元素长宽比
+         （lg2-lens 按元素尺寸生成），拉伸铺满即可，环带才不会在宽扁窗口上变形。 -->
+    <filter id="liquidGlass2" x="0" y="0" width="100%" height="100%"
+      color-interpolation-filters="sRGB">
+      <feImage id="lg2Map" x="0" y="0" width="100%" height="100%"
+        preserveAspectRatio="none" href="" result="LENS_MAP"/>
+
+      <!-- 遮罩：只取 B 通道搬到 alpha，颜色分量清零 -->
+      <feColorMatrix in="LENS_MAP" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="LENS_MASK"/>
+
+      <feOffset in="SourceGraphic" dx="0" dy="0" result="CENTER_ORIGINAL"/>
+
+      <feDisplacementMap id="lg2DispR" in="SourceGraphic" in2="LENS_MAP" scale="33"
+        xChannelSelector="R" yChannelSelector="G" result="R_DISPLACED"/>
+      <feColorMatrix in="R_DISPLACED" type="matrix"
+        values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="R_CHANNEL"/>
+
+      <feDisplacementMap id="lg2DispG" in="SourceGraphic" in2="LENS_MAP" scale="30"
+        xChannelSelector="R" yChannelSelector="G" result="G_DISPLACED"/>
+      <feColorMatrix in="G_DISPLACED" type="matrix"
+        values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="G_CHANNEL"/>
+
+      <feDisplacementMap id="lg2DispB" in="SourceGraphic" in2="LENS_MAP" scale="27"
+        xChannelSelector="R" yChannelSelector="G" result="B_DISPLACED"/>
+      <feColorMatrix in="B_DISPLACED" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="B_CHANNEL"/>
+
+      <feBlend in="G_CHANNEL" in2="B_CHANNEL" mode="screen" result="GB_COMBINED"/>
+      <feBlend in="R_CHANNEL" in2="GB_COMBINED" mode="screen" result="RGB_COMBINED"/>
+      <feComposite in="RGB_COMBINED" in2="LENS_MASK" operator="in" result="RIM_REFRACTED"/>
+
+      <feComponentTransfer in="LENS_MASK" result="CENTER_MASK">
+        <feFuncA type="table" tableValues="1 0"/>
+      </feComponentTransfer>
+      <feComposite in="CENTER_ORIGINAL" in2="CENTER_MASK" operator="in" result="CENTER_CLEAN"/>
+      <feComposite in="RIM_REFRACTED" in2="CENTER_CLEAN" operator="over"/>
+    </filter>
   </svg>
 
   <!-- 液态玻璃容器（主界面，仅展示快捷方式，无任何操作按钮） -->
@@ -830,6 +887,8 @@
   <!-- 置换贴图（liquid-glass-react 原版资源，MIT © 2025 MAX ROVENSKY）
        必须在 app.js 之前加载：app.js 启动时要把 dataURL 填进 #lgMap 的 href。 -->
   <script src="lg-displacement-map.js"></script>
+  <!-- liquid glass 主题的透镜位移场生成器（纯函数 + canvas 编码，见 lg2-lens.js 顶部注释） -->
+  <script src="lg2-lens.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
