@@ -389,11 +389,18 @@
     init();
   }
 
-  /* 设置面板每次打开都重挂一次：渲染层可能会重建 panel-body 里的节点 */
+  /* 设置面板每次打开都重挂一次：渲染层可能会重建 panel-body 里的节点。
+   * 入口有两套：桌面壳是 #btnSettings，**手机壳没有这个按钮**，设置是从右键/
+   * 长按菜单的 .ctx-item[data-act="settings"] 打开的 —— 只认前者的话这条兜底
+   * 在手机上等于没写（首屏能挂上，但真被重建过就再也回不来）。 */
   document.addEventListener('click', function (e) {
     var t = e.target;
     while (t && t !== document) {
-      if (t.id === 'btnSettings') { setTimeout(init, 60); return; }
+      if (t.id === 'btnSettings' ||
+          (t.getAttribute && t.getAttribute('data-act') === 'settings')) {
+        setTimeout(init, 60);
+        return;
+      }
       t = t.parentNode;
     }
   }, true);
