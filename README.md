@@ -2,7 +2,7 @@
 
 > FClassPal是一个主要为班级大屏打造的桌面快捷方式启动器小部件 可用于替代希沃管家助手/桌面助手
 
-![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android%20%C2%B7%20WearOS-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-1008%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.6.5-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
+![平台](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android%20%C2%B7%20WearOS-blue) ![Electron](https://img.shields.io/badge/Electron-31-47848F) ![测试](https://img.shields.io/badge/tests-1008%20assertions-brightgreen) ![版本](https://img.shields.io/badge/version-2.6.6-orange) ![许可](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **FClassPal**是一个常驻桌面的启动器小部件，用于替代希沃管家助手/桌面助手 把常用的应用、文件、文件夹和网页钉在桌面一角，顺手管理 U 盘的弹出。无任务栏图标——右键或长按唤醒菜单，其余时间安静地贴在桌面上。
 
@@ -41,13 +41,24 @@
   手表（或另一台手机）可以像连电脑一样连它，看分组、点开条目、改名排序，改动两边同步
 - **手表端带图标了**（v2.6.5A）：应用列表显示真实应用图标（内存 + 磁盘缓存），列表顶上一排
   「最近使用」一步直达，添加应用时可搜索过滤
+- **滑块有「Q 弹」手感**（v2.6.6，liquid glass 专属）：按住时玻璃珠涨起来、拖得越快
+  拉得越长，松手回弹带一点过冲；别的主题仍是原来的手感
+- **「透明度」改成调模糊**（v2.6.6，liquid glass 专属）：这个滑块不再往玻璃上叠白色，
+  而是调背衬模糊的强弱 —— 往左更通透、往右更糊
+- **快捷方式的玻璃片更透**（v2.6.6，liquid glass 专属）：一圈 1px 连续镜面高光 + 近乎
+  透明的底，壁纸颜色透进来，和窗口是同一套玻璃语言
+- **安卓端连不上电脑修好了**（v2.6.6）：安卓 9 起默认禁止明文 HTTP，局域网配对请求会被
+  系统掐断；现在放开并加了连通性预检，失败会直说卡在哪（开关没开 / 防火墙 / 配对码）
+- **安卓内置全部主题 + 批量导入**（v2.6.6）：13 套主题包全部随包装好即用；
+  导入时可一次勾选多个 `.fcpt`，坏包不连累其它包，失败原因逐条报出
 
 ## 内置六套皮肤 + 可安装主题包
 
 从 v2.5.0 起，应用本体只带内置皮肤（v2.6.5 起六套），其余主题以 `.fcpt` **主题包**独立分发
 （[FClassPal-theme](https://github.com/fangyugit/FClassPal-theme) 仓库提供规范、
-示例与下载）。安装包的 `themes/` 目录**随附三丽鸥角色的 8 套**，可在主题管理里一键
-离线安装；另外 5 套（洛天依 / 乐正绫 / 初音未来 / 重音Teto / DS鲸鱼娘）到上面那个
+示例与下载）。桌面安装包的 `themes/` 目录**随附三丽鸥角色的 8 套**，可在主题管理里一键
+离线安装（**安卓安装包内置全部 13 套**，装好即用）；另外 5 套（洛天依 / 乐正绫 /
+初音未来 / 重音Teto / DS鲸鱼娘）到上面那个
 仓库的 Release 下载后导入即可。
 设置 → 主题 → **管理主题**：导入 / 删除 / 拖拽排序都在这里。
 
@@ -98,17 +109,17 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 
 | 平台 | 产物 | 处理器架构 |
 |---|---|---|
-| Windows | [FClassPal-2.6.5.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.6.5/FClassPal-2.6.5.exe)（单文件版，约 63MB） | x64 |
-| Linux | `FClassPal-2.6.5-linux-x64.tar.gz`| x64 |
-| Linux | `FClassPal-2.6.5-linux-arm64.tar.gz` | arm64 |
-| Linux | [FClassPal-2.6.5-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.6.5/FClassPal-2.6.5-linux-loong64.tar.gz)（适配龙芯架构） | LoongArch64 |
-| macOS | `FClassPal-2.6.5-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
-| macOS | `FClassPal-2.6.5-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
-| Android | `FClassPal-2.6.5-android.apk`| arm64 / armv7 / x86_64 |
-| Android | `FClassPal-2.6.5-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
-| WearOS | [FClassPal-2.6.5A-wearos.apk](https://github.com/fangyugit/FclassPal/releases/download/v2.6.5/FClassPal-2.6.5A-wearos.apk)（手表端原生应用，需与电脑或手机同一 Wi-Fi；带应用图标与最近使用） | Wear OS 2 及以上，方屏 / 圆屏 |
+| Windows | [FClassPal-2.6.6.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.6.6/FClassPal-2.6.6.exe)（单文件版，约 63MB） | x64 |
+| Linux | `FClassPal-2.6.6-linux-x64.tar.gz`| x64 |
+| Linux | `FClassPal-2.6.6-linux-arm64.tar.gz` | arm64 |
+| Linux | [FClassPal-2.6.6-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.6.6/FClassPal-2.6.6-linux-loong64.tar.gz)（适配龙芯架构） | LoongArch64 |
+| macOS | `FClassPal-2.6.6-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
+| macOS | `FClassPal-2.6.6-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
+| Android | `FClassPal-2.6.6-android.apk`（内置全部 13 套主题） | arm64 / armv7 / x86_64 |
+| Android | `FClassPal-2.6.6-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
+| WearOS | [FClassPal-2.6.5A-wearos.apk](https://github.com/fangyugit/FclassPal/releases/download/v2.6.6/FClassPal-2.6.5A-wearos.apk)（手表端原生应用，需与电脑或手机同一 Wi-Fi；带应用图标与最近使用） | Wear OS 2 及以上，方屏 / 圆屏 |
 
-以上都在 [v2.6.5 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.5)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
+以上都在 [v2.6.6 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.6)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
 
 - 龙芯包解压后执行 `FClassPal-linux-loong64/electron` 即可（这一份的可执行文件仍叫
   `electron`，顶层目录名也沿用它，与其它平台不同）

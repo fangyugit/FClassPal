@@ -28,6 +28,7 @@
     ip: '',
     port: 47820,
     name: '',
+    code: '',            // 手输的配对码：render 会重建输入框，不记住就得重打一遍
     snap: null,          // 对方快照
     groupId: null,       // 正在看哪个分组（null = 分组列表）
     busy: false,
@@ -136,12 +137,16 @@
     codeIn.placeholder = '6 位码';
     codeIn.setAttribute('inputmode', 'numeric');
     codeIn.maxLength = 6;
+    /* ★ 必须回填：render() 每次重建输入框，不回填的话"点连接失败一次 → 码没了"，
+     * 用户以为是自己没输，实际是我们把 DOM 换掉了。 */
+    codeIn.value = S.code || '';
     ipLine.appendChild(codeIn);
     box.appendChild(ipLine);
 
     ipIn.addEventListener('input', function () { S.ip = ipIn.value.trim(); });
     codeIn.addEventListener('input', function () {
       codeIn.value = codeIn.value.replace(/\D/g, '').slice(0, 6);
+      S.code = codeIn.value;
     });
 
     var goRow = el('div', 'fl-row');
@@ -307,14 +312,44 @@
     });
   }
 
+  /* 把原生/协议错误翻成人话（v2.6.6-fix）。
+   * `error` 有两种来源：协议给的短码（bad-code / too-many-tries），和 Java 异常
+   * 原文（如 "Cleartext HTTP traffic to 192.168.1.7 not permitted"）。所以先精确
+   * 匹配、再模糊匹配，最后兜底把原文截一段附上 —— 排查时那一句最值钱。 */
+  function whyFailed(err) {
+    var e = String(err || '');
+    if (e === 'bad-code') return '配对码不对，看一眼电脑上显示的 6 位码';
+    if (e === 'too-many-tries') return '试太多次了，等一分钟再试';
+    if (e === 'no-plugin') return '这个安装包缺局域网模块，需要更新 App';
+    if (e === 'not-fclasspal') return '端口通了，但那台设备不是 FClassPal';
+    if (/Cleartext|not permitted/i.test(e)) return '系统拦了明文 HTTP（旧版才有这问题，请更新 App）';
+    if (/timed out|timeout|ETIMEDOUT/i.test(e)) return '等回应超时：同一个 Wi-Fi 吗？电脑防火墙放行了吗？';
+    if (/refused|ECONNREFUSED/i.test(e)) return '对方端口没开：先在电脑上打开「局域网联动」';
+    if (/unreachable|ENETUNREACH|EHOSTUNREACH/i.test(e)) return '网络到不了那台设备，检查 Wi-Fi 与 IP';
+    return '连不上' + (e ? '：' + e.slice(0, 60) : '：对方没有回应');
+  }
+
   function pair(ip, port, code) {
     if (S.busy) return;
     S.busy = true; S.note = ''; render();
-    LAN.pair(ip, port, code).then(function (r) {
+    /* 先 ping 再配对：ping 免鉴权，能把"端口不通 / 明文被拦 / 码不对"分开。
+     * 少了这一步，所有失败都长一个样，用户和我们都没法往下查。 */
+    var pre = (typeof LAN.ping === 'function')
+      ? LAN.ping(ip, port)
+      : Promise.resolve({ ok: true });
+    pre.then(function (pg) {
+      if (!pg.ok) {
+        S.busy = false;
+        S.note = whyFailed(pg.error);
+        render();
+        return null;
+      }
+      return LAN.pair(ip, port, code);
+    }).then(function (r) {
+      if (!r) return;
       S.busy = false;
       if (!r.ok) {
-        S.note = r.error === 'bad-code' ? '配对码不对'
-          : (r.error === 'too-many-tries' ? '试太多次了，等一分钟' : '连不上，检查地址与同一 Wi-Fi');
+        S.note = whyFailed(r.error);
         render();
         return;
       }

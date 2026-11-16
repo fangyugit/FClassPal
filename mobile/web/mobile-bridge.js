@@ -27,7 +27,7 @@
 
   var MOBILE_KEY = 'fclasspal-mobile-config';
   var FALLBACK_ACCENT = '#6750A4';   // 与桌面版 DEFAULT_CONFIG.accentColor 一致
-  var APP_VERSION = '2.6.5';
+  var APP_VERSION = '2.6.6';
 
   /* ---------------------------------------------------------------- 原生插件 */
   function plugin() {
@@ -963,7 +963,7 @@
       }, function () { return { success: false, css: {} }; });
     },
     themesInstall: function () {
-      // SAF 选包 → packPicked 事件带 base64 → 原生解 zip、校验、落盘
+      // SAF 选包 → packPicked 事件带 base64 列表 → 原生逐个解 zip、校验、落盘
       return new Promise(function (resolve) {
         var p = plugin();
         if (!p || typeof p.addListener !== 'function' || typeof p.pickPack !== 'function' ||
@@ -985,8 +985,45 @@
           /* v2.5.3-fix：原生明确报错（如系统没回传所选文件）要冒泡成 toast，
            * 不许静默 —— 用户分不清"没点上"和"坏了"。 */
           if (r.error) { resolve({ success: false, error: r.error }); return; }
-          Promise.resolve(p.themeInstall({ base64: r.base64 })).then(resolve, function (e) {
-            resolve({ success: false, error: String((e && e.message) || e) });
+          /* v2.6.6：支持一次选多个（用户「优化导入主题功能」）。
+           * 逐个装、逐个记账：一个坏包不许把整批拖垮，也不能装完一声不吭 ——
+           * 失败的名字和原因都要回到界面上去。 */
+          var packs = (r.list && r.list.length) ? r.list : [{ name: r.name, base64: r.base64 }];
+          var okList = [];
+          var bad = [];
+          var lastData = null;
+          var chain = Promise.resolve();
+          packs.forEach(function (pk, i) {
+            var label = (pk && pk.name) || ('第 ' + (i + 1) + ' 个文件');
+            chain = chain.then(function () {
+              if (!pk || !pk.base64) { bad.push({ name: label, error: '空文件' }); return null; }
+              return Promise.resolve(p.themeInstall({ base64: pk.base64 })).then(function (res) {
+                if (res && res.success) {
+                  okList.push({
+                    id: (res.installed && res.installed.id) || '',
+                    name: (res.installed && res.installed.name) || label
+                  });
+                  if (res.data) lastData = res.data;
+                } else {
+                  /* 原生给的 error 已经是人话（"包里没有 theme.css" 之类），原样带出去 */
+                  bad.push({ name: label, error: (res && res.error) || '装不上（包可能已损坏）' });
+                }
+              }, function (e) {
+                bad.push({ name: label, error: String((e && e.message) || e) });
+              });
+            });
+          });
+          chain.then(function () {
+            resolve({
+              success: okList.length > 0,
+              installed: okList[0] || null,        // 老字段：第一条，兼容原提示
+              installedAll: okList,
+              count: okList.length,
+              failed: bad,
+              skipped: r.skipped || 0,
+              data: lastData,
+              error: okList.length ? '' : ((bad[0] && bad[0].error) || '一套都没装上')
+            });
           });
         })).then(function (h) {
           if (h && typeof h.remove === 'function') off = function () { try { h.remove(); } catch (e) { } };
@@ -1380,6 +1417,15 @@
       }, function () {
         return [];   // 没有原生插件：当做"一台都没搜到"，界面会提示手输 IP
       });
+    },
+    /* 连通性预检（v2.6.6-fix）：配对前先敲 /fcp/ping，免鉴权。
+     * 把"连不上"拆成「电脑没开联动 / 明文被拦 / 端口不通 / 不是 FClassPal」，
+     * 界面才能给出人能照做的提示，而不是一句空泛的连不上。 */
+    ping: function (ip, port) {
+      return call('lanPing', { ip: ip, port: port || 47820 })
+        .then(function (r) {
+          return { ok: !!r.ok, body: r.json || '', error: r.error || '' };
+        }, function () { return { ok: false, body: '', error: 'no-plugin' }; });
     },
     pair: function (ip, port, code) {
       return call('lanPair', { ip: ip, port: port || 47820, code: String(code || '') })

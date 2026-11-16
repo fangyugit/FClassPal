@@ -77,26 +77,34 @@ function main() {
   const nWeb = copyTree(SRC_WEB, OUT);
   log('叠加 web/ -> www/：' + nWeb + ' 个文件');
 
-  // ②.5 随包赠送的主题包（v2.5.2）：以本体 package.json 的 build.files 为准
-  //     （themes/*.fcpt 条目），复制进 www/themes/ —— cap sync 后落在 APK assets 的
-  //     public/themes/，PalBridge.themeInstallBundled 从这里读。
-  //     v2.5.2 起只随赠三丽鸥角色主题，其余主题用户自行从主题仓库导入。
+  // ②.5 随包主题包：复制进 www/themes/ —— cap sync 后落在 APK assets 的
+  //     public/themes/，PalBridge.themeInstallBundled 从这里读，首启由
+  //     renderer 的 autoInstallBundledPacks() 一次性装好。
+  //
+  //     ※ v2.6.6 起**安卓内置全套**（用户：「以后安卓端直接内置所有主题」）。
+  //     以前这里只认本体 package.json 的 build.files（8 套），另外 5 套
+  //     （洛天依 / 初音 / 重音Teto / 乐正绫 / 鲸鱼娘）在手机上没有入口 ——
+  //     桌面端从主题仓库导入很方便，手机上要先下载文件再用文件选择器捞，
+  //     用户根本不会去干。所以这里改成扫整个 themes/ 目录。
+  //     桌面端的随包清单不动（build.files 仍是 8 套）：那是安装包体积的取舍，
+  //     和"手机上要开箱即用"不是一回事。
   const SRC_PKG = JSON.parse(fs.readFileSync(path.resolve(ROOT, '..', 'package.json'), 'utf8'));
-  const bundledFiles = (SRC_PKG.build && SRC_PKG.build.files || [])
+  const desktopBundled = (SRC_PKG.build && SRC_PKG.build.files || [])
     .map((f) => String(f))
-    .filter((f) => f.startsWith('themes/') && f.endsWith('.fcpt'));
+    .filter((f) => f.startsWith('themes/') && f.toLowerCase().endsWith('.fcpt'));
   const SRC_THEMES = path.resolve(ROOT, '..', 'themes');
-  if (bundledFiles.length && fs.existsSync(SRC_THEMES)) {
+  if (fs.existsSync(SRC_THEMES)) {
+    const all = fs.readdirSync(SRC_THEMES)
+      .filter((f) => f.toLowerCase().endsWith('.fcpt'))
+      .sort();
+    if (!all.length) die('themes/ 下一个 .fcpt 都没有，APK 里不会有离线主题库存');
     const outThemes = path.join(OUT, 'themes');
     fs.mkdirSync(outThemes, { recursive: true });
-    let nPacks = 0;
-    for (const f of bundledFiles) {
-      const src = path.join(SRC_THEMES, path.basename(f));
-      if (!fs.existsSync(src)) die('build.files 里的随包主题不存在：' + f);
-      fs.copyFileSync(src, path.join(outThemes, path.basename(f)));
-      nPacks += 1;
+    for (const f of all) {
+      fs.copyFileSync(path.join(SRC_THEMES, f), path.join(outThemes, f));
     }
-    log('复制随包主题包 -> www/themes/：' + nPacks + ' 个 .fcpt');
+    log('复制随包主题包 -> www/themes/：' + all.length + ' 个 .fcpt（内置全套；' +
+      '桌面端随包 ' + desktopBundled.length + ' 套）');
   } else {
     log('警告：build.files 里没有随包主题，APK 里不会有离线主题库存');
   }

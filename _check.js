@@ -989,7 +989,9 @@ const checks = [
     /function measureIconRadiusPct/.test(app) &&
     /measured === null \? 50 : measured/.test(app)],
   ['★ v2.4.3 换主题要重算内缩几何（否则 MD3 会沿用玻璃的 14.65%，白白多留一圈白）',
-    /function applyTheme[\s\S]{0,2600}?refreshIconLook\(\);[\s\S]{0,400}?syncThemeSelect\(\);/.test(app) &&
+    /* 窗口卡的是顺序不是距离：v2.6.6 在 refreshIconLook 与 syncThemeSelect 之间
+     插了 lg2 的模糊/标签同步两行，400 字符窗口就装不下了（断言本意不是量字数） */
+    /function applyTheme[\s\S]{0,3200}?refreshIconLook\(\);[\s\S]{0,900}?syncThemeSelect\(\);/.test(app) &&
     /render\(\);[\s\S]{0,320}?refreshIconLook\(\);/.test(app)],
   ['v2.4.2 图标外观：首帧就带着颜色渲染（init 里 auto 模式先 await 取色再 render）',
     /if \(config\.iconBorder === 'auto' && !config\.iconRingColor\) \{[\s\S]{0,200}?await ensureIconColors\(\)[\s\S]{0,120}?render\(\);/.test(app)],
@@ -1364,7 +1366,134 @@ const checks = [
     /* 主界面 / 图标卡片 / 拖动把手（手势区）绝不许有 transform —— 那才是当初被骂的场景 */
     !/body\.theme-glass\.lg2[^{}]*(?:\.item|\.widget|\.sheen|\.item-grip)[^{}]*\{[^}]*transform:/.test(cssNC) &&
     /* 减少动态效果时要能整体关掉 */
-    /@media \(prefers-reduced-motion: reduce\)/.test(cssNC)]
+    /@media \(prefers-reduced-motion: reduce\)/.test(cssNC)],
+  /* ---------- v2.6.6-fix：安卓连不上电脑 ---------- */
+  ['v2.6.6-fix: 安卓放开明文 HTTP（Android 9+ 默认禁，局域网协议就是明文）',
+    (() => {
+      const m = fs.readFileSync('mobile/android-overlay/app/src/main/AndroidManifest.xml', 'utf8');
+      /* 必须是 <application> 上的属性，写在别处或写成注释都不算 */
+      return /<application[\s\S]{0,400}?android:usesCleartextTraffic="true"/.test(m);
+    })()],
+  ['v2.6.6-fix: 配对前先 ping 预检（把"连不上"拆成具体原因）',
+    (() => {
+      const j = fs.readFileSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/PalBridgePlugin.java', 'utf8');
+      const w = fs.readFileSync('mobile/web/mobile-wear.js', 'utf8');
+      return /public void lanPing\(PluginCall call\)/.test(j) && /"\/fcp\/ping"/.test(j) &&
+        /ping: function \(ip, port\)/.test(bridge) && /lanPing/.test(bridge) &&
+        /LAN\.ping\(ip, port\)/.test(w) && /function whyFailed\(err\)/.test(w);
+    })()],
+  ['v2.6.6-fix: 失败原因翻译覆盖四大类（明文 / 超时 / 拒绝 / 不通）+ 兜底原文',
+    (() => {
+      const w = fs.readFileSync('mobile/web/mobile-wear.js', 'utf8');
+      return /Cleartext/.test(w) && /ETIMEDOUT/.test(w) && /ECONNREFUSED/.test(w) &&
+        /ENETUNREACH/.test(w) && /bad-code/.test(w) && /too-many-tries/.test(w) &&
+        /连不上' \+ \(e \?/.test(w);
+    })()],
+  ['v2.6.6-fix: 手机端设置入口两套都认（手机壳没有 #btnSettings）',
+    (() => {
+      const w = fs.readFileSync('mobile/web/mobile-wear.js', 'utf8');
+      return /t\.id === 'btnSettings'/.test(w) && /getAttribute\('data-act'\) === 'settings'/.test(w);
+    })()],
+  /* ---------- v2.6.6：liquid glass 的三处手感/观感（只准动 lg2） ---------- */
+  ['v2.6.6: 滑块 Q 弹 = @property 变量 + linear() 弹簧（贝塞尔做不出连续过冲）',
+    /@property --sl-sx \{ syntax: '<number>'/.test(css) &&
+    /@property --sl-sy \{ syntax: '<number>'/.test(css) &&
+    /* lg2 下的珠子变换必须走变量，而不是写死的 scale(1.42) */
+    /body\.theme-glass\.lg2 \.sl-wrap input\[type="range"\] ~ \.sl-bead \{[\s\S]{0,400}?transform: scaleX\(var\(--sl-sx, 1\)\) scaleY\(var\(--sl-sy, 1\)\)/.test(css) &&
+    /* 弹簧曲线：至少 6 个采样点才算"连续过冲" */
+    /--sl-sx 520ms linear\([^)]*,[^)]*,[^)]*,[^)]*,[^)]*,[^)]*\)/.test(css) &&
+    /* 按住期间要短（110ms），否则"按下变大"走 520ms 弹簧，手感发黏 */
+    /\.sl-wrap\.lg2-drag input\[type="range"\] ~ \.sl-bead \{[\s\S]{0,200}?--sl-sx 110ms/.test(css) &&
+    /* 减少动态效果要能整体关掉 */
+    /@media \(prefers-reduced-motion: reduce\) \{[\s\S]{0,400}?\.sl-bead[\s\S]{0,400}?transform: none/.test(css)],
+  ['v2.6.6: 滑块 Q 弹的驱动代码（按速度拉伸 + 停下回正 + 松手交给弹簧）',
+    app.includes('function bindLg2Spring(') &&
+    app.includes("classList.contains('lg2')") &&
+    app.includes("classList.add('lg2-drag')") &&
+    app.includes("classList.remove('lg2-drag')") &&
+    /* 速度 = 位移/时间，不是位移本身 —— 慢慢拖不该被拉长 */
+    /const st = Math\.min\(LG2_STRETCH_MAX, \(Math\.abs\(d\) \/ dt\) \* 90\)/.test(app) &&
+    app.includes('setProperty(\'--sl-sx\'') &&
+    /setTimeout\(relax, 90\)/.test(app) &&
+    /* 松手/取消/失焦/窗口外抬起都要收，不能卡在拉长状态 */
+    app.includes("addEventListener('pointercancel', release)") &&
+    app.includes("window.addEventListener('pointerup', release)")],
+  ['v2.6.6: 快捷方式卡片玻璃化（1px 镜面环 + backdrop 吃色，且绝不碰 transform）',
+    (() => {
+      const i = css.indexOf('body.theme-glass.lg2 .item {');
+      const seg = css.slice(i, i + 2400);
+      return i >= 0 &&
+        /backdrop-filter: blur\(12px\) saturate\(190%\)/.test(seg) &&
+        /border: 0;/.test(seg) &&
+        /body\.theme-glass\.lg2 \.item::after \{[\s\S]{0,700}?padding: 1px;/.test(seg) &&
+        /mask-composite: exclude/.test(seg) &&
+        /* 手势区铁律：卡片上不许出现 transform（缩放会跟拖动抢观感） */
+        !/\{[\s\S]{0,600}?transform:/.test(seg) &&
+        /* 深色要单独一套，否则深底上会是一片惨白 */
+        /html body\.dark\.theme-glass\.lg2 \.item \{/.test(seg) &&
+        /* 缩放期间摘掉卡片自己的 backdrop-filter，否则"闪" */
+        /body\.is-resizing\.theme-glass\.lg2 \.item \{[\s\S]{0,200}?backdrop-filter: none/.test(css);
+    })()],
+  ['v2.6.6: liquid glass 的「透明度」改调模糊（白雾固定，滑块只驱动 --lg-blur）',
+    (() => {
+      const i = css.indexOf('body.theme-glass.lg2 {');
+      const seg = css.slice(i);
+      return i >= 0 &&
+        /* lg2 段里一个 --glass-alpha 都不许剩（那是滑块的乘数 = 滑块在加白） */
+        !seg.includes('var(--glass-alpha)') &&
+        seg.includes('var(--lg-alpha') &&
+        /--lg-alpha: 0\.55;/.test(css) &&                    /* 0.55 = 老默认，观感不变 */
+        /--lg-blur: var\(--lg-blur-user, 8px\)/.test(css) &&
+        /--lg-blur: max\(8px, var\(--lg-blur-user, 8px\)\)/.test(css) &&   /* 亮底给下限 */
+        app.includes('function lg2BlurPx(') &&
+        app.includes('function applyLg2Blur(') &&
+        app.includes("setProperty('--lg-blur-user'") &&
+        /* 一帧只写一次（每写一次就要重做整块 backdrop 模糊，最贵的一步） */
+        app.includes('lg2BlurRaf') && app.includes('requestAnimationFrame');
+    })()],
+  /* ---------- v2.6.6：安卓内置全套主题 + 导入优化 ---------- */
+  ['v2.6.6: 安卓内置**全部**主题包（不再只跟桌面 build.files 那 8 套）',
+    (() => {
+      const a = fs.readFileSync('mobile/tools/assemble-web.js', 'utf8');
+      /* 必须是扫目录，而不是按 build.files 白名单复制 */
+      const scan = /fs\.readdirSync\(SRC_THEMES\)[\s\S]{0,300}?endsWith\('\.fcpt'\)/.test(a) ||
+        /readdirSync\(SRC_THEMES\)/.test(a) && /toLowerCase\(\)\.endsWith\('\.fcpt'\)/.test(a);
+      return scan &&
+        /* themes/ 里每一套都得真的能打进去 */
+        fs.readdirSync('themes').filter((f) => f.endsWith('.fcpt')).length >= 13 &&
+        /* 桌面端的随包清单不动（体积取舍是另一回事） */
+        srcPkg.build.files.filter((x) => /^themes\/.*\.fcpt$/.test(x)).length === 8;
+    })()],
+  ['v2.6.6: 导入主题支持多选（SAF EXTRA_ALLOW_MULTIPLE + 逐个装 + 失败不静默）',
+    (() => {
+      const j = fs.readFileSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/PalBridgePlugin.java', 'utf8');
+      return /EXTRA_ALLOW_MULTIPLE, true/.test(j) &&
+        /getClipData\(\)/.test(j) && /MAX_FILES/.test(j) &&
+        /o\.put\("list", list\)/.test(j) &&
+        /* 桥接侧：拿到 list 就逐个装、逐个记账 */
+        /r\.list && r\.list\.length/.test(bridge) &&
+        /bad\.push\(\{ name: label, error:/.test(bridge) &&
+        /installedAll/.test(bridge) &&
+        /* 渲染层：成功几套 / 失败几套都要报出来 */
+        /* 提示里必须报出套数（只报第一套名字是旧版行为） */
+        /cnt > 1 \? ' ' \+ cnt \+ ' 套'/.test(app) &&
+        /r\.failed\.length/.test(app);
+    })()],
+  ['v2.6.6-fix: 导入多选的 Java 取值必须用 JSONArray 的 API（JSArray 没有 getJSObject）',
+    (() => {
+      const j = fs.readFileSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/PalBridgePlugin.java', 'utf8');
+      /* 编译期才炸的坑：JSArray extends org.json.JSONArray，没有 getJSObject(int)；
+         同理 JSObject 的 getString(k, default) 在 JSONObject 上也拿不到 → 一律 optString */
+      return !/\.getJSObject\(/.test(j) &&
+        /list\.optJSONObject\(0\)/.test(j) &&
+        /first\.optString\("name"/.test(j);
+    })()],
+  ['v2.6.6: 滑块的说法跟主题走（liquid glass 叫「模糊」，其余仍叫「透明度」）',
+    app.includes('function syncOpacityVerb(') &&
+    /const word = lg2 \? '模糊' : '透明度';/.test(app) &&
+    app.includes("querySelector('.opacity-label')") &&
+    /* 换主题时必须立刻同推一次，否则"皮肤换了、标签还是上一套" */
+    /if \(t === 'liquidglass'\) refreshLensMap\(\);[\s\S]{0,400}?syncOpacityVerb\(\);/.test(app)]
 ];
 let bad = 0;
 checks.forEach((c) => {

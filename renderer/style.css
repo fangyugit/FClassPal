@@ -4023,12 +4023,23 @@ html body.dark .wear-dev-row { border-top-color: rgb(255 255 255 / 0.12); }
 
 body.theme-glass.lg2 {
   /* 透镜要看清背后的结构，模糊就得轻；旧主题 6px，这里稍高一点点，
-   * 但饱和度和亮度都往上提，观感是"通透"而不是"糊"。 */
-  --lg-blur: 8px;
+   * 但饱和度和亮度都往上提，观感是"通透"而不是"糊"。
+   * v2.6.6：默认值改由 --lg-blur-user 提供 —— 这个主题里「透明度」滑块
+   * 调的就是模糊强度，JS 把换算好的 px 写在 body 的行内样式上。 */
+  --lg-blur: var(--lg-blur-user, 8px);
   --glass-hi: rgba(255, 255, 255, 0.95);
   --glass-edge: rgba(255, 255, 255, 0.34);
+  /* ※※ v2.6.6：白雾系数固定成 --lg-alpha，**不再读 --glass-alpha**。
+   * 用户原话「透明度是调模糊程度不是加白色」：--glass-alpha 就是滑块值的乘数，
+   * 读它等于滑块照旧在加白。0.55 = 老版本的默认值，所以换到这套主题时
+   * 白雾跟以前一模一样，变的只有"滑块现在管模糊"。
+   * ※ 它是 body 级变量：--glass-alpha 挂在 #widget 的行内样式上，
+   *   lg2 这些规则都在 body 后代，读得到；但滑块一拖就把 widget 那份改了，
+   *   所以必须换成 body 这一份才能"不跟滑块走"。 */
+  --lg-alpha: 0.55;
 }
-body.theme-glass.lg2.over-light { --lg-blur: 13px; }
+/* 亮底自适应：给一个模糊下限（壁纸很亮时字会飘），但不封顶用户的选择 */
+body.theme-glass.lg2.over-light { --lg-blur: max(8px, var(--lg-blur-user, 8px)); }
 
 /* ① 折射层：blur/saturate 与 filter 分开写（同旧主题的铁律——
  *    url() 写进 backdrop-filter 会让**整条声明**作废）。 */
@@ -4052,12 +4063,12 @@ body.theme-glass.lg2 .glass-veil {
   border: 0;                    /* 描边交给下面那圈镜面环，避免两层边叠出双线 */
   background:
     radial-gradient(128% 72% at 50% -20%,
-      rgba(255, 255, 255, calc(0.30 * var(--glass-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.30 * var(--lg-alpha))) 0%,
       rgba(255, 255, 255, 0) 60%),
     linear-gradient(160deg,
-      rgba(255, 255, 255, calc(0.26 * var(--glass-alpha))) 0%,
-      rgba(255, 255, 255, calc(0.05 * var(--glass-alpha))) 44%,
-      rgba(255, 255, 255, calc(0.16 * var(--glass-alpha))) 100%);
+      rgba(255, 255, 255, calc(0.26 * var(--lg-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.05 * var(--lg-alpha))) 44%,
+      rgba(255, 255, 255, calc(0.16 * var(--lg-alpha))) 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.42),
     inset 0 -14px 22px -20px rgba(24, 46, 104, 0.34),
@@ -4095,12 +4106,12 @@ body.theme-glass.lg2 .glass-veil::after {
 html body.dark.theme-glass.lg2 .glass-veil {
   background:
     radial-gradient(128% 72% at 50% -20%,
-      rgba(255, 255, 255, calc(0.16 * var(--glass-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.16 * var(--lg-alpha))) 0%,
       rgba(255, 255, 255, 0) 60%),
     linear-gradient(160deg,
-      rgba(255, 255, 255, calc(0.13 * var(--glass-alpha))) 0%,
-      rgba(255, 255, 255, calc(0.03 * var(--glass-alpha))) 46%,
-      rgba(255, 255, 255, calc(0.08 * var(--glass-alpha))) 100%);
+      rgba(255, 255, 255, calc(0.13 * var(--lg-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.03 * var(--lg-alpha))) 46%,
+      rgba(255, 255, 255, calc(0.08 * var(--lg-alpha))) 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.30),
     inset 0 -14px 22px -20px rgba(0, 0, 0, 0.45),
@@ -4213,14 +4224,160 @@ body.theme-glass.lg2 .opacity-bar {
   border: 0;
   background:
     radial-gradient(120% 150% at 50% -40%,
-      rgba(255, 255, 255, calc(0.30 * var(--glass-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.30 * var(--lg-alpha))) 0%,
       rgba(255, 255, 255, 0) 70%),
     linear-gradient(158deg,
-      rgba(255, 255, 255, calc(0.22 * var(--glass-alpha))) 0%,
-      rgba(255, 255, 255, calc(0.08 * var(--glass-alpha))) 100%);
+      rgba(255, 255, 255, calc(0.22 * var(--lg-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.08 * var(--lg-alpha))) 100%);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.42),
     inset 0 1px 0 rgba(255, 255, 255, 0.68),
     0 12px 26px -12px rgba(6, 14, 38, 0.42),
     0 2px 6px -3px rgba(6, 14, 38, 0.20);
+}
+
+/* ============================================================
+ * v2.6.6：liquid glass 的三处手感/观感（用户提的三条，全部**只作用于 lg2**）
+ *
+ *   ⑥ 滑块拖动要"q 弹"（苹果那种）
+ *   ⑦ 快捷方式外面的框框更玻璃、与主面板统一
+ *   ⑧ 透明度改调模糊强度（不再是叠白）—— 见下方 ⑧ 与 app.js applyOpacity
+ *
+ * 旧「玻璃」主题一行未动：它那套手感是 v2.3.3 定下来、用户没提意见的。
+ * ============================================================ */
+
+/* ⑦ 快捷方式卡片：旧实现是"厚玻璃片"（白渐变 + 1px 实描边 + 三条内阴影），
+ * 观感偏塑料壳，和主面板那圈 1px 连续镜面环不是一套语言。这里换成同一套：
+ *   底 = 几乎透明，只留一层极淡受光；壁纸的颜色靠 backdrop 的饱和"润"进来
+ *   边 = ::after 的 1px 镜面环（与 .glass-veil::after 同款 padding+mask 做法）
+ *   影 = 浮空软影 + 底缘一点点折射暗
+ * ※ 这里**不许碰 transform**：卡片是手势区（拖动/长按/编辑都挂在它身上），
+ *   缩放会和拖动抢观感 —— v2.6.2-fix 那次"按键乱放大"就是这么来的。
+ *   只改表面：背景 / 描边 / 阴影 / backdrop。 */
+body.theme-glass.lg2 .item {
+  border: 0;                    /* 描边交给 ::after 的镜面环，避免两层边叠成双线 */
+  background:
+    radial-gradient(126% 88% at 16% -8%,
+      rgba(255, 255, 255, calc(0.34 * var(--lg-alpha))) 0%,
+      rgba(255, 255, 255, 0) 56%),
+    linear-gradient(158deg,
+      rgba(255, 255, 255, calc(0.20 * var(--lg-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.04 * var(--lg-alpha))) 52%,
+      rgba(255, 255, 255, calc(0.13 * var(--lg-alpha))) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.40),
+    inset 0 -12px 18px -18px rgba(24, 46, 104, 0.32),
+    0 12px 26px -16px rgba(6, 14, 38, 0.44),
+    0 3px 8px -5px rgba(6, 14, 38, 0.24);
+  /* 卡片自己也要吃背后那点颜色，否则一格格白瓷片压在玻璃面板上很出戏。
+   * 半径比面板小一档：卡片面积小，糊太狠会变成"磨砂塑料"。 */
+  backdrop-filter: blur(12px) saturate(190%) brightness(1.05);
+  -webkit-backdrop-filter: blur(12px) saturate(190%) brightness(1.05);
+}
+body.theme-glass.lg2 .item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(148deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.44) 16%,
+    rgba(255, 255, 255, 0.08) 34%,
+    rgba(255, 255, 255, 0) 52%,
+    rgba(255, 255, 255, 0.16) 74%,
+    rgba(255, 255, 255, 0.60) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+/* 深色：白雾要更薄、镜面环要更亮（深底上那圈白边是唯一能看出"有块玻璃"的东西） */
+html body.dark.theme-glass.lg2 .item {
+  background:
+    radial-gradient(126% 88% at 16% -8%,
+      rgba(255, 255, 255, calc(0.16 * var(--lg-alpha))) 0%,
+      rgba(255, 255, 255, 0) 56%),
+    linear-gradient(158deg,
+      rgba(255, 255, 255, calc(0.10 * var(--lg-alpha))) 0%,
+      rgba(255, 255, 255, calc(0.02 * var(--lg-alpha))) 52%,
+      rgba(255, 255, 255, calc(0.07 * var(--lg-alpha))) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    inset 0 -12px 18px -18px rgba(0, 0, 0, 0.40),
+    0 12px 26px -16px rgba(0, 0, 0, 0.55),
+    0 3px 8px -5px rgba(0, 0, 0, 0.32);
+}
+html body.dark.theme-glass.lg2 .item::after {
+  background: linear-gradient(148deg,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.34) 16%,
+    rgba(255, 255, 255, 0.05) 34%,
+    rgba(255, 255, 255, 0) 52%,
+    rgba(255, 255, 255, 0.10) 74%,
+    rgba(255, 255, 255, 0.46) 100%);
+}
+/* 缩放期间摘掉卡片自己的 backdrop-filter：尺寸每变一帧就要重做一次模糊合成，
+ * 这正是"拖动/缩放会闪"的放大器（和 .glass-warp 同一条理由）。 */
+body.is-resizing.theme-glass.lg2 .item {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* ⑥ 滑块 Q 弹
+ * 用户原话：「把滑块做成苹果那样滑动的时候有点 q 弹那种」。
+ *
+ * 手感拆成两段：
+ *   拖动中 —— 按**速度**把玻璃珠沿 X 拉长、Y 压扁（squash & stretch），
+ *             停下 90ms 内自己回正；这是"液体被捏着走"的那部分。
+ *   松手时 —— 用一条真正的欠阻尼弹簧曲线回到原状，会过冲一次再抖两下收住。
+ *
+ * 为什么用 linear() 而不是 cubic-bezier：贝塞尔最多给一次过冲、幅度还不可控；
+ * 弹簧要的是"过冲 → 反向小过冲 → 收住"这种连续衰减。Chromium 113+ 支持
+ * linear()（Electron 31 = Chromium 126，安卓 WebView 也在范围内）；万一不支持，
+ * 这条 transition 整条失效，退化成瞬变 —— 只是没那么弹，不会坏。
+ *
+ * 为什么用 @property 注册 --sl-sx/--sl-sy：未注册的自定义属性**不可插值**，
+ * transform 里引用它会瞬变，transition 根本不起作用。注册成 <number> 之后
+ * 它们才能被过渡，transform 也才会跟着逐帧重算。 */
+@property --sl-sx { syntax: '<number>'; inherits: false; initial-value: 1; }
+@property --sl-sy { syntax: '<number>'; inherits: false; initial-value: 1; }
+
+/* 选择器里必须带 input[type="range"]：旧主题那两条
+ * `body.theme-glass .sl-wrap input:active ~ .sl-bead { transform: scale(1.42) }`
+ * 是 (0,4,2)，比 `body.theme-glass.lg2 .sl-bead`(0,3,1) 高 —— 不写够就赢不过它，
+ * 表现是"拖动时还是那套硬缩放，弹簧完全不生效"。这条是 (0,5,2)。 */
+body.theme-glass.lg2 .sl-bead,
+body.theme-glass.lg2 .sl-wrap input[type="range"] ~ .sl-bead {
+  transform: scaleX(var(--sl-sx, 1)) scaleY(var(--sl-sy, 1));
+  transition:
+    --sl-sx 520ms linear(0, 0.42 12%, 0.81 24%, 1.02 36%, 1.13 47%, 1.08 58%, 0.98 72%, 0.995 84%, 1.004 93%, 1),
+    --sl-sy 520ms linear(0, 0.42 12%, 0.81 24%, 1.02 36%, 1.13 47%, 1.08 58%, 0.98 72%, 0.995 84%, 1.004 93%, 1),
+    box-shadow 220ms ease;
+}
+/* 按住期间把过渡时长压到 110ms：不然"按下变大"要走 520ms 弹簧，手感是黏的。
+ * (0,6,2)，稳赢上面那条。 */
+body.theme-glass.lg2 .sl-wrap.lg2-drag input[type="range"] ~ .sl-bead {
+  transition:
+    --sl-sx 110ms ease-out,
+    --sl-sy 110ms ease-out,
+    box-shadow 160ms ease;
+}
+/* 没有 JS（或纯键盘操作）时的兜底：按下就涨一点，松手由上面的弹簧收回 */
+body.theme-glass.lg2 .sl-wrap input[type="range"]:active ~ .sl-bead {
+  --sl-sx: 1.14;
+  --sl-sy: 1.1;
+}
+
+/* 系统开了"减少动态效果"：弹簧整体关掉，只留颜色/阴影过渡 */
+@media (prefers-reduced-motion: reduce) {
+  body.theme-glass.lg2 .sl-bead,
+  body.theme-glass.lg2 .sl-wrap input[type="range"] ~ .sl-bead,
+  body.theme-glass.lg2 .sl-wrap.lg2-drag input[type="range"] ~ .sl-bead {
+    --sl-sx: 1;
+    --sl-sy: 1;
+    transform: none;
+    transition: box-shadow 160ms ease;
+  }
 }

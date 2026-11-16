@@ -14,15 +14,25 @@
           Android/data/com.fclasspal.widget/files/themes（本应用免权限可写），
           READ/WRITE_EXTERNAL_STORAGE 只为 SAF 之外的旧路径/文件管理器兜底；
           SAF 选包（ACTION_OPEN_DOCUMENT）本身不需要这两个权限。
+       5. usesCleartextTraffic=true（v2.6.6-fix）：局域网联动走明文 HTTP，
+          Android 9+ 默认拦掉，不放开就"连不上电脑"（详见下面 application 上的注释）。
      ==========================================================================-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- ★★★ usesCleartextTraffic 是「手机连电脑」的命门（v2.6.6-fix）：
+         Android 9（API 28）起默认禁止明文 HTTP，原生 HttpURLConnection 去连
+         http://192.168.x.x:47820 会直接抛
+         "Cleartext HTTP traffic to 192.168.1.7 not permitted"，
+         表现就是"配对永远失败、界面只说连不上"。局域网协议本来就是明文 HTTP
+         （教室内网、无证书），这里放开；caps 里的 allowMixedContent 只影响
+         WebView，管不到原生 HTTP，别把它当成开关。 -->
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
 
         <activity

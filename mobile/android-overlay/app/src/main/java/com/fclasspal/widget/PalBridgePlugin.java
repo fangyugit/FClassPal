@@ -486,6 +486,11 @@ public class PalBridgePlugin extends Plugin {
             Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             i.addCategory(Intent.CATEGORY_OPENABLE);
             i.setType("*/*");
+            /* v2.6.6：允许一次选多个。手机上"导入 13 套主题"要是逐个点 13 次
+             * 文件选择器，没人受得了 —— 用户的原话是"优化导入主题功能"。
+             * 支持的 ROM 会显示多选勾选框；不支持的多选标记会被忽略，退回单选，
+             * 所以对老系统是零风险。 */
+            i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             act.startActivityForResult(i, REQ_PICK_PACK);
             o.put("started", true);
         } catch (Throwable t) {
@@ -597,38 +602,87 @@ public class PalBridgePlugin extends Plugin {
                 return;
             }
             try {
-                Uri uri = data.getData();
                 /* v2.5.3-fix：部分 ROM（实测 Flyme「安全访问」隐私选择器）RESULT_OK 但
                  * getData() 为 null，所选文件放在 clipData 里 —— 不兜这一层导入就是
-                 * 静默无反应（渲染层把 canceled 当用户取消，一声不吭）。 */
-                if (uri == null && data.getClipData() != null && data.getClipData().getItemCount() > 0) {
-                    uri = data.getClipData().getItemAt(0).getUri();
+                 * 静默无反应（渲染层把 canceled 当用户取消，一声不吭）。
+                 * v2.6.6：多选时**每个** URI 都在 clipData 里（getData() 反而是空），
+                 * 所以统一按 clipData 收全，再用 getData() 兜单选的老路径。 */
+                java.util.List<Uri> uris = new java.util.ArrayList<Uri>();
+                if (data.getClipData() != null) {
+                    android.content.ClipData clip = data.getClipData();
+                    for (int i = 0; i < clip.getItemCount(); i++) {
+                        Uri u = clip.getItemAt(i).getUri();
+                        if (u != null) uris.add(u);
+                    }
                 }
-                if (uri == null) {
+                if (uris.isEmpty() && data.getData() != null) uris.add(data.getData());
+                if (uris.isEmpty()) {
                     o.put("canceled", false);
                     o.put("error", "系统没有回传所选文件（文件选择器兼容问题），请重试一次");
                     notifyListeners("packPicked", o);
                     return;
                 }
-                InputStream is = getContext().getContentResolver().openInputStream(uri);
-                ByteArrayOutputStream bos = new ByteArrayOutputStream();
-                byte[] buf = new byte[8192];
-                int n;
-                while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
-                is.close();
-                String name = "import.fcpc";
-                try {
-                    android.database.Cursor c = getContext().getContentResolver().query(uri, null, null, null, null);
-                    if (c != null) {
-                        int idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-                        if (c.moveToFirst() && idx >= 0 && c.getString(idx) != null) name = c.getString(idx);
-                        c.close();
+                /* 上限两条：文件个数（UI 上勾一大把没意义）+ 总字节。
+                 * 一个 .fcpt 约 200~400KB，base64 再涨三分之一，全塞进一个
+                 * JSObject 传给 WebView 是会 OOM 的 —— 宁可明确告诉用户"分两批"。 */
+                final int MAX_FILES = 12;
+                final long MAX_BYTES = 24L * 1024 * 1024;
+                com.getcapacitor.JSArray list = new com.getcapacitor.JSArray();
+                long total = 0;
+                int skipped = 0;
+                for (Uri uri : uris) {
+                    if (list.length() >= MAX_FILES || total >= MAX_BYTES) { skipped++; continue; }
+                    try {
+                        InputStream is = getContext().getContentResolver().openInputStream(uri);
+                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+                        is.close();
+                        byte[] bytes = bos.toByteArray();
+                        if (bytes.length == 0) continue;
+                        String name = "import.fcpc";
+                        try {
+                            android.database.Cursor c = getContext().getContentResolver()
+                                    .query(uri, null, null, null, null);
+                            if (c != null) {
+                                int idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                                if (c.moveToFirst() && idx >= 0 && c.getString(idx) != null) {
+                                    name = c.getString(idx);
+                                }
+                                c.close();
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                        if (name == null || name.lastIndexOf('.') < 0) {
+                            /* 隐私选择器有时不给名字，补个带扩展名的，免得渲染层判断类型时抓瞎 */
+                            name = name == null ? ("import-" + (list.length() + 1) + ".fcpt") : (name + ".fcpt");
+                        }
+                        total += bytes.length;
+                        JSObject one = new JSObject();
+                        one.put("name", name);
+                        one.put("size", bytes.length);
+                        one.put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP));
+                        list.put(one);
+                    } catch (Throwable ignored) {
+                        skipped++;   // 单个文件读不出来不该毁掉整批
                     }
-                } catch (Throwable ignored) {
                 }
+                if (list.length() == 0) {
+                    o.put("canceled", false);
+                    o.put("error", "这些文件都读不出来（可能是云盘占位文件），先下载到本机再导入");
+                    notifyListeners("packPicked", o);
+                    return;
+                }
+                /* 老字段照旧给第一个：importConfig / importTheme 这两条老路径只认它们 */
+                /* 注意：JSArray 继承的是 org.json.JSONArray，取对象只能 optJSONObject，
+                   JSObject 那套 getString(k, default) 在这里也拿不到，统一用 optString */
+                org.json.JSONObject first = list.optJSONObject(0);
                 o.put("canceled", false);
-                o.put("name", name);
-                o.put("base64", Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP));
+                o.put("name", first == null ? "import.fcpc" : first.optString("name", "import.fcpc"));
+                o.put("base64", first == null ? "" : first.optString("base64", ""));
+                o.put("list", list);
+                if (skipped > 0) o.put("skipped", skipped);
             } catch (Throwable t) {
                 o.put("canceled", true);
                 o.put("error", String.valueOf(t.getMessage()));
@@ -1654,6 +1708,31 @@ public class PalBridgePlugin extends Plugin {
                 call.resolve(out);
             }
         }, "fcp-lan-discover").start();
+    }
+
+    /** 连通性预检（v2.6.6-fix）：/fcp/ping 免鉴权，用来把"连不上"拆成具体原因。
+     *  成功了说明 IP/端口/明文策略/防火墙四关全过，随后 pairing 才有意义；
+     *  失败时把原生异常原文带回去，界面能据此给出人话提示。 */
+    @PluginMethod
+    public void lanPing(PluginCall call) {
+        final String ip = call.getString("ip", "");
+        final int port = call.getInt("port", 47820);
+        new Thread(new Runnable() {
+            @Override public void run() {
+                JSObject out = new JSObject();
+                try {
+                    JSONObject r = LanApi.request("GET", ip, port, "/fcp/ping", null, null, 3000);
+                    boolean ok = r.optInt("status", 0) == 200 && r.optBoolean("ok");
+                    out.put("ok", ok);
+                    out.put("json", r.toString());
+                    if (!ok) out.put("error", "not-fclasspal");
+                } catch (Exception e) {
+                    out.put("ok", false);
+                    out.put("error", String.valueOf(e.getMessage()));
+                }
+                call.resolve(out);
+            }
+        }, "fcp-lan-ping").start();
     }
 
     /** 配对：成功后把 ip/port/token/name 记进 prefs，之后所有请求直接用。 */

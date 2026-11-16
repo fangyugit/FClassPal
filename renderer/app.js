@@ -184,7 +184,7 @@ const API = window.widgetAPI || (function () {
     getEnv: () => Promise.resolve({ transparent: true, platform: 'browser', release: '0' }),
     // 关于界面：预览模式没有主进程，版本号给个占位；链接用新窗口模拟
     /* 预览模式的版本号：与 package.json 保持一致（_check.js 有同源断言，别让它漂） */
-    getAppVersion: () => Promise.resolve('2.6.5'),
+    getAppVersion: () => Promise.resolve('2.6.6'),
     openExternal: (url) => { window.open(url, '_blank'); return Promise.resolve(true); },
     // 预览模式取不到真实壁纸：返回 null，让 #envLayer 用内置渐变基底，
     // MD3 则退回 CSS 里的 baseline 配色
@@ -389,6 +389,11 @@ function applyTheme(theme) {
    * 放在 applyTheme 里而不是只在启动时做，是因为用户很可能直接在设置里换主题，
    * 那时窗口尺寸早就定好了；refreshLensMap 自带节流，重复调用无副作用。 */
   if (t === 'liquidglass') refreshLensMap();
+  /* v2.6.6：模糊档与滑块的说法都跟主题走 —— liquid glass 下这个滑块叫「模糊」
+   * 且驱动 backdrop 半径，别的主题恢复「透明度」的老语义。
+   * 换主题时必须立即同推一次，否则会出现"皮肤换了、标签/模糊还是上一套"。 */
+  applyLg2Blur(config && typeof config.opacity === 'number' ? config.opacity : 0.55);
+  syncOpacityVerb();
   syncThemeSelect();          /* 老样式下拉：跟着当前主题显示名字与色点 */
 }
 
@@ -2882,6 +2887,87 @@ function wrapRange(el) {
   bead.setAttribute('aria-hidden', 'true');
   wrap.appendChild(bead);
   syncRangeFill(el);
+  bindLg2Spring(el, wrap, bead);
+}
+
+/* ---------- liquid glass：滑块的 Q 弹（v2.6.6） ----------
+ * 用户：「把滑块做成苹果那样滑动的时候有点 q 弹那种」。
+ * CSS 那侧管"弹簧怎么弹"（@property 注册变量 + linear() 弹簧曲线），
+ * 这里只算"弹多少"：拖动时按**速度**把玻璃珠沿 X 拉长、Y 压扁，手指一停就回正，
+ * 松手整体交给弹簧过冲收住。
+ *
+ * 为什么量速度而不是量位移：苹果那个手感是"动得越快拉得越长"，慢慢挪几乎不形变；
+ * 只看位移量的话慢慢拖也会一直拉长，像被粘住。
+ *
+ * 只为 lg2 服务：其它主题的珠子在 CSS 里 display:none，写变量也看不见，
+ * 但还是先判一下 body 类，省掉无意义的样式重算。 */
+const LG2_PRESS_X = 1.14;      /* 按住时横向（与 .lg2-drag 里的注释同源） */
+const LG2_PRESS_Y = 1.10;
+const LG2_STRETCH_MAX = 0.20;  /* 再大就成橡皮了 */
+
+function rangeRatioOf(el) {
+  const lo = parseFloat(el.min);
+  const hi = parseFloat(el.max);
+  const v = parseFloat(el.value);
+  const a = isFinite(lo) ? lo : 0;
+  const b = isFinite(hi) ? hi : 100;
+  return b > a ? (Math.min(b, Math.max(a, v)) - a) / (b - a) : 0;
+}
+
+function bindLg2Spring(el, wrap, bead) {
+  if (!el || !bead || el.__lg2Spring) return;
+  el.__lg2Spring = true;
+  let dragging = false;
+  let lastR = 0;
+  let lastT = 0;
+  let relaxTimer = 0;
+
+  const paint = (sx, sy) => {
+    bead.style.setProperty('--sl-sx', sx.toFixed(3));
+    bead.style.setProperty('--sl-sy', sy.toFixed(3));
+  };
+  const relax = () => {
+    if (dragging) paint(LG2_PRESS_X, LG2_PRESS_Y);
+  };
+
+  el.addEventListener('pointerdown', () => {
+    if (!document.body.classList.contains('lg2')) return;
+    dragging = true;
+    lastR = rangeRatioOf(el);
+    lastT = performance.now();
+    // 顺序不能反：先把 .lg2-drag 挂上（过渡时长压到 110ms），再写值。
+    // 反了的话"按下变大"要走 520ms 弹簧，手感发黏。
+    wrap.classList.add('lg2-drag');
+    paint(LG2_PRESS_X, LG2_PRESS_Y);
+  });
+
+  el.addEventListener('input', () => {
+    if (!dragging) return;
+    const now = performance.now();
+    const r = rangeRatioOf(el);
+    const d = r - lastR;
+    const dt = Math.max(8, now - lastT);
+    lastR = r;
+    lastT = now;
+    // 速度 = 比例/毫秒；90 是手感系数（扫过整条轨道约 100ms 时拉满）
+    const st = Math.min(LG2_STRETCH_MAX, (Math.abs(d) / dt) * 90);
+    paint(LG2_PRESS_X + (d >= 0 ? st : -st), LG2_PRESS_Y - st * 0.6);
+    clearTimeout(relaxTimer);
+    relaxTimer = setTimeout(relax, 90);   // 手指停下就自己回正
+  });
+
+  const release = () => {
+    if (!dragging) return;
+    dragging = false;
+    clearTimeout(relaxTimer);
+    // 先摘类：摘了之后过渡时长才是 520ms 的弹簧，随后的归位才会过冲
+    wrap.classList.remove('lg2-drag');
+    paint(1, 1);
+  };
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+  el.addEventListener('blur', release);
+  window.addEventListener('pointerup', release);
 }
 
 function initGlassBeads() {
@@ -2940,14 +3026,67 @@ function applyOpacity(v) {
   // 直接驱动玻璃背景层 CSS 变量（不依赖 IPC 回写，
   // 旧实现只 saveConfig 是不够的：主进程已停用 setOpacity）。
   widget.style.setProperty('--glass-alpha', v);
+  // v2.6.6：liquid glass 下这个滑块调的是**模糊强度**，不是叠一层白（见 applyLg2Blur）
+  applyLg2Blur(v);
   API.saveConfig(config);
   opacityRange.value = v;
   syncRangeFill(opacityRange);   // 写 .value 不派发 input，填充段得自己刷
   $('setOpacity').value = v;
   syncRangeFill($('setOpacity')); // 面板滑块同款问题：珠子/填充段也要跟着走
-  $('opacityVal').textContent = Math.round(v * 100) + '%';
+  $('opacityVal').textContent = document.body.classList.contains('lg2')
+    ? lg2BlurPx(v) + 'px'
+    : Math.round(v * 100) + '%';
 }
 opacityRange.addEventListener('input', (e) => applyOpacity(parseFloat(e.target.value)));
+
+/* ---------- liquid glass：透明度滑块改调模糊强度（v2.6.6） ----------
+ * 用户原话：「透明度是调模糊程度不是加白色」。
+ *
+ * 旧实现里这个滑块就是 --glass-alpha 的乘数，作用是把表面那层白雾按比例加浓；
+ * 放在 liquid glass 这种"几乎透明的底"上，往右拖的唯一观感就是越来越白。
+ * 这个主题下改成：白雾固定一档（CSS 里 --lg-alpha，不再跟滑块走），
+ * 滑块只驱动 --lg-blur-user —— 也就是 backdrop-filter 的模糊半径，
+ * 往右 = 更糊、壁纸更看不清，往左 = 更通透。
+ *
+ * 存的还是 config.opacity 这一个 0~1 的数：老配置照样能用，切回别的主题
+ * 立刻恢复"透明度"的老语义。两套语义共用一份数据，是这里不破坏兼容的关键。
+ *
+ * 换算：0.2 → 2px，1.0 → 16px，默认 0.55 正好落在 8px —— 也就是这套主题
+ * 原来写死的 8px，升级完观感不变，变的只是滑块的语义。
+ * 取整到 px：模糊半径给小数点没有意义，取整后默认值才严格等于 8。 */
+function lg2BlurPx(v) {
+  const t = (Math.min(1, Math.max(0.2, isFinite(v) ? v : 0.55)) - 0.2) / 0.8;
+  return Math.round(2 + t * 14);
+}
+let lg2BlurRaf = 0;
+let lg2BlurWant = 8;
+/* 拖滑块时 input 事件一帧可能来好几次，攒到下一帧只写一次 ——
+ * 每写一次 --lg-blur 都要让整块面板重做一次 backdrop 模糊，这是最贵的一步。 */
+function applyLg2Blur(v) {
+  lg2BlurWant = lg2BlurPx(v);
+  if (lg2BlurRaf) return;
+  lg2BlurRaf = requestAnimationFrame(() => {
+    lg2BlurRaf = 0;
+    document.body.style.setProperty('--lg-blur-user', lg2BlurWant + 'px');
+    syncOpacityVerb();
+  });
+}
+/* 滑块的说法跟着主题换：liquid glass 里调的是模糊，其余主题还是透明度 */
+function syncOpacityVerb() {
+  const lg2 = document.body.classList.contains('lg2');
+  const word = lg2 ? '模糊' : '透明度';
+  const bar = document.querySelector('.opacity-label');
+  if (bar && bar.textContent !== word) bar.textContent = word;
+  const input = $('setOpacity');
+  const row = input && input.closest('.row');
+  const lab = row && row.querySelector('span');
+  if (lab && lab.textContent !== word) lab.textContent = word;
+  const val = $('opacityVal');
+  if (val) {
+    const v = typeof config.opacity === 'number' ? config.opacity : 0.55;
+    val.textContent = lg2 ? lg2BlurPx(v) + 'px' : Math.round(v * 100) + '%';
+  }
+}
 
 /* ---------- 圆角弧度（v2.2.2）----------
  * 只调"主界面外轮廓"：--radius（.widget 本体）与 --t-r-win（面板/U盘区等
@@ -3848,8 +3987,23 @@ async function installThemeFromFile() {
   if (typeof API.themesInstall !== 'function') return;
   const r = await API.themesInstall();
   if (!r || r.canceled) return;
-  const n = r.success && r.installed ? '「' + r.installed.name + '」' : '';
-  await afterThemeMutation(r, r.success ? '已装上 ' + n : '');
+  /* v2.6.6：安卓支持一次选多个包，于是结果变成了"一个批次"。
+   * 成功几套、失败几套（带原生给的原因）、有没有因为太多被跳过，都要说清楚 ——
+   * 旧版只报第一条，"装了 5 套只成功 1 套"时用户根本不知道剩下的去哪了。
+   * 桌面端仍然是一次一个，r.count 缺省时走老文案。 */
+  let msg;
+  if (r.success) {
+    const cnt = r.count || 1;
+    msg = '已装上' + (cnt > 1 ? ' ' + cnt + ' 套' : (r.installed ? '「' + r.installed.name + '」' : ''));
+    if (r.failed && r.failed.length) {
+      msg += '；' + r.failed.length + ' 套没装上：' +
+        ((r.failed[0] && r.failed[0].error) || '原因未知');
+    }
+    if (r.skipped) msg += '；另有 ' + r.skipped + ' 个文件太多没处理，下次再选';
+  } else {
+    msg = '没装上：' + (r.error || '未知错误');
+  }
+  await afterThemeMutation(r, msg);
 }
 
 async function installBundledTheme(file) {
