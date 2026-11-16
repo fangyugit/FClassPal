@@ -1376,8 +1376,23 @@ const checks = [
   ['v2.6.5.1: 按压缩放只做按钮且幅度很小（v2.6.2-fix 那次是全屏白光斑，不是这个）',
     /* 按钮 :active 里必须有 0.95x 的 gel，且必须是 scale 而不是位移 */
     /body\.theme-glass\.lg2 \.text-btn:active[\s\S]{0,900}?transform: scale\(0\.9\d+\)/.test(cssNC) &&
-    /* 主界面 / 图标卡片 / 拖动把手（手势区）绝不许有 transform —— 那才是当初被骂的场景 */
-    !/body\.theme-glass\.lg2[^{}]*(?:\.item|\.widget|\.sheen|\.item-grip)[^{}]*\{[^}]*transform:/.test(cssNC) &&
+    /* 手势区（.widget/.sheen/.item-grip）绝不许有 transform —— 那才是当初被骂的场景。
+       .item 例外（v2.6.6-fix）：transform 只许出现在 :active 按压与 transform:none
+       守卫里，逐条扫描把关（.item-grip / .item-dragging 这类前缀不算 .item） */
+    !/body\.theme-glass\.lg2[^{}]*(?:\.widget|\.sheen|\.item-grip)[^{}]*\{[^}]*transform:/.test(cssNC) &&
+    (() => {
+      const re = /([^{}\n]+)\{([^{}]*transform:[^{}]*)\}/g;
+      let m;
+      while ((m = re.exec(cssNC)) !== null) {
+        const sel = m[1], bodyTxt = m[2];
+        if (!/body\.theme-glass\.lg2/.test(sel)) continue;
+        if (!/(^|[\s,>+~(])\.item(?![\w-])/.test(sel)) continue;
+        const isPress = /\.item:active/.test(sel) && /transform:\s*scale\(0\.9\d\)/.test(bodyTxt);
+        const isGuard = /transform:\s*none/.test(bodyTxt);
+        if (!isPress && !isGuard) return false;
+      }
+      return true;
+    })() &&
     /* 减少动态效果时要能整体关掉 */
     /@media \(prefers-reduced-motion: reduce\)/.test(cssNC)],
   /* ---------- v2.6.6-fix：安卓连不上电脑 ---------- */
@@ -1431,21 +1446,43 @@ const checks = [
     /* 松手/取消/失焦/窗口外抬起都要收，不能卡在拉长状态 */
     app.includes("addEventListener('pointercancel', release)") &&
     app.includes("window.addEventListener('pointerup', release)")],
-  ['v2.6.6: 快捷方式卡片玻璃化（1px 镜面环 + backdrop 吃色，且绝不碰 transform）',
+  ['v2.6.6: 快捷方式卡片玻璃化（1px 镜面环 + backdrop 吃色；表面规则零 transform）',
     (() => {
       const i = css.indexOf('body.theme-glass.lg2 .item {');
-      const seg = css.slice(i, i + 2400);
+      /* 只切第一条规则自己的块（到第一个 }）：transform 的合法性由按压那条
+         断言单独管，玻璃表面这条只管"底/边/影/backdrop" */
+      const seg = css.slice(i, css.indexOf('}', i) + 1);
       return i >= 0 &&
         /backdrop-filter: blur\(12px\) saturate\(190%\)/.test(seg) &&
         /border: 0;/.test(seg) &&
-        /body\.theme-glass\.lg2 \.item::after \{[\s\S]{0,700}?padding: 1px;/.test(seg) &&
-        /mask-composite: exclude/.test(seg) &&
-        /* 手势区铁律：卡片上不许出现 transform（缩放会跟拖动抢观感） */
-        !/\{[\s\S]{0,600}?transform:/.test(seg) &&
+        /body\.theme-glass\.lg2 \.item::after \{[\s\S]{0,700}?padding: 1px;/.test(css) &&
+        /mask-composite: exclude/.test(css) &&
+        /* 玻璃表面这条规则本体不许写 transform（按压弹簧在 ⑧ 段单独管） */
+        !/transform:/.test(seg) &&
         /* 深色要单独一套，否则深底上会是一片惨白 */
-        /html body\.dark\.theme-glass\.lg2 \.item \{/.test(seg) &&
+        /html body\.dark\.theme-glass\.lg2 \.item \{/.test(css) &&
         /* 缩放期间摘掉卡片自己的 backdrop-filter，否则"闪" */
         /body\.is-resizing\.theme-glass\.lg2 \.item \{[\s\S]{0,200}?backdrop-filter: none/.test(css);
+    })()],
+  ['v2.6.6-fix: 主界面卡片按压 Q 弹（:active 缩下去 + 松手弹簧过冲，拖拽态显式归零）',
+    (() => {
+      /* 上一轮把"拖动会闪"泛化成了"卡片永远不许 transform"，按压 Q 弹因此漏做。
+         正确的边界是：transform 只活在按压/回弹里，拖拽路径显式归零。
+         锚点用 ⑧ 段注释 —— `body.theme-glass.lg2 .item {` 在 CSS 里先命中
+         ⑦ 表面规则，那条没有 transition，拿它当窗口会扑空。 */
+      const i = css.indexOf('/* ⑧ 主界面卡片的按压 Q 弹');
+      const seg = i >= 0 ? css.slice(i, i + 1400) : '';
+      return i >= 0 &&
+        /transition:[\s\S]{0,200}?transform 520ms linear\(0, 0\.42 12%/.test(seg) &&
+        /body\.theme-glass\.lg2 \.item:active \{[\s\S]{0,200}?transform: scale\(0\.93\)[\s\S]{0,200}?110ms;[\s\S]{0,80}?ease-out/.test(seg) &&
+        /body\.item-dragging\.theme-glass\.lg2 \.item,/.test(seg) &&
+        /body\.theme-glass\.lg2 \.item\.free-moving,/.test(seg) &&
+        /body\.theme-glass\.lg2 \.item\.free-resizing \{[\s\S]{0,80}?transition: none;[\s\S]{0,40}?transform: none/.test(seg) &&
+        /* 主题层的 .item 基础规则（0,3,1）绝不许直接写 transform：它会把基础层
+           的 :active 按压与全部拖拽守卫一起压掉 */
+        !/body\.theme-glass\.lg2 \.item \{[^}]*transform:/.test(css) &&
+        /* 减少动态效果：卡片弹簧也一起关 */
+        /@media \(prefers-reduced-motion: reduce\)[\s\S]*?body\.theme-glass\.lg2 \.item,[\s\S]{0,200}?transition: none/.test(css);
     })()],
   ['v2.6.6: liquid glass 的「透明度」改调模糊（白雾固定，滑块只驱动 --lg-blur）',
     (() => {

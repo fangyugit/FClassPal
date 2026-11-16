@@ -4197,8 +4197,11 @@ body.theme-glass.lg2 .theme-mini:active {
   body.theme-glass.lg2 .seg-btn:active,
   body.theme-glass.lg2 .rail-btn:active,
   body.theme-glass.lg2 .ctx-item:active,
-  body.theme-glass.lg2 .theme-mini:active {
+  body.theme-glass.lg2 .theme-mini:active,
+  body.theme-glass.lg2 .item,
+  body.theme-glass.lg2 .item:active {
     transform: none;
+    transition: none;
   }
 }
 
@@ -4251,9 +4254,9 @@ body.theme-glass.lg2 .opacity-bar {
  *   底 = 几乎透明，只留一层极淡受光；壁纸的颜色靠 backdrop 的饱和"润"进来
  *   边 = ::after 的 1px 镜面环（与 .glass-veil::after 同款 padding+mask 做法）
  *   影 = 浮空软影 + 底缘一点点折射暗
- * ※ 这里**不许碰 transform**：卡片是手势区（拖动/长按/编辑都挂在它身上），
- *   缩放会和拖动抢观感 —— v2.6.2-fix 那次"按键乱放大"就是这么来的。
- *   只改表面：背景 / 描边 / 阴影 / backdrop。 */
+ * ※ transform 的边界（v2.6.6-fix 修正）：**拖拽/缩放路径**不许碰 transform
+ *   （那是 v2.6.2-fix"按键乱放大 / 拖动会闪"的场景）；但**点按按压**要弹 ——
+ *   见下面 ⑧ 段，:active 按下、松手弹簧回位，拖拽态显式归零。 */
 body.theme-glass.lg2 .item {
   border: 0;                    /* 描边交给 ::after 的镜面环，避免两层边叠成双线 */
   background:
@@ -4323,6 +4326,34 @@ html body.dark.theme-glass.lg2 .item::after {
 body.is-resizing.theme-glass.lg2 .item {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+/* ⑧ 主界面卡片的按压 Q 弹（v2.6.6-fix 补做）
+ * 用户补的反馈：「主界面上的 q 弹忘做了」——滑块弹了、卡片没弹。
+ * 实现走 :active，一行 JS 都不用：按下缩到 0.93（110ms ease-out），
+ * 松手由 520ms 弹簧过冲回 1 —— 与滑块珠同一条 linear() 曲线。
+ * 基础层那条 `.item:active { transform: scale(0.96) }` 是 (0,2,0)、
+ * `body.item-dragging .item { transition:none }` 是 (0,2,1)，都赢不过
+ * 主题层 (0,3,1)，所以按压与拖拽守卫必须各写一份 lg2 对应款。 */
+body.theme-glass.lg2 .item {
+  transition:
+    transform 520ms linear(0, 0.42 12%, 0.81 24%, 1.02 36%, 1.13 47%, 1.08 58%, 0.98 72%, 0.995 84%, 1.004 93%, 1),
+    box-shadow 220ms ease,
+    background 220ms ease;
+}
+body.theme-glass.lg2 .item:active {
+  transform: scale(0.93);
+  transition-property: transform;
+  transition-duration: 110ms;
+  transition-timing-function: ease-out;
+}
+/* 拖拽/缩放全程零 transform、零过渡（与 3355 / 3533 的全局守卫同一条规矩）。
+ * 这两条 (0,4,1) 必须排在 :active 那条之后 —— 特异性打平时靠后者赢。 */
+body.item-dragging.theme-glass.lg2 .item,
+body.theme-glass.lg2 .item.free-moving,
+body.theme-glass.lg2 .item.free-resizing {
+  transition: none;
+  transform: none;
 }
 
 /* ⑥ 滑块 Q 弹
