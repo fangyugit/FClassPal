@@ -1548,6 +1548,8 @@ const checks = [
     /body\.theme-glass \.theme-mini:hover \{ --btn-tint: 0\.14; \}/.test(cssNC) &&
     /body\.theme-glass \.theme-mini:active \{ --btn-tint: 0\.22; \}/.test(cssNC) &&
     /body\.theme-glass \.primary-btn \{ --btn-tint: 0\.5; \}/.test(cssNC) &&
+    /* 调色流程必须把 --accent-rgb 也同步上，否则按钮永远停在兜底的品牌蓝 */
+    /set\('--accent-rgb', tr\);/.test(app) &&
     /* 写死的品牌蓝不许再出现在按钮配色里（主色是用户可调的） */
     !/rgba\(58, 99, 242,/.test(cssNC)],
   ['v2.6.8: 全局「模糊度」滑条（--blur-mul 乘所有 backdrop 模糊）',

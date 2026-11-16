@@ -493,6 +493,9 @@ function applyBrandAccent(palette) {
   set('--t-on-accent', palette.onPrimary || '#fff');
   if (tr) {
     set('--t-accent-rgb', tr);
+    /* v2.6.8：玻璃主题按钮的主色 tint 层读的是 --accent-rgb（style.css 的
+     * 兜底值只是默认品牌蓝）—— 不在这里同步，用户换主色时按钮会纹丝不动 */
+    set('--accent-rgb', tr);
     set('--accent-soft', 'rgb(' + tr + ' / 0.12)');
     set('--t-accent-c', 'rgb(' + tr + ' / 0.12)');
     set('--t-shadow-hover', '0 10px 26px -10px rgb(' + tr + ' / 0.45)');
