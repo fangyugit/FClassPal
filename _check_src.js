@@ -1632,6 +1632,11 @@ const checks = [
     !/DEFAULT_CONFIG[\s\S]{0,4000}?peers:/.test(main) &&
     /lanDiscover: \(timeoutMs\)/.test(preloadSrc) &&
     /lanPair: \(p2\)/.test(preloadSrc)],
+  ['v2.6.8-beta: 安卓 overlay 接受预发布版本号（否则 CI 的安卓 job 一上来就 die）',
+    /* 源码里是 /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.]+)?$/
+       用 includes 比对字面量，别再套一层正则（转义一偏就假红） */
+    fs.readFileSync('mobile/tools/apply-android-overlay.js', 'utf8')
+      .includes('(?:-[0-9A-Za-z.]+)?$/.exec(pkg.version')],
   ['v2.6.8-beta: 版本号四处同源（根包 / mobile 包 / APP_VERSION / 预览 mock）',
     srcPkg.version === '2.6.8-beta' &&
     JSON.parse(fs.readFileSync('mobile/package.json', 'utf8')).version === srcPkg.version &&

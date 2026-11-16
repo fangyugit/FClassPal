@@ -47,7 +47,10 @@ function main() {
 
   // ② 版本号从 package.json 同步（versionCode = major*10000 + minor*100 + patch）
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, '..', 'package.json'), 'utf8'));
-  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(pkg.version || '');
+  /* v2.6.8：允许预发布后缀（2.6.8-beta）—— versionCode 只取前三段数字，
+   * versionName 保留完整字符串（Gradle 允许任意 versionName）。
+   * 早先这里是严格的 x.y.z，CI 的安卓 job 一见 -beta 就直接 die。 */
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.]+)?$/.exec(pkg.version || '');
   if (!m) die('package.json 的 version 不是 x.y.z 形式：' + pkg.version);
   const code = Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]);
   const gradlePath = path.join(DST, 'app', 'build.gradle');
