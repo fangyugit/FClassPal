@@ -1108,6 +1108,21 @@ const checks = [
     !/沿用上一版/.test(readme) &&
     new RegExp('FClassPal-' + srcPkg.version.replace(/\./g, '\\.') + '-linux-loong64').test(readme) &&
     /##\s*v2\.4\.5/.test(changelog)],
+  ['v2.6.6: 下载链接的 tag 与文件名版本必须一致（tag 指错就是死链，例如把手表包写进新版页）',
+    (() => {
+      /* 发版时最容易犯的错：整张表批量替换 2.6.5 -> 2.6.6，顺手把「本轮没重打」的
+         手表包也指到新 tag 上 —— 而那个资产只在旧 release 里，点开就是 404。
+         规则很朴素：URL 里的 tag 版本必须是这个文件名的版本前缀。 */
+      const re = /releases\/download\/(v[0-9][^/\s)]*)\/(FClassPal-[^\s)]+)/g;
+      let m;
+      let n = 0;
+      while ((m = re.exec(readme)) !== null) {
+        n++;
+        const tag = m[1].replace(/^v/, '');
+        if (m[2].indexOf('FClassPal-' + tag) !== 0) return false;
+      }
+      return n > 0;
+    })()],
   ['v2.4.5: CHANGELOG 只写新增/改变（本版没有"测试"小节，规范改了）',
     /##\s*v2\.4\.5[\s\S]*?(?=\n##\s|\n*$)/.test(changelog) &&
     !/##\s*v2\.4\.5[\s\S]*?###\s*测试/.test(changelog)],

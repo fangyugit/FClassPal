@@ -117,7 +117,7 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 | macOS | `FClassPal-2.6.6-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
 | Android | `FClassPal-2.6.6-android.apk`（内置全部 13 套主题） | arm64 / armv7 / x86_64 |
 | Android | `FClassPal-2.6.6-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
-| WearOS | [FClassPal-2.6.5A-wearos.apk](https://github.com/fangyugit/FclassPal/releases/download/v2.6.6/FClassPal-2.6.5A-wearos.apk)（手表端原生应用，需与电脑或手机同一 Wi-Fi；带应用图标与最近使用） | Wear OS 2 及以上，方屏 / 圆屏 |
+| WearOS | [FClassPal-2.6.5A-wearos.apk](https://github.com/fangyugit/FclassPal/releases/download/v2.6.5/FClassPal-2.6.5A-wearos.apk)（手表端原生应用，需与电脑或手机同一 Wi-Fi；带应用图标与最近使用） | Wear OS 2 及以上，方屏 / 圆屏 |
 
 以上都在 [v2.6.6 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.6)（上一版与更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
 
