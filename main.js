@@ -50,6 +50,9 @@ const DEFAULT_CONFIG = {
   x: 100,
   y: 100,
   opacity: 0.55,   // 玻璃背景 alpha：1=实色磨砂，0=完全透明；前景内容始终不透明
+  blur: 1,         // v2.6.8：模糊度档位（0~2，1=各主题原档），驱动 body 的 --blur-mul
+  itemSize: 84,    // v2.6.8：网格布局的图标格子尺寸（px），驱动 :root 的 --item-size
+  font: { family: '', weight: 0, size: 100, spacing: 0 },  // v2.6.8：全局字体（family='' = 跟随系统）
   alwaysOnTop: false,   // 已弃用置顶：小部件默认沉底
   keepBottom: true,     // 置底：始终位于其他窗口之下（桌面小部件形态）
   autoLaunch: false,   // 开机自启动
@@ -1503,6 +1506,189 @@ ipcMain.handle('wear-unpair', (event, id) => {
   w.devices = (w.devices || []).filter((d) => d && d.id !== id);
   wearSave(w);
   return wearStatus();
+});
+
+/* ============ 系统字体枚举（v2.6.8） ============
+ * Windows 上从注册表拿字体家族名（HKLM + HKCU 的 Fonts 键），
+ * 按家族名归并（去掉 Bold/Italic 等样式后缀与 & 连接的别名），结果缓存。
+ * 非 Windows 返回空列表，设置面板只剩「跟随系统」。 */
+let fontsCache = null;
+function regQueryFonts(key) {
+  return new Promise((resolve) => {
+    const { execFile } = require('child_process');
+    execFile('reg', ['query', key], { timeout: 4000, windowsHide: true }, (e, so) => resolve(e ? '' : String(so || '')));
+  });
+}
+async function listSystemFonts() {
+  if (fontsCache) return fontsCache;
+  const seen = new Set();
+  const list = [];
+  const chunks = await Promise.all([
+    regQueryFonts('HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts'),
+    regQueryFonts('HKCU\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts')
+  ]);
+  for (const text of chunks) {
+    for (const line of text.split(/\r?\n/)) {
+      const m = line.match(/^\s{4}(.+?)\s+REG_[A-Z]+/);
+      if (!m) continue;
+      let name = m[1]
+        .replace(/\s*\((?:TrueType|OpenType|PostScript|TrueTypeOutline)\)\s*$/i, '')
+        /* 家族名归并：去掉字重/字形后缀（"Microsoft YaHei Light" 之类） */
+        .replace(/\s*(?:Bold|Italic|Light|Medium|Black|Thin|SemiBold|Semibold|ExtraBold|ExtraLight|Heavy|Regular|Oblique)+\s*$/g, '')
+        /* "SimSun & NSimSun" / "中文名（英文名）"取主名 */
+        .split(/\s*&\s*|\s*（/)[0].trim();
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      list.push(name);
+    }
+  }
+  list.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+  fontsCache = list;
+  return list;
+}
+ipcMain.handle('fonts-list', () => listSystemFonts());
+
+/* ============ 局域网设备：电脑当客户端（v2.6.8） ============
+ * 与手表/手机当客户端完全同一套协议：UDP 47822 广播发现（FCP_DISCOVER →
+ * fcp-here）→ HTTP 47820 /fcp/pair 用 6 位码换 token（Bearer 鉴权）→
+ * /fcp/state 拉快照 → /fcp/action 发动作。配对设备存 peers.json，
+ * **不塞 config.json** —— wear 段被整份覆盖那个坑不再踩第二次。 */
+const PEERS_FILE = path.join(CONFIG_DIR, 'peers.json');
+function peersLoad() {
+  try { return JSON.parse(fs.readFileSync(PEERS_FILE, 'utf8')) || []; }
+  catch (e) { return []; }
+}
+function peersSave(list) {
+  try { fs.writeFileSync(PEERS_FILE, JSON.stringify(list, null, 2), 'utf8'); } catch (e) {}
+}
+function lanRequest(ip, port, method, urlPath, body, token, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const data = body ? Buffer.from(JSON.stringify(body)) : null;
+    const headers = { 'Content-Type': 'application/json' };
+    if (data) headers['Content-Length'] = data.length;
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const req = http.request({ host: ip, port: port, method: method, path: urlPath, headers: headers, timeout: timeoutMs || 5000 }, (res) => {
+      let buf = '';
+      res.on('data', (c) => { buf += c; });
+      res.on('end', () => {
+        let j = null;
+        try { j = JSON.parse(buf); } catch (e) {}
+        if (res.statusCode >= 400) {
+          reject(Object.assign(new Error((j && j.error) || ('HTTP ' + res.statusCode)), { statusCode: res.statusCode }));
+        } else resolve(j || {});
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('ETIMEDOUT')));
+    req.on('error', reject);
+    if (data) req.write(data);
+    req.end();
+  });
+}
+function lanBroadcastAddrs() {
+  const out = [];
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const it of list || []) {
+      if (it.family !== 'IPv4' || it.internal || !it.netmask) continue;
+      const ip = it.address.split('.').map(Number);
+      const mask = it.netmask.split('.').map(Number);
+      out.push(ip.map((o, i) => o | (~mask[i] & 255)).join('.'));
+    }
+  }
+  return out;
+}
+function selfLanAddrs() {
+  const set = new Set();
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const it of list || []) if (it.family === 'IPv4') set.add(it.address);
+  }
+  return set;
+}
+function lanDiscoverDevices(timeoutMs) {
+  return new Promise((resolve) => {
+    const dgram = require('dgram');
+    const http = require('http');
+    const found = new Map();
+    const mine = selfLanAddrs();
+    const sock = dgram.createSocket('udp4');
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try { sock.close(); } catch (e) {}
+      resolve(Array.from(found.values()));
+    };
+    sock.on('message', (msg, rinfo) => {
+      let j = null;
+      try { j = JSON.parse(msg.toString('utf8')); } catch (e) { return; }
+      if (!j || j.app !== 'FClassPal' || mine.has(rinfo.address)) return;
+      const id = rinfo.address + ':' + (j.port || 47820);
+      if (!found.has(id)) {
+        found.set(id, { ip: rinfo.address, port: j.port || 47820, name: j.name || '', version: j.version || '' });
+      }
+    });
+    sock.on('error', finish);
+    sock.bind(() => {
+      try { sock.setBroadcast(true); } catch (e) {}
+      const probe = Buffer.from('FCP_DISCOVER');
+      /* 受限网络里 255.255.255.255 常被 AP 隔离吞掉，各网段的定向广播补一发 */
+      try { sock.send(probe, 47822, '255.255.255.255'); } catch (e) {}
+      for (const addr of lanBroadcastAddrs()) {
+        try { sock.send(probe, 47822, addr); } catch (e) {}
+      }
+    });
+    setTimeout(finish, timeoutMs || 1600);
+  });
+}
+ipcMain.handle('lan-discover', (event, timeoutMs) => lanDiscoverDevices(timeoutMs));
+ipcMain.handle('lan-pair', async (event, p) => {
+  const ip = String((p && p.ip) || '');
+  const port = Number(p && p.port) || 47820;
+  const code = String((p && p.code) || '').replace(/\D/g, '');
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return { ok: false, error: 'bad-ip' };
+  if (code.length !== 6) return { ok: false, error: 'bad-code' };
+  try {
+    const r = await lanRequest(ip, port, 'POST', '/fcp/pair', { code: code, device: ('Windows · ' + os.hostname()).slice(0, 40) }, null, 6000);
+    if (!r || !r.ok || !r.token) return { ok: false, error: (r && r.error) || 'bad-response' };
+    const peers = peersLoad();
+    let peer = peers.find((x) => x.ip === ip && x.port === port);
+    if (!peer) { peer = { id: 'p-' + Date.now().toString(36) }; peers.push(peer); }
+    peer.name = r.name || ip;
+    peer.ip = ip;
+    peer.port = port;
+    peer.token = r.token;
+    peer.lastSeen = Date.now();
+    peersSave(peers);
+    return { ok: true, name: peer.name };
+  } catch (e) {
+    const msg = String((e && e.message) || e);
+    if (/ETIMEDOUT|timeout/i.test(msg)) return { ok: false, error: '超时：对方不在线或不在同一网络' };
+    if (/ECONNREFUSED/.test(msg)) return { ok: false, error: '对方端口没开（开关没开或被防火墙拦）' };
+    if (/bad-code/.test(msg)) return { ok: false, error: 'bad-code' };
+    return { ok: false, error: msg.slice(0, 60) };
+  }
+});
+ipcMain.handle('lan-peers', () => peersLoad().map((p) => ({ id: p.id, name: p.name, ip: p.ip, port: p.port, lastSeen: p.lastSeen })));
+ipcMain.handle('lan-unpair', async (event, id) => {
+  const peers = peersLoad();
+  const peer = peers.find((x) => x.id === id);
+  if (peer) {
+    /* 尽力通知对方删记录，失败了也照样删本地的 */
+    try { await lanRequest(peer.ip, peer.port, 'POST', '/fcp/unpair', { token: peer.token }, peer.token, 3000); } catch (e) {}
+  }
+  peersSave(peers.filter((x) => x.id !== id));
+  return peersLoad().map((p) => ({ id: p.id, name: p.name, ip: p.ip, port: p.port, lastSeen: p.lastSeen }));
+});
+ipcMain.handle('lan-state', async (event, p) => {
+  const peer = peersLoad().find((x) => x.id === (p && p.id));
+  if (!peer) throw new Error('设备不存在');
+  const r = await lanRequest(peer.ip, peer.port, 'GET', '/fcp/state', null, peer.token, 5000);
+  return { state: (r && r.state) || null };
+});
+ipcMain.handle('lan-send', async (event, p) => {
+  const peer = peersLoad().find((x) => x.id === (p && p.id));
+  if (!peer) throw new Error('设备不存在');
+  const r = await lanRequest(peer.ip, peer.port, 'POST', '/fcp/action', (p && p.action) || {}, peer.token, 6000);
+  return r || { ok: true };
 });
 
 

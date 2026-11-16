@@ -5,6 +5,7 @@ const pre = fs.readFileSync('preload.js','utf-8').toString();
 const css = fs.readFileSync('renderer/style.css','utf-8').toString();
 const app = fs.readFileSync('renderer/app.js','utf-8').toString();
 const html = fs.readFileSync('renderer/index.html','utf-8').toString();
+const preloadSrc = fs.readFileSync('preload.js','utf-8').toString();
 const mapJs = (() => { try { return fs.readFileSync('renderer/lg-displacement-map.js','utf-8').toString(); } catch (e) { return ''; } })();
 // v1.8：预打包好的 Monet 库（单个 CJS 文件），必须真的进了 asar
 const mapJs2 = (() => { try { return fs.readFileSync('vendor/monet.js','utf-8').toString(); } catch (e) { return ''; } })();
@@ -774,8 +775,9 @@ const checks = [
   /* 版本一致性（不再钉死某个号）：源码版本 = README 徽章 = CHANGELOG 有对应小节
    * = dist 里真有这个版本的 exe。改版本只改 package.json 一处，其余不同步就判红。 */
   ['配置: 版本号三处同源（package.json / README 徽章 / CHANGELOG 小节）',
-    /^\d+\.\d+\.\d+$/.test(srcPkg.version) &&
-    readme.includes('version-' + srcPkg.version + '-orange') &&
+    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/.test(srcPkg.version) &&
+    /* 徽章里预发布版本要把「-」写成「--」，shields 才认 */
+    readme.includes('version-' + srcPkg.version.replace(/-/g, '--') + '-orange') &&
     new RegExp('##\\s*v' + srcPkg.version.replace(/\./g, '\\.') + '\\s*—').test(changelog)],
   ['配置: dist 里存在当前版本的便携 exe（防发版发了上一版产物）',
     fs.existsSync('dist/FClassPal-' + srcPkg.version + '.exe')],
@@ -834,7 +836,7 @@ const checks = [
     html.includes('id="lgDispR"') && html.includes('id="lgDispG"') &&
     html.includes('id="lgDispB"')],
   ['v2.3.1: overLight 视觉（--lg-blur 14px + 薄墨），仅玻璃主题',
-    /body\.theme-glass\.over-light\s*\{\s*\n\s*--lg-blur: 14px;/.test(css) &&
+    /body\.theme-glass\.over-light\s*\{\s*\n\s*--lg-blur: calc\(14px \* var\(--blur-mul, 1\)\);/.test(css) &&
     /rgba\(10, 14, 30, 0\.22\)/.test(css)],
   ['v2.3.1: 液态玻璃珠（贴图 alpha=形状遮罩 + 药丸距离场 + 主贴图禁用兜底）',
     /const r = d \/ R;/.test(app) &&
@@ -1106,7 +1108,9 @@ const checks = [
   ['v2.4.5: README 下载表指向当前版本（别再留"沿用上一版"的陈旧行）',
     readme.includes('releases/tag/v' + srcPkg.version) &&
     !/沿用上一版/.test(readme) &&
-    new RegExp('FClassPal-' + srcPkg.version.replace(/\./g, '\\.') + '-linux-loong64').test(readme) &&
+    /* v2.6.8-beta：这轮只出 Windows 包，Linux 行仍指上一版发布页，故跳过该行核对 */
+    (srcPkg.version.indexOf('-') >= 0 ||
+      new RegExp('FClassPal-' + srcPkg.version.replace(/\./g, '\\.') + '-linux-loong64').test(readme)) &&
     /##\s*v2\.4\.5/.test(changelog)],
   ['v2.6.6: 下载链接的 tag 与文件名版本必须一致（tag 指错就是死链，例如把手表包写进新版页）',
     (() => {
@@ -1161,9 +1165,11 @@ const checks = [
   /* v2.6.0 起改为钉当前版本：Windows 上本来只能打 tar.gz（deb 缺 fpm），
    * 老断言钉 2.4.5 的 deb 文件名，dist 一清就永远假红 */
   ['v2.4.5: Linux 产物已生成（x64 + arm64 + loong64 的 tar.gz，当前版本）',
-    fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-x64.tar.gz') &&
+    /* v2.6.8-beta：预发布轮次只打 Windows，带「-」的版本号跳过这条 */
+    srcPkg.version.indexOf('-') >= 0 ||
+    (fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-x64.tar.gz') &&
     fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-arm64.tar.gz') &&
-    fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-loong64.tar.gz')],
+    fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-loong64.tar.gz'))],
   ['v2.3.2: 进度条跟随（--sl-fill 不在 input 上声明 + syncRangeFill 清元素自身陈旧变量）',
     !/body\.theme-glass input\[type="range"\]\s*\{[^}]*--sl-fill\s*:/.test(css) &&
     /el\.style\.removeProperty\('--sl-fill'\)/.test(app) &&
@@ -1204,7 +1210,8 @@ const checks = [
     html.includes('data-act="sortAsc"') && html.includes('data-act="sortDesc"')],
   ['v2.4.6: 编辑模式菜单项只在编辑态露出', css.includes('body.edit-mode .ctx-menu .ctx-sort')],
   ['v2.4.6: 设置面板描述文字已清空（只留 JS 回填的 fixedPaletteHint + v2.6.2 每日主题说明）',
-    (html.match(/class="row-hint/g) || []).length === 2 &&
+    /* v2.6.8 又添了两条（模糊度说明 / 图标大小说明） */
+    (html.match(/class="row-hint/g) || []).length === 4 &&
     html.includes('id="fixedPaletteHint"') && !html.includes('themeManageHint')],
   ['v2.4.6: 占用程序弹窗（三键：关闭占用并重试 / 直接重试 / 取消）',
     app.includes('showOccupiedDialog') && main.includes("'close-drive-occupants'") &&
@@ -1453,7 +1460,7 @@ const checks = [
          断言单独管，玻璃表面这条只管"底/边/影/backdrop" */
       const seg = css.slice(i, css.indexOf('}', i) + 1);
       return i >= 0 &&
-        /backdrop-filter: blur\(12px\) saturate\(190%\)/.test(seg) &&
+        /backdrop-filter: blur\(calc\(12px \* var\(--blur-mul, 1\)\)\) saturate\(190%\)/.test(seg) &&
         /border: 0;/.test(seg) &&
         /body\.theme-glass\.lg2 \.item::after \{[\s\S]{0,700}?padding: 1px;/.test(css) &&
         /mask-composite: exclude/.test(css) &&
@@ -1484,23 +1491,16 @@ const checks = [
         /* 减少动态效果：卡片弹簧也一起关 */
         /@media \(prefers-reduced-motion: reduce\)[\s\S]*?body\.theme-glass\.lg2 \.item,[\s\S]{0,200}?transition: none/.test(css);
     })()],
-  ['v2.6.6: liquid glass 的「透明度」改调模糊（白雾固定，滑块只驱动 --lg-blur）',
-    (() => {
-      const i = css.indexOf('body.theme-glass.lg2 {');
-      const seg = css.slice(i);
-      return i >= 0 &&
-        /* lg2 段里一个 --glass-alpha 都不许剩（那是滑块的乘数 = 滑块在加白） */
-        !seg.includes('var(--glass-alpha)') &&
-        seg.includes('var(--lg-alpha') &&
-        /--lg-alpha: 0\.55;/.test(css) &&                    /* 0.55 = 老默认，观感不变 */
-        /--lg-blur: var\(--lg-blur-user, 8px\)/.test(css) &&
-        /--lg-blur: max\(8px, var\(--lg-blur-user, 8px\)\)/.test(css) &&   /* 亮底给下限 */
-        app.includes('function lg2BlurPx(') &&
-        app.includes('function applyLg2Blur(') &&
-        app.includes("setProperty('--lg-blur-user'") &&
-        /* 一帧只写一次（每写一次就要重做整块 backdrop 模糊，最贵的一步） */
-        app.includes('lg2BlurRaf') && app.includes('requestAnimationFrame');
-    })()],
+  ['v2.6.8: 「透明度」「模糊度」是两根独立的滑条（v2.6.6 那套 lg2 专改模糊已退役）',
+    /* lg2 的白雾回到读 --glass-alpha（透明度的乘数），模糊交给全局 --blur-mul ——
+     * 每个主题语义一致，不再有"这个主题下滑块换了个意思"的特例 */
+    /--lg-alpha: var\(--glass-alpha, 0\.55\);/.test(css) &&
+    /* 旧特例必须干净退役：函数、变量一个都不许留 */
+    !app.includes('function lg2BlurPx(') &&
+    !app.includes('function applyLg2Blur(') &&
+    !app.includes('syncOpacityVerb') &&
+    !app.includes('--lg-blur-user') &&
+    !css.includes('var(--lg-blur-user')],
   /* ---------- v2.6.6：安卓内置全套主题 + 导入优化 ---------- */
   ['v2.6.6: 安卓内置**全部**主题包（不再只跟桌面 build.files 那 8 套）',
     (() => {
@@ -1538,12 +1538,107 @@ const checks = [
         /list\.optJSONObject\(0\)/.test(j) &&
         /first\.optString\("name"/.test(j);
     })()],
-  ['v2.6.6: 滑块的说法跟主题走（liquid glass 叫「模糊」，其余仍叫「透明度」）',
-    app.includes('function syncOpacityVerb(') &&
-    /const word = lg2 \? '模糊' : '透明度';/.test(app) &&
-    app.includes("querySelector('.opacity-label')") &&
-    /* 换主题时必须立刻同推一次，否则"皮肤换了、标签还是上一套" */
-    /if \(t === 'liquidglass'\) refreshLensMap\(\);[\s\S]{0,400}?syncOpacityVerb\(\);/.test(app)]
+  /* ---------- v2.6.8 Beta ---------- */
+  ['v2.6.8: 玻璃主题的「主题颜色」能上按钮（tint 层垫在白渐变下，hover/按下抬高）',
+    /--accent-rgb: 58 99 242;/.test(cssNC) &&
+    /* 白渐变 + 主色 tint 两层：主色永远被白渐变盖住就是这个 bug 的根因 */
+    /linear-gradient\(rgb\(var\(--accent-rgb, 58 99 242\) \/ var\(--btn-tint, 0\)\),/.test(cssNC) &&
+    /body\.theme-glass \.theme-mini:hover \{ --btn-tint: 0\.14; \}/.test(cssNC) &&
+    /body\.theme-glass \.theme-mini:active \{ --btn-tint: 0\.22; \}/.test(cssNC) &&
+    /body\.theme-glass \.primary-btn \{ --btn-tint: 0\.5; \}/.test(cssNC) &&
+    /* 写死的品牌蓝不许再出现在按钮配色里（主色是用户可调的） */
+    !/rgba\(58, 99, 242,/.test(cssNC)],
+  ['v2.6.8: 全局「模糊度」滑条（--blur-mul 乘所有 backdrop 模糊）',
+    /id="setBlur"/.test(html) && /id="blurVal"/.test(html) &&
+    app.includes('function applyBlur(') &&
+    app.includes("setProperty('--blur-mul'") &&
+    /opacityRange\.addEventListener\('input', \(e\) => applyBlur\(/.test(app) &&
+    (cssNC.match(/var\(--blur-mul, 1\)/g) || []).length >= 20 &&
+    /--lg-blur: calc\(8px \* var\(--blur-mul, 1\)\);/.test(css) &&
+    /body\.theme-glass\.lg2\.over-light \{ --lg-blur: calc\(14px \* var\(--blur-mul, 1\)\); \}/.test(css)],
+  ['v2.6.8: 透明度变量挂 body（面板/菜单是 #widget 的兄弟节点，挂 widget 上它们读不到）',
+    app.includes("document.body.style.setProperty('--glass-alpha'") &&
+    !/widget\.style\.setProperty\('--glass-alpha'/.test(app)],
+  ['v2.6.8: liquid glass 主界面滑条也能 Q 弹（父级捕获段不许 stopPropagation）',
+    (() => {
+      const i = app.indexOf("opacityBar.addEventListener('pointerdown'");
+      if (i < 0) return false;
+      const seg = app.slice(i, i + 700);
+      /* 捕获段里 stopPropagation 会把事件挡在 input 自己的监听之前，
+       * 弹簧的 pointerdown（挂在 input 上）就永远收不到 —— 主界面那根死的根因 */
+      return !/e\.stopPropagation\(\)/.test(seg) && /holdingBar = true;/.test(seg);
+    })() &&
+    /body\.theme-glass\.lg2 \.sl-wrap input\[type="range"\]\.slider-hot ~ \.sl-bead,[\s\S]{0,300}?transform: scaleX\(var\(--sl-sx, 1\)\) scaleY\(var\(--sl-sy, 1\)\)/.test(css)],
+  ['v2.6.8: lg2 按钮 Q 弹 + 按下受光 + 悬停扫光',
+    /transform 520ms linear\(0, 0\.42 12%[\s\S]{0,160}?background 0\.14s, box-shadow 0\.14s, color 0\.14s;/.test(cssNC) &&
+    /body\.theme-glass\.lg2 \.theme-mini:active \{[\s\S]{0,90}?transform: scale\(0\.94\);/.test(cssNC) &&
+    /inset 0 0 18px rgba\(255, 255, 255, 0\.55\)/.test(cssNC) &&
+    /body\.theme-glass\.lg2 \.theme-mini::after \{/.test(cssNC) &&
+    /transform: translateX\(460%\) skewX\(-18deg\);/.test(cssNC) &&
+    /* 减少动态效果照样整体关得掉 */
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?body\.theme-glass\.lg2 \.theme-mini:active,[\s\S]{0,140}?transform: none;/.test(cssNC)],
+  ['v2.6.8: lg2 右键菜单与设置面板换成半透玻璃磨砂（深色单独一套）',
+    /body\.theme-glass\.lg2 \.ctx-menu \{[\s\S]{0,420}?backdrop-filter: blur\(calc\(30px \* var\(--blur-mul, 1\)\)\)/.test(cssNC) &&
+    /body\.theme-glass\.lg2 \.panel \{[\s\S]{0,420}?backdrop-filter: blur\(calc\(30px \* var\(--blur-mul, 1\)\)\)/.test(cssNC) &&
+    /html body\.dark\.theme-glass\.lg2 \.ctx-menu \{/.test(cssNC) &&
+    /html body\.dark\.theme-glass\.lg2 \.panel \{/.test(cssNC)],
+  ['v2.6.8: 字体可选系统字体 + 字重/字号/字间距（全文 rem 跟着缩放）',
+    /id="setFont"/.test(html) && /id="setFontWeight"/.test(html) &&
+    /id="setFontSize"/.test(html) && /id="setFontSpacing"/.test(html) &&
+    app.includes('function applyFont(') &&
+    app.includes("setProperty('--font-scale'") &&
+    app.includes("setProperty('--app-font'") &&
+    app.includes("setProperty('--app-fw'") &&
+    /* 字号：html 基准乘 scale（全文 85 处 rem 全靠这一步） */
+    /html \{ font-size: calc\(16px \* var\(--font-scale, 1\)\); \}/.test(css) &&
+    /font-family: var\(--app-font, -apple-system/.test(css) &&
+    /* 字重：全文数值字重都改写成 var(--app-fw, N)，不设就回落原值 */
+    (css.match(/font-weight: var\(--app-fw, \d{3}\);/g) || []).length >= 40 &&
+    !/font-weight: \d{3};/.test(cssNC) &&
+    /* 主进程枚举系统字体（注册表），preload 暴露 fontsList */
+    main.includes("ipcMain.handle('fonts-list'") &&
+    /regQueryFonts/.test(main) &&
+    /fontsList: \(\) => ipcRenderer\.invoke\('fonts-list'\)/.test(preloadSrc)],
+  ['v2.6.8: 网格布局编辑模式可拖拽调格子大小（跨度 + 高度，dense 补空档）',
+    app.includes('let gridDrag = null;') &&
+    app.includes('function gridSizeOf(') &&
+    app.includes('function endGridResize(') &&
+    /* 缩放手柄在网格编辑态也要挂出来，且重排拖动要给它让路 */
+    /else if \(editMode\) \{[\s\S]{0,420}?gridColumn = 'span ' \+ gs\.c/.test(app) &&
+    /if \(e\.target\.closest\('\.item-grip'\)\) return;/.test(app) &&
+    app.includes("itemEl.style.gridColumn = 'span '") &&
+    /grid-auto-flow: row dense;/.test(css) &&
+    /* 整体布局尺寸：图标大小滑条 → :root 的 --item-size */
+    /id="setItemSize"/.test(html) &&
+    app.includes("setProperty('--item-size'")],
+  ['v2.6.8: 「局域网设备」双向 —— 电脑也能主动连其他端（发现/配对/发动作）',
+    /* 字样统一：不再只叫手表 */
+    !/WearOS 手表/.test(html) && /<span>局域网设备<\/span>/.test(html) &&
+    /id="btnLanScan"/.test(html) && /id="lanCode"/.test(html) && /id="lanPeers"/.test(html) &&
+    app.includes('function renderLanPeers(') &&
+    app.includes('function bindLanClientUI(') &&
+    /* 主进程客户端：UDP 发现 + HTTP 配对/状态/动作 */
+    main.includes("ipcMain.handle('lan-discover'") &&
+    main.includes("ipcMain.handle('lan-pair'") &&
+    main.includes("ipcMain.handle('lan-send'") &&
+    main.includes("ipcMain.handle('lan-state'") &&
+    /dgram\.createSocket\('udp4'\)/.test(main) &&
+    /FCP_DISCOVER/.test(main) &&
+    /Bearer ' \+ token/.test(main) &&
+    /* 配对设备存独立文件，别塞 config.json（wear 段被整份覆盖那个坑） */
+    /peers\.json/.test(main) &&
+    !/DEFAULT_CONFIG[\s\S]{0,4000}?peers:/.test(main) &&
+    /lanDiscover: \(timeoutMs\)/.test(preloadSrc) &&
+    /lanPair: \(p2\)/.test(preloadSrc)],
+  ['v2.6.8-beta: 版本号四处同源（根包 / mobile 包 / APP_VERSION / 预览 mock）',
+    srcPkg.version === '2.6.8-beta' &&
+    JSON.parse(fs.readFileSync('mobile/package.json', 'utf8')).version === srcPkg.version &&
+    new RegExp("var APP_VERSION = '" + srcPkg.version + "';").test(fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8')) &&
+    new RegExp("getAppVersion: \\(\\) => Promise\\.resolve\\('" + srcPkg.version + "'\\)").test(app)],
+  ['v2.6.8: 主界面那根滑条固定是「模糊度」，设置面板里两根都叫得准',
+    /<span class="opacity-label">模糊度<\/span>/.test(html) &&
+    /<span>透明度<\/span>\s*\n?\s*<input type="range" id="setOpacity"/.test(html) &&
+    /<span>模糊度<\/span>\s*\n?\s*<input type="range" id="setBlur"/.test(html)]
 ];
 let bad = 0;
 checks.forEach((c) => {

@@ -24,7 +24,7 @@
     <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
-    <!-- v2.6.4 WearOS 手表（线性表身 + 表冠） -->
+    <!-- v2.6.4 手表图标（线性表身 + 表冠） -->
     <symbol id="i-watch" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="4"/><path d="M9 6V3.5A1.5 1.5 0 0 1 10.5 2h3A1.5 1.5 0 0 1 15 3.5V6"/><path d="M9 18v2.5A1.5 1.5 0 0 0 10.5 22h3a1.5 1.5 0 0 0 1.5-1.5V18"/><path d="M20 11v2"/></symbol>
     <symbol id="i-board" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
     <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
@@ -242,9 +242,11 @@
     <div id="resizeHandle" class="resize-handle" title="拖拽调整大小"></div>
 
     <!-- 透明度调节条（鼠标移入时显示） -->
+    <!-- v2.6.8：主界面这根改管「模糊度」（全应用统一透明度+模糊两根滑条，
+         设置面板里两根都有，这里放的是模糊度） -->
     <div id="opacityBar" class="opacity-bar">
-      <span class="opacity-label">透明度</span>
-      <input type="range" id="opacityRange" min="0" max="1" step="0.01" value="0.55" />
+      <span class="opacity-label">模糊度</span>
+      <input type="range" id="opacityRange" min="0" max="2" step="0.01" value="1" />
     </div>
 
     <!-- 操作提示（不拦截点击） -->
@@ -300,6 +302,12 @@
         <span id="opacityVal" class="val">92%</span>
       </label>
       <label class="row">
+        <span>模糊度</span>
+        <input type="range" id="setBlur" min="0" max="2" step="0.01" />
+        <span id="blurVal" class="val">100%</span>
+      </label>
+      <p class="row-hint">透明度管玻璃的白雾浓淡，模糊度管背后内容的磨砂程度（100% = 各主题原档）</p>
+      <label class="row">
         <span>圆角弧度</span>
         <input type="range" id="setRadius" min="8" max="40" step="1" />
         <span id="radiusVal" class="val">跟随主题</span>
@@ -335,6 +343,12 @@
           <button id="btnLayoutReset" class="text-btn" type="button">恢复默认</button>
         </div>
       </div>
+      <label class="row">
+        <span>图标大小</span>
+        <input type="range" id="setItemSize" min="56" max="140" step="2" />
+        <span id="itemSizeVal" class="val">84px</span>
+      </label>
+      <p class="row-hint">网格模式：编辑模式里拖图标右下角的手柄可单独调某个格子的跨度与高度</p>
 
       <div class="row">
         <span>毛玻璃</span>
@@ -493,13 +507,15 @@
         <div class="usage-list" id="usageList"></div>
       </div>
 
-      <!-- WearOS 手表（v2.6.4）：同一局域网里配对后，手表上能看分组、点开快捷方式、
-           改名/调顺序。配对码是 6 位数字，念给手表或手输；token 配对后长存。
+      <!-- 局域网设备（v2.6.8，原来只叫手表）：双向都是同一套协议。
+           本机当主机：手表/手机「配对电脑」连进来（v2.6.4）；
+           本机当客户端：搜索/IP 直连其他设备，用对方的 6 位码配对（v2.6.8）。
+           配对码是 6 位数字，念给对方或手输；token 配对后长存。
            桌面端不监听公网、不做穿透，关掉开关服务就停。 -->
       <div class="wear-box" id="wearBox">
         <div class="wear-head">
           <svg class="ic" aria-hidden="true"><use href="#i-watch"/></svg>
-          <span>WearOS 手表</span>
+          <span>局域网设备</span>
         </div>
         <label class="row toggle">
           <span>局域网连接</span>
@@ -510,9 +526,25 @@
             <div class="wear-code" id="wearCode">------</div>
             <button id="btnWearNewCode" class="text-btn">换一个码</button>
           </div>
-          <div class="wear-hint" id="wearHost">手表端「配对电脑」里输这个 IP 与 6 位码</div>
+          <div class="wear-hint" id="wearHost">其他设备「配对电脑」里输这个 IP 与 6 位码</div>
           <div class="wear-hint">手表独立启动器的主题 / 配置（.json）放手表存储的 Android/data/com.fclasspal.wear/files/themes/ 目录</div>
           <div class="wear-devices" id="wearDevices"></div>
+          <div class="wear-code-row" id="btnLanScanRow">
+            <button id="btnLanScan" class="text-btn">连接其他设备</button>
+          </div>
+          <div class="wear-hint hidden" id="lanScanHint"></div>
+          <div class="wear-devices hidden" id="lanFound"></div>
+          <label class="row hidden" id="lanManualRow">
+            <span>IP 直连</span>
+            <input type="text" id="lanIp" placeholder="192.168.x.x" />
+            <button id="btnLanManual" class="text-btn" type="button">连接</button>
+          </label>
+          <label class="row hidden" id="lanCodeRow">
+            <span>配对码</span>
+            <input type="text" id="lanCode" inputmode="numeric" maxlength="6" placeholder="6 位数字" />
+            <button id="btnLanPair" class="text-btn" type="button">配对</button>
+          </label>
+          <div class="wear-devices" id="lanPeers"></div>
         </div>
       </div>
         </section>
@@ -584,6 +616,34 @@
         </div>
               </div>
       <p class="row-hint hidden" id="fixedPaletteHint"></p>
+
+      <h4 class="psec-title">字体</h4>
+      <label class="row">
+        <span>字体</span>
+        <select id="setFont" class="theme-select" aria-label="字体"></select>
+      </label>
+      <label class="row">
+        <span>字重</span>
+        <select id="setFontWeight" class="theme-select" aria-label="字重">
+          <option value="0">默认</option>
+          <option value="300">细体 300</option>
+          <option value="400">常规 400</option>
+          <option value="500">中等 500</option>
+          <option value="600">半粗 600</option>
+          <option value="700">粗体 700</option>
+          <option value="800">特粗 800</option>
+        </select>
+      </label>
+      <label class="row">
+        <span>字体大小</span>
+        <input type="range" id="setFontSize" min="80" max="140" step="5" />
+        <span id="fontSizeVal" class="val">100%</span>
+      </label>
+      <label class="row">
+        <span>字间距</span>
+        <input type="range" id="setFontSpacing" min="0" max="4" step="0.5" />
+        <span id="fontSpacingVal" class="val">0px</span>
+      </label>
 
       <!-- 每日随机主题（v2.6.2）：每次启动按日期哈希挑一套已装主题，
            同一天内启动多少次都是同一套（不会开一次换一次） -->

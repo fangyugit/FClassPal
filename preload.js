@@ -78,6 +78,14 @@ contextBridge.exposeInMainWorld('widgetAPI', {
   wearUnpair: (id) => ipcRenderer.invoke('wear-unpair', id),
   wearPushState: (state) => ipcRenderer.send('wear-push-state', state),
   wearActionResult: (payload) => ipcRenderer.send('wear-action-result', payload),
+  /* v2.6.8：全局字体枚举 + 电脑当客户端的局域网设备（发现/配对/动作） */
+  fontsList: () => ipcRenderer.invoke('fonts-list'),
+  lanDiscover: (timeoutMs) => ipcRenderer.invoke('lan-discover', timeoutMs),
+  lanPair: (p2) => ipcRenderer.invoke('lan-pair', p2),
+  lanPeers: () => ipcRenderer.invoke('lan-peers'),
+  lanState: (p2) => ipcRenderer.invoke('lan-state', p2),
+  lanUnpair: (id) => ipcRenderer.invoke('lan-unpair', id),
+  lanSend: (p2) => ipcRenderer.invoke('lan-send', p2),
   onWearAction: (callback) => {
     const handler = (_e, action) => callback(action);
     ipcRenderer.on('wear-action', handler);

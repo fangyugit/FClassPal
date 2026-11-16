@@ -151,6 +151,9 @@ const API = window.widgetAPI || (function () {
     /* 明暗模式 + 自定义背景（v2.4.0），与 main.js 的 DEFAULT_CONFIG 对齐 */
     appearance: 'light',
     background: { enabled: false, path: '', blur: 0, mask: 0, scale: 100, offsetX: 50, offsetY: 50, fit: 'cover' },
+    /* v2.6.8：模糊度 / 图标大小 / 字体，与 main.js 的 DEFAULT_CONFIG 对齐 */
+    blur: 1, itemSize: 84,
+    font: { family: '', weight: 0, size: 100, spacing: 0 },
     /* 图标外观（v2.4.2 / v2.4.3 / v2.4.4），与 main.js 的 DEFAULT_CONFIG 对齐 */
     iconFit: 'cover', iconBorder: 'glass',
     iconShape: 'auto', iconRadius: 22, iconRingColor: '', iconMono: false,
@@ -167,7 +170,7 @@ const API = window.widgetAPI || (function () {
       cfg = c; localStorage.setItem(KEY, JSON.stringify(c));
       // 透明度只驱动"玻璃表面层"（.glass-veil 的 --glass-alpha），
       // 前景文字/图标始终不透明、可读。
-      widget.style.setProperty('--glass-alpha', c.opacity ?? 0.55);
+      document.body.style.setProperty('--glass-alpha', c.opacity ?? 0.55);
       return true;
     },
     async openTarget(it) {
@@ -184,7 +187,7 @@ const API = window.widgetAPI || (function () {
     getEnv: () => Promise.resolve({ transparent: true, platform: 'browser', release: '0' }),
     // 关于界面：预览模式没有主进程，版本号给个占位；链接用新窗口模拟
     /* 预览模式的版本号：与 package.json 保持一致（_check.js 有同源断言，别让它漂） */
-    getAppVersion: () => Promise.resolve('2.6.6'),
+    getAppVersion: () => Promise.resolve('2.6.8-beta'),
     openExternal: (url) => { window.open(url, '_blank'); return Promise.resolve(true); },
     // 预览模式取不到真实壁纸：返回 null，让 #envLayer 用内置渐变基底，
     // MD3 则退回 CSS 里的 baseline 配色
@@ -261,7 +264,7 @@ const API = window.widgetAPI || (function () {
       widget.style.top = b.y + 'px';
       widget.style.width = b.width + 'px';
       widget.style.height = b.height + 'px';
-      widget.style.setProperty('--glass-alpha', cfg ? cfg.opacity : 0.55);
+      document.body.style.setProperty('--glass-alpha', cfg ? cfg.opacity : 0.55);
       return Promise.resolve(true);
     }
   };
@@ -389,11 +392,10 @@ function applyTheme(theme) {
    * 放在 applyTheme 里而不是只在启动时做，是因为用户很可能直接在设置里换主题，
    * 那时窗口尺寸早就定好了；refreshLensMap 自带节流，重复调用无副作用。 */
   if (t === 'liquidglass') refreshLensMap();
-  /* v2.6.6：模糊档与滑块的说法都跟主题走 —— liquid glass 下这个滑块叫「模糊」
-   * 且驱动 backdrop 半径，别的主题恢复「透明度」的老语义。
-   * 换主题时必须立即同推一次，否则会出现"皮肤换了、标签/模糊还是上一套"。 */
-  applyLg2Blur(config && typeof config.opacity === 'number' ? config.opacity : 0.55);
-  syncOpacityVerb();
+  /* v2.6.8：「透明度」「模糊度」语义全主题统一（两根滑条各管各的），变量都写在
+   * body 上、与主题无关，换主题不再需要重贴标签或重算模糊。这里只兜一次底：
+   * 老配置没有 blur 字段时补默认档（写进 config 但不必急着 saveConfig）。 */
+  if (typeof (config && config.blur) !== 'number') { if (config) config.blur = 1; applyBlur(1); }
   syncThemeSelect();          /* 老样式下拉：跟着当前主题显示名字与色点 */
 }
 
@@ -1002,6 +1004,16 @@ function render() {
         grip.className = 'item-grip';
         grip.title = '拖动调整大小';
         itemEl.appendChild(grip);
+      } else if (editMode) {
+        /* v2.6.8：网格模式编辑态也挂手柄 —— 拖它调这个格子的跨度/高度；
+         * 已存的跨度在这里应用（grid-column: span N + 内联 min-height） */
+        const gs = gridSizeOf(layoutKey(it));
+        if (gs && gs.c > 1) itemEl.style.gridColumn = 'span ' + gs.c;
+        if (gs && gs.mh) itemEl.style.minHeight = gs.mh + 'px';
+        const grip = document.createElement('div');
+        grip.className = 'item-grip';
+        grip.title = '拖动调整大小';
+        itemEl.appendChild(grip);
       }
       itemEl.addEventListener('click', () => {
         if (itemDragSuppressed) return;          // 刚拖完，这次 click 是拖拽的收尾
@@ -1048,6 +1060,8 @@ function freeLayoutOf(it) {
 function ensureLayoutConfig() {
   if (!config.layout || typeof config.layout !== 'object') config.layout = { mode: 'grid', items: {} };
   if (!config.layout.items || typeof config.layout.items !== 'object') config.layout.items = {};
+  /* v2.6.8：网格模式的单格跨度/高度（编辑模式拖拽写入） */
+  if (!config.layout.gridSizes || typeof config.layout.gridSizes !== 'object') config.layout.gridSizes = {};
 }
 
 /** 给没有坐标的图标按顺序补默认格位（已摆过的位置原样保留，不挪动）。 */
@@ -1203,6 +1217,80 @@ groupsEl.addEventListener('pointercancel', (e) => endFreeDrag(e, true));
 document.addEventListener('pointerup', (e) => endFreeDrag(e, false), true);
 document.addEventListener('pointercancel', (e) => endFreeDrag(e, true), true);
 
+/* ---------- 网格布局：编辑模式拖拽调格子大小（v2.6.8） ----------
+ * 网格模式的"调大小"是改跨度：横向拖 = 占几列（1~3 列），纵向拖 = 最小高度。
+ * 数据存 config.layout.gridSizes[key] = { c, mh }；渲染时写成
+ * grid-column: span N 与内联 min-height，dense 自动流动补空档。
+ * 手柄命中/捕获的套路与 freeDrag 完全同款（触摸先抓指针，别等 pointercancel）。 */
+let gridDrag = null;
+function gridSizeOf(key) {
+  return (config.layout && config.layout.gridSizes) ? config.layout.gridSizes[key] || null : null;
+}
+groupsEl.addEventListener('pointerdown', (e) => {
+  if (layoutMode() !== 'grid' || !editMode || gridDrag || freeDrag || itemDrag) return;
+  if (e.button !== undefined && e.button !== 0) return;
+  const grip = e.target.closest ? e.target.closest('.item-grip') : null;
+  if (!grip) return;
+  const card = grip.closest('.item');
+  if (!card || card.classList.contains('add-card')) return;
+  const gi = +card.dataset.gi, ii = +card.dataset.ii;
+  const it = config.groups[gi] && config.groups[gi].items[ii];
+  if (!it) return;
+  const key = layoutKey(it);
+  gridDrag = {
+    el: card, key: key, pointerId: e.pointerId,
+    startX: e.clientX, startY: e.clientY, started: false,
+    grid: card.closest('.item-grid'),
+    origW: card.offsetWidth, origH: card.offsetHeight,
+    orig: Object.assign({ c: 1, mh: 0 }, gridSizeOf(key) || {})
+  };
+  try { grip.setPointerCapture(e.pointerId); } catch (err) { /* 老内核没有就算了 */ }
+});
+const onGridResizeMove = (e) => {
+  if (!gridDrag || e.pointerId !== gridDrag.pointerId) return;
+  const d = gridDrag;
+  if (!d.started) {
+    if (Math.abs(e.clientX - d.startX) < 4 && Math.abs(e.clientY - d.startY) < 4) return;
+    d.started = true;
+    d.el.classList.add('free-resizing');
+  }
+  const dx = e.clientX - d.startX, dy = e.clientY - d.startY;
+  const cols = getComputedStyle(d.grid).gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+  const cellW = (d.grid.clientWidth - 10 * (cols - 1)) / cols;
+  const span = Math.min(3, Math.max(1, Math.round((d.origW + dx + 10) / (cellW + 10))));
+  d.span = span;
+  d.el.style.gridColumn = span > 1 ? 'span ' + span : '';
+  const mh = Math.round(Math.max(d.orig.mh || d.origH, d.origH) + dy);
+  d.mh = Math.min(360, Math.max(0, mh));
+  d.el.style.minHeight = (d.mh > d.origH) ? d.mh + 'px' : '';
+};
+document.addEventListener('pointermove', onGridResizeMove, true);
+function endGridResize(e, cancelled) {
+  if (!gridDrag || (e.pointerId !== undefined && e.pointerId !== gridDrag.pointerId)) return;
+  const d = gridDrag;
+  gridDrag = null;
+  try { if (d.el.hasPointerCapture && d.el.hasPointerCapture(d.pointerId)) d.el.releasePointerCapture(d.pointerId); } catch (err) {}
+  if (!d.started) return;
+  d.el.classList.remove('free-resizing');
+  d.el.style.gridColumn = '';
+  d.el.style.minHeight = '';
+  itemDragSuppressed = true;   // 拖完吞掉紧跟的 click，别误开编辑弹窗
+  setTimeout(() => { itemDragSuppressed = false; }, 120);
+  if (cancelled) return;
+  ensureLayoutConfig();
+  const cur = Object.assign({}, d.orig);
+  cur.c = (d.span && d.span > 1) ? d.span : 1;
+  cur.mh = (d.mh && d.mh > d.origH) ? d.mh : 0;
+  if (cur.c === 1 && !cur.mh) delete config.layout.gridSizes[d.key];
+  else config.layout.gridSizes[d.key] = cur;
+  persist();
+  render();   // 落盘后按新跨度重排（行内样式在 render 里重新应用）
+}
+groupsEl.addEventListener('pointerup', (e) => endGridResize(e, false));
+groupsEl.addEventListener('pointercancel', (e) => endGridResize(e, true));
+document.addEventListener('pointerup', (e) => endGridResize(e, false), true);
+document.addEventListener('pointercancel', (e) => endGridResize(e, true), true);
+
 /* ---------- 布局设置（设置面板） ---------- */
 function syncLayoutSeg() {
   document.querySelectorAll('#layoutSeg .seg-btn').forEach((b) => {
@@ -1244,6 +1332,7 @@ $('btnLayoutReset').addEventListener('click', () => {
   ensureLayoutConfig();
   config.layout.mode = 'grid';
   config.layout.items = {};
+  config.layout.gridSizes = {};
   persist();
   render();
   syncLayoutSeg();
@@ -1324,6 +1413,7 @@ groupsEl.addEventListener('pointerdown', (e) => {
   const card = e.target.closest ? e.target.closest('.item') : null;
   if (!card || card.classList.contains('add-card')) return;
   if (e.target.closest('.del-btn')) return;              // 删除按钮照常点
+  if (e.target.closest('.item-grip')) return;            // v2.6.8：缩放手柄走 gridResize 那套
   itemDrag = {
     gi: +card.dataset.gi, ii: +card.dataset.ii,
     pointerId: e.pointerId,
@@ -3007,7 +3097,11 @@ opacityBar.addEventListener('pointerdown', (e) => {
   holdingBar = true;
   clearTimeout(hideTimer);
   opacityBar.classList.add('show');
-  e.stopPropagation();
+  /* v2.6.8：不能再 stopPropagation —— 捕获段拦截会把事件挡在 input 自己的
+   * 监听之前，Q 弹的 pointerdown（挂在 input 上）在主界面这条上永远收不到，
+   * 表现就是"设置面板的滑块是弹的、主界面这条是死的"。
+   * 会误响应的处理器（widget 背景请出滑条那套）已经用 closest('.opacity-bar')
+   * 自行排除，去掉拦截是安全的。 */
 }, true);
 const releaseBar = () => {
   if (!holdingBar) return;
@@ -3023,69 +3117,145 @@ widget.addEventListener('mouseleave', () => opacityBar.classList.remove('show'))
 function applyOpacity(v) {
   v = Math.min(1, Math.max(0, v));
   config.opacity = v;
-  // 直接驱动玻璃背景层 CSS 变量（不依赖 IPC 回写，
-  // 旧实现只 saveConfig 是不够的：主进程已停用 setOpacity）。
-  widget.style.setProperty('--glass-alpha', v);
-  // v2.6.6：liquid glass 下这个滑块调的是**模糊强度**，不是叠一层白（见 applyLg2Blur）
-  applyLg2Blur(v);
+  /* v2.6.8：--glass-alpha 搬到 body 上 —— 旧实现挂在 #widget 行内，设置面板/
+   * 右键菜单这些 widget 的兄弟节点读不到（v2.6.6 的 lg2 只能因此固定白雾 0.55）。
+   * body 级变量全树继承，透明度滑条在任何主题都是同一个意思。 */
+  document.body.style.setProperty('--glass-alpha', v);
   API.saveConfig(config);
+  $('setOpacity').value = v;
+  syncRangeFill($('setOpacity')); // 写 .value 不派发 input，填充段得自己刷
+  $('opacityVal').textContent = Math.round(v * 100) + '%';
+}
+/* 主界面悬停条 = 模糊度（v2.6.8）：全应用统一「透明度 + 模糊度」两根滑条，
+ * 设置面板里两根都有，主界面这根管模糊度（右键菜单上的说法也是模糊度）。 */
+opacityRange.addEventListener('input', (e) => applyBlur(parseFloat(e.target.value)));
+
+/* ---------- 模糊度（v2.6.8，全局滑条） ----------
+ * config.blur ∈ [0, 2]，默认 1 = 各主题的原档。驱动 body 的 --blur-mul，
+ * style.css 里所有 backdrop-filter 的模糊半径都乘它（lg2 的 --lg-blur、
+ * 菜单/面板的 30px 档也一样）。主界面悬停条与设置面板的「模糊度」都走这里；
+ * v2.6.6 那套「lg2 的透明度滑条改调模糊」到此退役 —— 现在每个主题都有
+ * 独立的模糊滑条，透明度滑条在所有主题里都回归"管白雾"。 */
+function applyBlur(v) {
+  v = Math.min(2, Math.max(0, isFinite(v) ? v : 1));
+  config.blur = v;
+  document.body.style.setProperty('--blur-mul', String(v));
+  API.saveConfig(config);
+  const pct = Math.round(v * 100) + '%';
+  const bi = $('setBlur');
+  if (bi) { bi.value = v; syncRangeFill(bi); }
+  const bv = $('blurVal');
+  if (bv) bv.textContent = pct;
   opacityRange.value = v;
   syncRangeFill(opacityRange);   // 写 .value 不派发 input，填充段得自己刷
-  $('setOpacity').value = v;
-  syncRangeFill($('setOpacity')); // 面板滑块同款问题：珠子/填充段也要跟着走
-  $('opacityVal').textContent = document.body.classList.contains('lg2')
-    ? lg2BlurPx(v) + 'px'
-    : Math.round(v * 100) + '%';
 }
-opacityRange.addEventListener('input', (e) => applyOpacity(parseFloat(e.target.value)));
+if ($('setBlur')) $('setBlur').addEventListener('input', (e) => applyBlur(parseFloat(e.target.value)));
 
-/* ---------- liquid glass：透明度滑块改调模糊强度（v2.6.6） ----------
- * 用户原话：「透明度是调模糊程度不是加白色」。
- *
- * 旧实现里这个滑块就是 --glass-alpha 的乘数，作用是把表面那层白雾按比例加浓；
- * 放在 liquid glass 这种"几乎透明的底"上，往右拖的唯一观感就是越来越白。
- * 这个主题下改成：白雾固定一档（CSS 里 --lg-alpha，不再跟滑块走），
- * 滑块只驱动 --lg-blur-user —— 也就是 backdrop-filter 的模糊半径，
- * 往右 = 更糊、壁纸更看不清，往左 = 更通透。
- *
- * 存的还是 config.opacity 这一个 0~1 的数：老配置照样能用，切回别的主题
- * 立刻恢复"透明度"的老语义。两套语义共用一份数据，是这里不破坏兼容的关键。
- *
- * 换算：0.2 → 2px，1.0 → 16px，默认 0.55 正好落在 8px —— 也就是这套主题
- * 原来写死的 8px，升级完观感不变，变的只是滑块的语义。
- * 取整到 px：模糊半径给小数点没有意义，取整后默认值才严格等于 8。 */
-function lg2BlurPx(v) {
-  const t = (Math.min(1, Math.max(0.2, isFinite(v) ? v : 0.55)) - 0.2) / 0.8;
-  return Math.round(2 + t * 14);
+/* ---------- 全局字体（v2.6.8） ----------
+ * config.font = { family, weight, size, spacing }：
+ *   family  系统字体名（'' = 跟随系统），主进程枚举注册表；写 body 的 --app-font
+ *   weight  0 = 各处原值；非 0 时全文统一成该字重（--app-fw）
+ *   size    百分比，html 基准字号乘数（--font-scale），全文 rem 跟着缩放
+ *   spacing px 增量，挂 body 行内 letter-spacing 随继承走 */
+function ensureFontConfig() {
+  if (!config.font || typeof config.font !== 'object') {
+    config.font = { family: '', weight: 0, size: 100, spacing: 0 };
+  }
 }
-let lg2BlurRaf = 0;
-let lg2BlurWant = 8;
-/* 拖滑块时 input 事件一帧可能来好几次，攒到下一帧只写一次 ——
- * 每写一次 --lg-blur 都要让整块面板重做一次 backdrop 模糊，这是最贵的一步。 */
-function applyLg2Blur(v) {
-  lg2BlurWant = lg2BlurPx(v);
-  if (lg2BlurRaf) return;
-  lg2BlurRaf = requestAnimationFrame(() => {
-    lg2BlurRaf = 0;
-    document.body.style.setProperty('--lg-blur-user', lg2BlurWant + 'px');
-    syncOpacityVerb();
+function applyFont() {
+  ensureFontConfig();
+  const f = config.font;
+  const root = document.documentElement;
+  const size = Math.min(160, Math.max(70, Number(f.size) || 100));
+  root.style.setProperty('--font-scale', String(size / 100));
+  const body = document.body;
+  const fam = String(f.family || '').trim();
+  if (fam) body.style.setProperty('--app-font', '"' + fam.replace(/"/g, '') + '"');
+  else body.style.removeProperty('--app-font');
+  const w = Number(f.weight) || 0;
+  if (w) body.style.setProperty('--app-fw', String(w));
+  else body.style.removeProperty('--app-fw');
+  body.style.letterSpacing = (Number(f.spacing) || 0) ? (Number(f.spacing) + 'px') : '';
+}
+function bindFontControls() {
+  const sel = $('setFont');
+  if (!sel || sel.__fcpFont) return;
+  sel.__fcpFont = true;
+  sel.addEventListener('change', (e) => {
+    ensureFontConfig();
+    config.font.family = e.target.value;
+    applyFont(); API.saveConfig(config);
+  });
+  const w = $('setFontWeight');
+  if (w) w.addEventListener('change', (e) => {
+    ensureFontConfig();
+    config.font.weight = Number(e.target.value) || 0;
+    applyFont(); API.saveConfig(config);
+  });
+  const size = $('setFontSize');
+  if (size) size.addEventListener('input', (e) => {
+    ensureFontConfig();
+    config.font.size = Number(e.target.value) || 100;
+    applyFont(); API.saveConfig(config);
+    const v = $('fontSizeVal');
+    if (v) v.textContent = config.font.size + '%';
+  });
+  const sp = $('setFontSpacing');
+  if (sp) sp.addEventListener('input', (e) => {
+    ensureFontConfig();
+    config.font.spacing = Number(e.target.value) || 0;
+    applyFont(); API.saveConfig(config);
+    const v = $('fontSpacingVal');
+    if (v) v.textContent = config.font.spacing + 'px';
   });
 }
-/* 滑块的说法跟着主题换：liquid glass 里调的是模糊，其余主题还是透明度 */
-function syncOpacityVerb() {
-  const lg2 = document.body.classList.contains('lg2');
-  const word = lg2 ? '模糊' : '透明度';
-  const bar = document.querySelector('.opacity-label');
-  if (bar && bar.textContent !== word) bar.textContent = word;
-  const input = $('setOpacity');
-  const row = input && input.closest('.row');
-  const lab = row && row.querySelector('span');
-  if (lab && lab.textContent !== word) lab.textContent = word;
-  const val = $('opacityVal');
-  if (val) {
-    const v = typeof config.opacity === 'number' ? config.opacity : 0.55;
-    val.textContent = lg2 ? lg2BlurPx(v) + 'px' : Math.round(v * 100) + '%';
+bindFontControls();
+function syncFontControls() {
+  const f = (config && config.font) || {};
+  const sel = $('setFont');
+  if (!sel) return;
+  if (!sel.options.length) {
+    const sys = document.createElement('option');
+    sys.value = ''; sys.textContent = '跟随系统';
+    sel.appendChild(sys);
+    if (typeof API.fontsList === 'function') {
+      API.fontsList().then((list) => {
+        const cur = sel.value;
+        (list || []).forEach((name) => {
+          const o = document.createElement('option');
+          o.value = name; o.textContent = name;
+          sel.appendChild(o);
+        });
+        sel.value = cur;
+      }).catch(() => { /* 枚举失败就只有"跟随系统" */ });
+    }
   }
+  sel.value = f.family || '';
+  const w = $('setFontWeight');
+  if (w) w.value = String(f.weight || 0);
+  const size = $('setFontSize');
+  if (size) size.value = f.size || 100;
+  const sizeVal = $('fontSizeVal');
+  if (sizeVal) sizeVal.textContent = (f.size || 100) + '%';
+  const sp = $('setFontSpacing');
+  if (sp) sp.value = f.spacing || 0;
+  const spVal = $('fontSpacingVal');
+  if (spVal) spVal.textContent = (f.spacing || 0) + 'px';
+}
+
+/* ---------- 图标大小（v2.6.8，网格布局的全局格子尺寸） ----------
+ * 驱动 :root 的 --item-size（网格列宽下限 + 卡片 min-height 都读它）；
+ * 编辑模式下单个格子的跨度/高度另存 config.layout.gridSizes。 */
+const setItemSize = $('setItemSize');
+if (setItemSize) {
+  setItemSize.addEventListener('input', (e) => {
+    const n = Math.round(Math.min(140, Math.max(56, Number(e.target.value) || 84)));
+    config.itemSize = n;
+    document.documentElement.style.setProperty('--item-size', n + 'px');
+    const v = $('itemSizeVal');
+    if (v) v.textContent = n + 'px';
+    API.saveConfig(config);
+  });
 }
 
 /* ---------- 圆角弧度（v2.2.2）----------
@@ -5292,6 +5462,12 @@ function syncWearControls() {
   /* 安卓/预览模式没有这套 IPC：整块藏起来，别让用户点了没反应 */
   box.classList.toggle('hidden', !wearSupported());
   if (!wearSupported()) return;
+  /* v2.6.8：没开开关时把客户端那几行也藏起来，别露出一排点了没反应的控件 */
+  const lanOn = $('setWearEnabled') && $('setWearEnabled').checked;
+  ['btnLanScanRow', 'lanPeers'].forEach((id) => {
+    const el = $(id);
+    if (el) el.classList.toggle('hidden', !lanOn);
+  });
   API.wearStatus().then((info) => {
     wearInfo = info;
     $('setWearEnabled').checked = !!info.enabled;
@@ -5299,7 +5475,7 @@ function syncWearControls() {
     $('wearCode').textContent = info.code ? info.code.replace(/(\d{3})(\d{3})/, '$1 $2') : '------';
     const addrs = (info.addresses || []).join(' / ') || '未获取到局域网地址';
     $('wearHost').textContent = info.running
-      ? '地址 ' + addrs + ' · 端口 ' + info.port + ' · 手表端「配对电脑」里填这个'
+      ? '地址 ' + addrs + ' · 端口 ' + info.port + ' · 其他设备「配对电脑」里填这个'
       : '服务没起来（端口被占或被防火墙拦住），换一个码再试';
     renderWearDevices(info.devices || []);
   }).catch(() => { /* 主进程没准备好就下次打开设置再说 */ });
@@ -5312,7 +5488,7 @@ function renderWearDevices(devices) {
   if (!devices.length) {
     const empty = document.createElement('div');
     empty.className = 'wear-empty';
-    empty.textContent = '还没有手表配对';
+    empty.textContent = '还没有设备配对';
     box.appendChild(empty);
     return;
   }
@@ -5321,7 +5497,7 @@ function renderWearDevices(devices) {
     row.className = 'wear-dev-row';
     const name = document.createElement('span');
     name.className = 'wear-dev-name';
-    name.textContent = d.name || 'WearOS';
+    name.textContent = d.name || '设备';
     const meta = document.createElement('small');
     meta.className = 'wear-dev-meta';
     meta.textContent = d.ip || '';
@@ -5333,7 +5509,7 @@ function renderWearDevices(devices) {
     use.setAttribute('href', '#i-x');
     svg.appendChild(use);
     del.appendChild(svg);
-    del.title = '解除这台手表的配对';
+    del.title = '解除这台设备的配对';
     del.addEventListener('click', () => {
       API.wearUnpair(d.id).then((info) => {
         wearInfo = info;
@@ -5348,6 +5524,146 @@ function renderWearDevices(devices) {
   });
 }
 
+/* ---------- 电脑 → 其他设备：客户端（v2.6.8） ----------
+ * 协议与手表/手机当客户端完全同一套：UDP 47822 广播发现 → HTTP 47820
+ * /fcp/pair 用 6 位码换 token → /fcp/state 拿快照 → /fcp/action 发动作。
+ * 实现在主进程（main.js），这里只管 UI。 */
+let lanTarget = null;   // { ip, port, name }
+function lanSupported() {
+  return typeof API.lanDiscover === 'function';
+}
+function renderLanPeers(peers) {
+  const box = $('lanPeers');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!peers || !peers.length) return;
+  peers.forEach((p) => {
+    const row = document.createElement('div');
+    row.className = 'wear-dev-row';
+    const name = document.createElement('span');
+    name.className = 'wear-dev-name';
+    name.textContent = p.name || '设备';
+    const meta = document.createElement('small');
+    meta.className = 'wear-dev-meta';
+    meta.textContent = (p.ip || '') + ':' + (p.port || '');
+    const nextTheme = document.createElement('button');
+    nextTheme.className = 'text-btn';
+    nextTheme.textContent = '换主题';
+    nextTheme.addEventListener('click', () => {
+      API.lanState({ id: p.id }).then((r) => {
+        const themes = (r && r.state && r.state.themes) || [];
+        const cur = r && r.state ? r.state.theme : '';
+        if (!themes.length) { toast('对方没上报主题列表'); return; }
+        const idx = themes.map((t) => t.id).indexOf(cur);
+        const nxt = themes[(idx + 1 + themes.length) % themes.length];
+        return API.lanSend({ id: p.id, action: { action: 'set', key: 'theme', value: nxt.id } })
+          .then(() => toast('已让「' + (p.name || '设备') + '」换到 ' + (nxt.name || nxt.id)));
+      }).catch((e) => toast('发送失败：' + (e && e.message || e)));
+    });
+    const del = document.createElement('button');
+    del.className = 'del-group';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'ic');
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    use.setAttribute('href', '#i-x');
+    svg.appendChild(use);
+    del.appendChild(svg);
+    del.title = '解除这台设备的配对';
+    del.addEventListener('click', () => {
+      API.lanUnpair(p.id).then(() => {
+        toast('已解除配对');
+        return API.lanPeers();
+      }).then((list) => renderLanPeers(list)).catch(() => {});
+    });
+    row.appendChild(name);
+    row.appendChild(meta);
+    row.appendChild(nextTheme);
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+function syncLanPeers() {
+  if (!lanSupported()) return;
+  API.lanPeers().then((list) => renderLanPeers(list)).catch(() => {});
+}
+function bindLanClientUI() {
+  const scan = $('btnLanScan');
+  if (!scan || scan.__fcpLan) return;
+  scan.__fcpLan = true;
+  const hint = $('lanScanHint');
+  const found = $('lanFound');
+  const codeRow = $('lanCodeRow');
+  const manualRow = $('lanManualRow');
+  if (!lanSupported()) { scan.closest('.wear-code-row').classList.add('hidden'); return; }
+  scan.addEventListener('click', () => {
+    if (hint) hint.textContent = '正在搜索同一局域网里的设备…';
+    if (hint) hint.classList.remove('hidden');
+    if (found) { found.innerHTML = ''; found.classList.remove('hidden'); }
+    API.lanDiscover().then((list) => {
+      if (hint) hint.classList.add('hidden');
+      if (!list || !list.length) {
+        if (hint) { hint.textContent = '没搜到。确认对方开着「局域网连接」且在同一网络，或用 IP 直连。'; hint.classList.remove('hidden'); }
+      }
+      if (manualRow) manualRow.classList.remove('hidden');
+      if (!found) return;
+      (list || []).forEach((d) => {
+        const row = document.createElement('div');
+        row.className = 'wear-dev-row';
+        const name = document.createElement('span');
+        name.className = 'wear-dev-name';
+        name.textContent = d.name || '设备';
+        const meta = document.createElement('small');
+        meta.className = 'wear-dev-meta';
+        meta.textContent = d.ip + ':' + d.port;
+        const btn = document.createElement('button');
+        btn.className = 'text-btn';
+        btn.textContent = '连接';
+        btn.addEventListener('click', () => {
+          lanTarget = { ip: d.ip, port: d.port, name: d.name || '' };
+          if (codeRow) { codeRow.classList.remove('hidden'); $('lanCode').focus(); }
+          toast('已选择「' + (d.name || d.ip) + '」，输入对方的 6 位配对码');
+        });
+        row.appendChild(name);
+        row.appendChild(meta);
+        row.appendChild(btn);
+        found.appendChild(row);
+      });
+    }).catch((e) => {
+      if (hint) { hint.textContent = '搜索失败：' + (e && e.message || e); hint.classList.remove('hidden'); }
+    });
+  });
+  const pairBtn = $('btnLanPair');
+  if (pairBtn) pairBtn.addEventListener('click', () => {
+    const code = ($('lanCode').value || '').replace(/\D/g, '');
+    if (!lanTarget) { toast('先点「连接」选中一台设备'); return; }
+    if (code.length !== 6) { toast('配对码是 6 位数字'); return; }
+    pairBtn.disabled = true;
+    API.lanPair({ ip: lanTarget.ip, port: lanTarget.port, code: code }).then((r) => {
+      pairBtn.disabled = false;
+      if (r && r.ok) {
+        toast('已连接「' + (r.name || lanTarget.name || lanTarget.ip) + '」');
+        $('lanCode').value = '';
+        if (codeRow) codeRow.classList.add('hidden');
+        lanTarget = null;
+        syncLanPeers();
+      } else {
+        toast(r && r.error === 'bad-code' ? '配对码不对' : '配对失败：' + ((r && r.error) || '未知原因'));
+      }
+    }).catch((e) => {
+      pairBtn.disabled = false;
+      toast('配对失败：' + (e && e.message || e));
+    });
+  });
+  const manualBtn = $('btnLanManual');
+  if (manualBtn) manualBtn.addEventListener('click', () => {
+    const ip = ($('lanIp').value || '').trim();
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) { toast('先填对方的 IP 地址'); return; }
+    lanTarget = { ip: ip, port: 47820, name: '' };
+    if (codeRow) { codeRow.classList.remove('hidden'); $('lanCode').focus(); }
+  });
+}
+bindLanClientUI();
+
 function bindWearUI() {
   const chk = $('setWearEnabled');
   if (!chk) return;
@@ -5356,7 +5672,7 @@ function bindWearUI() {
       wearInfo = info;
       $('wearPanel').classList.toggle('hidden', !info.enabled);
       syncWearControls();
-      toast(info.enabled ? 'WearOS 局域网已开启' : 'WearOS 局域网已关闭');
+      toast(info.enabled ? '局域网连接已开启' : '局域网连接已关闭');
     });
   });
   $('btnWearNewCode').addEventListener('click', () => {
@@ -5366,6 +5682,7 @@ function bindWearUI() {
       toast('配对码已更新');
     });
   });
+  syncLanPeers();   // v2.6.8：电脑 → 其他设备的已配对清单
 }
 bindWearUI();
 
@@ -5657,8 +5974,19 @@ if (typeof API.onTrayAction === 'function') {
     width: config.width ?? 480, height: config.height ?? 420
   };
   titleInput.value = config.title || 'FClassPal';
-  opacityRange.value = config.opacity ?? 0.55;
-  widget.style.setProperty('--glass-alpha', config.opacity ?? 0.55);
+  /* v2.6.8：老配置补新字段（模糊度 / 图标大小 / 字体），首次就按默认档刷上 */
+  if (typeof config.blur !== 'number') config.blur = 1;
+  if (typeof config.itemSize !== 'number') config.itemSize = 84;
+  ensureFontConfig();
+  document.body.style.setProperty('--glass-alpha', config.opacity ?? 0.55);
+  document.documentElement.style.setProperty('--item-size', config.itemSize + 'px');
+  const setItemSize0 = $('setItemSize');
+  if (setItemSize0) setItemSize0.value = config.itemSize;
+  const itemSizeVal0 = $('itemSizeVal');
+  if (itemSizeVal0) itemSizeVal0.textContent = config.itemSize + 'px';
+  applyBlur(config.blur);
+  applyFont();
+  syncFontControls();
   /* 主题注册表 + 主题包 CSS 必须先到位：下面 applyTheme 要按 config.theme 上皮肤，
    * 主题包还没读进来就会被退回基线（用户看到的就是"升级完主题没了"）。
    * 主进程在建窗前其实已经自动装过随包离线包，这里是渲染层的第二道保险。 */
