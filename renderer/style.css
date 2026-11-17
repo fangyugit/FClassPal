@@ -21,6 +21,12 @@
   --danger: #ff4d6a;
   --radius: 22px;
   --item-size: 84px;          /* 触摸友好的快捷方式尺寸 */
+  /* ※ --glass-alpha 的默认值必须放在 :root，不能放进 .widget：
+   *   自定义属性在元素上的「声明值」会压过从祖先「继承」来的值 —— v2.6.8-beta2
+   *   把写入点搬到 body 行内之后，.widget 里这条 0.55 就把整个 #widget 子树
+   *   （面纱/面板/全部玻璃面）钉死在 0.55，透明度滑条在任何主题都不动了。
+   *   放 :root 后：body 行内（app.js applyOpacity）> :root 默认，全树一致。 */
+  --glass-alpha: 0.55;
   --touch-min: 44px;
   --glass-edge: rgba(255, 255, 255, 0.65);
   --glass-hi: rgba(255, 255, 255, 0.9);
@@ -112,7 +118,8 @@ body.preview {
   flex-direction: column;
   overflow: hidden;
   isolation: isolate;
-  --glass-alpha: 0.55;
+  /* --glass-alpha 默认值已挪到 :root（上面的 v2.6.8 注释）：这里绝不能再声明，
+   * 否则 body 行内的实时值进不了 #widget 子树（v2.6.8-beta2 透明度全灭的真因）。 */
   opacity: 1;        /* 前景内容永不透明 */
   /* 注意 点击权的兜底：pointer-events:none 是会**继承**的，任何祖先（最常见是 body）
    * 一旦被某个装饰性规则误伤，整棵子树会一起哑掉——界面看着还在，却一个都点不动，
@@ -447,10 +454,34 @@ body.locked .resize-handle { display: none; }
 .item-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--item-size), 1fr));
-  gap: 10px;
+  /* v2.6.8f：格子间距跟着图标大小走（--item-scale 由 app.js 同步写） */
+  gap: calc(10px * var(--item-scale, 1));
   /* v2.6.8：编辑模式支持拖拽调单个格子的跨度，dense 让大格子留下的空档
    * 能被后面的小格子填上，不留窟窿 */
   grid-auto-flow: row dense;
+}
+
+/* ====== 网格模式：图标大小真的缩放卡片内部（v2.6.8f） ======
+ * 原来 --item-size 只喂「列宽下限 + 卡片 min-height」—— 列宽被 1fr 摊平、
+ * 图标钉死 48px，拖「图标大小」滑条在多数布局下毫无可见变化
+ * （用户反馈："网格形态调快捷方式大小不生效"）。
+ * 这里把图标 / 字号 / 内边距一并挂上无单位乘数 --item-scale（= itemSize/84）；
+ * 只挂网格模式 —— 自由布局的卡片走自己的行内宽高，不跟全局档走。
+ * 用 rem/px 基数 × 乘数的写法是为了让「字体大小」的 rem 体系继续生效。 */
+#content:not(.free-layout) .item {
+  padding: calc(14px * var(--item-scale, 1)) calc(8px * var(--item-scale, 1));
+  gap: calc(8px * var(--item-scale, 1));
+}
+#content:not(.free-layout) .item-icon {
+  width: calc(48px * var(--item-scale, 1));
+  height: calc(48px * var(--item-scale, 1));
+}
+#content:not(.free-layout) .item-icon .ic {
+  width: calc(25px * var(--item-scale, 1));
+  height: calc(25px * var(--item-scale, 1));
+}
+#content:not(.free-layout) .item-name {
+  font-size: calc(0.78rem * var(--item-scale, 1));
 }
 
 /* ====== 快捷方式：液态玻璃小片 ====== */
@@ -1984,6 +2015,15 @@ body.is-resizing .lg-border {
 .theme-tag.current {
   background: var(--accent);
   color: var(--t-on-accent, #fff);
+}
+/* v2.6.8f：自动检测到主题包有新版的标签 + 「主题管理」按钮的数量标 */
+.theme-tag.upd {
+  background: var(--danger, #ff4d6a);
+  color: #fff;
+}
+.text-btn.has-update {
+  color: var(--danger, #ff4d6a);
+  font-weight: var(--app-fw, 700);
 }
 .theme-desc {
   font-size: 0.76rem;

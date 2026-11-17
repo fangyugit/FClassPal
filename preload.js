@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('widgetAPI', {
   themesOpenFolder: () => ipcRenderer.invoke('themes-open-folder'),
   /* v2.6.9：主题包应用内检查更新（包 manifest.repo → GitHub release 资产） */
   themesCheckUpdate: (id) => ipcRenderer.invoke('themes-check-update', id),
+  /* v2.6.8f：主题包批量检查更新（轻量：只比时间戳，不下载包） */
+  themesCheckUpdates: () => ipcRenderer.invoke('themes-check-updates'),
   /* v2.6.9：F12 开 DevTools（仅调试模式，主进程还会核 config.debugMode） */
   toggleDevTools: () => ipcRenderer.invoke('toggle-devtools'),
   /* v2.5.0：检测更新 + 恢复出厂（关于界面） */

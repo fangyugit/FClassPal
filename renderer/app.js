@@ -187,7 +187,7 @@ const API = window.widgetAPI || (function () {
     getEnv: () => Promise.resolve({ transparent: true, platform: 'browser', release: '0' }),
     // 关于界面：预览模式没有主进程，版本号给个占位；链接用新窗口模拟
     /* 预览模式的版本号：与 package.json 保持一致（_check.js 有同源断言，别让它漂） */
-    getAppVersion: () => Promise.resolve('2.6.8-beta2'),
+    getAppVersion: () => Promise.resolve('2.6.8'),
     openExternal: (url) => { window.open(url, '_blank'); return Promise.resolve(true); },
     // 预览模式取不到真实壁纸：返回 null，让 #envLayer 用内置渐变基底，
     // MD3 则退回 CSS 里的 baseline 配色
@@ -404,6 +404,7 @@ function applyTheme(theme) {
    * 并把不支持模糊的主题那两根滑条置灰。 */
   syncHomeBar();
   syncBlurControls();
+  syncCapsControls();         /* v2.6.8f：不支持透明度/圆角的主题把对应滑条灰掉 */
   syncThemeSelect();          /* 老样式下拉：跟着当前主题显示名字与色点 */
 }
 
@@ -3084,6 +3085,8 @@ initGlassBeads();
 let hideTimer;
 function showOpacityBar() {
   if (editMode) return;
+  /* v2.6.8f：主题既不支持模糊也不支持透明度时，这根条拖了没意义，干脆不出现 */
+  if (!blurAdjustable() && !themeSupports('opacity')) return;
   opacityBar.classList.add('show');
   clearTimeout(hideTimer);
   hideTimer = setTimeout(() => {
@@ -3188,6 +3191,65 @@ function syncBlurControls() {
       ? '组件模糊度管面板/菜单/弹窗；快捷方式周围管图标卡片；主界面背景模糊度管主界面这块大玻璃（100% = 原档）'
       : '当前主题没有适配模糊度，换内置主题或装 v2 的主题包才能调';
   }
+}
+
+/* ---------- 主题能力表（v2.6.8f）：不支持的调节项直接置灰 ----------
+ * 某些调节项只有主题自己消费了对应变量才有意义（透明度要看包 CSS 有没有
+ * 消费 var(--glass-alpha)，圆角要看有没有消费 var(--radius)/var(--t-r-win)）。
+ * 内置主题的 CSS 都在 style.css 里、全部支持；主题包按包内 CSS 文本探测。
+ * 探测不到（清单还没拉回来 / 预览模式）按支持处理 —— 宁可多给一根活的滑条，
+ * 也不要错把好主题灰掉。 */
+let THEME_CAPS = {};
+function computeThemeCaps() {
+  THEME_CAPS = {};
+  Object.keys(themePackCss || {}).forEach((id) => {
+    const css = themePackCss[id] || '';
+    THEME_CAPS[id] = {
+      opacity: css.indexOf('var(--glass-alpha') >= 0,
+      radius: css.indexOf('var(--t-r-win') >= 0 || css.indexOf('var(--radius') >= 0,
+    };
+  });
+}
+function themeSupports(kind) {
+  if (GLASS_FAMILY.indexOf(currentTheme) >= 0 ||
+      currentTheme === 'md3' || currentTheme === 'fluent' ||
+      currentTheme === 'miuix' || currentTheme === 'harmony') return true;
+  const c = THEME_CAPS[currentTheme];
+  if (!c) return true;
+  return c[kind] === true;
+}
+const CAP_HINT = {
+  opacity: '当前主题没有接透明度变量（var(--glass-alpha)），调了不会有反应',
+  radius: '当前主题没有接圆角变量（var(--radius)），调了不会有反应',
+};
+function syncCapsControls() {
+  [['opacity', 'setOpacity'], ['radius', 'setRadius']].forEach(([kind, inputId]) => {
+    const input = $(inputId);
+    if (!input) return;
+    const row = input.closest('.row');
+    if (!row) return;
+    const on = themeSupports(kind);
+    row.classList.toggle('is-disabled', !on);
+    input.disabled = !on;
+    /* 圆角行的「跟随主题」值标签顺带提示 */
+    if (kind === 'radius') {
+      const val = $('radiusVal');
+      if (val && !on) val.textContent = '不支持';
+      if (val && on && config.cornerRadius == null) val.textContent = '跟随主题';
+    }
+    let hint = row.parentNode.querySelector('.caps-hint[data-caps="' + kind + '"]');
+    if (!on) {
+      if (!hint) {
+        hint = document.createElement('p');
+        hint.className = 'row-hint caps-hint';
+        hint.dataset.caps = kind;
+        row.parentNode.insertBefore(hint, row.nextSibling);
+      }
+      hint.textContent = CAP_HINT[kind];
+    } else if (hint) {
+      hint.remove();
+    }
+  });
 }
 
 /* ---------- 模糊度：三根轴（v2.6.9b） ----------
@@ -3339,6 +3401,8 @@ if (setItemSize) {
     const n = Math.round(Math.min(140, Math.max(56, Number(e.target.value) || 84)));
     config.itemSize = n;
     document.documentElement.style.setProperty('--item-size', n + 'px');
+    /* v2.6.8f：无单位乘数，网格模式的图标/字号/内边距按它缩放（style.css .item 区） */
+    document.documentElement.style.setProperty('--item-scale', String(n / 84));
     const v = $('itemSizeVal');
     if (v) v.textContent = n + 'px';
     API.saveConfig(config);
@@ -3748,14 +3812,18 @@ function setDebugMode(on) {
 /* 平台效果预览：把渲染层的"平台认知"临时换掉，用来核对各平台的界面差异。
  * 只影响界面判定，不改任何真实行为（主题风格下拉的显示条件就是它的主要用途）。 */
 function applySimPlatform(p, skipPersist) {
-  const v = ['android', 'linux', 'darwin'].indexOf(p) >= 0 ? p : 'auto';
+  const v = ['android', 'win', 'linux', 'darwin'].indexOf(p) >= 0 ? p : 'auto';
   config.simPlatform = v;
-  document.body.classList.remove('sim-android', 'sim-linux', 'sim-darwin');
+  document.body.classList.remove('sim-android', 'sim-win', 'sim-linux', 'sim-darwin');
   if (v !== 'auto') document.body.classList.add('sim-' + v);
-  /* 安卓效果会露出「主题风格」下拉；本机本来就是安卓时也保持露出。
+  /* 安卓效果会露出「主题风格」下拉；win 效果强制桌面 UI（移动端真机上
+   * 点「win 端」就能预览桌面版设置面板：主题管理行回来、快速导入藏掉）。
    * 判"本机"用 REAL_ANDROID（真机事实），别用 IS_ANDROID —— 那个是模拟后的结果，
    * 拿它做判断会在"移动端 → 本机"之间来回切时自锁成永远安卓。 */
-  applyThemePickVisibility(v === 'android' || (v === 'auto' && REAL_ANDROID));
+  applyThemePickVisibility(
+    v === 'android' ? true :
+    v === 'win' ? false :
+    v === 'auto' && REAL_ANDROID);
   if (!skipPersist) persist();
 }
 
@@ -3765,7 +3833,7 @@ function syncDebugControls() {
   const on = !!config.debugMode;
   box.classList.toggle('hidden', !on);
   const seg = $('simSeg');
-  const sim = ['android', 'linux', 'darwin'].indexOf(config.simPlatform) >= 0 ? config.simPlatform : 'auto';
+  const sim = ['android', 'win', 'linux', 'darwin'].indexOf(config.simPlatform) >= 0 ? config.simPlatform : 'auto';
   if (seg) {
     seg.querySelectorAll('.seg-btn').forEach((b) => {
       b.setAttribute('aria-pressed', b.dataset.sim === sim ? 'true' : 'false');
@@ -3813,6 +3881,12 @@ if ($('btnDebugConsole')) {
       ['平台', (env.platform || '—') + (env.release ? ' / ' + env.release : '')],
       ['当前主题', currentTheme + '（' + (THEME_LABEL[currentTheme] || '?') + '）'],
       ['主题总数', String(THEMES.length)],
+      /* v2.6.8f：主题包清单诊断 —— 安卓上"主题消失"就靠这几行定位 */
+      ['主题包', '已装 ' + (((themeInv && themeInv.themes) || []).filter((t) => t && !t.builtin).length) +
+        ' / 损坏 ' + (((themeInv && themeInv.broken) || []).length) +
+        ' / 随包 ' + (((themeInv && themeInv.bundled) || []).length)],
+      ['清单错误', themeInvError || '无'],
+      ['补装失败', themeInstallFails.length ? themeInstallFails.join('；') : '无'],
       ['明暗', config.appearance || 'light'] ,
       ['主色来源', (config.colorMode === 'manual' ? '手动 ' + (config.accentColor || '') : '壁纸取色')],
       ['窗口', Math.round(bounds.x) + ',' + Math.round(bounds.y) + '  ' +
@@ -4113,7 +4187,10 @@ function localThemeInventory() {
   };
 }
 
-/** 拉一次主题清单 + 主题包 CSS。返回 data 或 null（宿主不支持时） */
+/** 拉一次主题清单 + 主题包 CSS。返回 data 或 null（宿主不支持时）
+ * v2.6.8f：失败原因要留住 —— 安卓原生 themesList 一失手，退回「只有内置主题」
+ * 的表现就是"三丽鸥那些主题全消失了"，而这条路上原来一声不吭，无从排查。 */
+let themeInvError = '';
 async function loadThemeRegistry() {
   if (typeof API.themesList !== 'function') {
     themeInv = themeInv || localThemeInventory();
@@ -4121,18 +4198,27 @@ async function loadThemeRegistry() {
   }
   try {
     const r = await API.themesList();
-    if (!r || !r.success || !r.data) { themeInv = localThemeInventory(); return null; }
+    if (!r || !r.success || !r.data) {
+      themeInvError = (r && r.error) || '宿主没给出主题清单';
+      themeInv = themeInv || localThemeInventory();
+      return null;
+    }
+    themeInvError = '';
     themeInv = r.data;
     applyThemeRegistry(r.data.themes);
+    if (typeof syncThemeRepairRow === 'function') syncThemeRepairRow();
     if (typeof API.themesCss === 'function') {
       const c = await API.themesCss();
       themePackCss = (c && c.css) || {};
       injectThemePackCss();
+      computeThemeCaps();       /* v2.6.8f：包 CSS 到手后重测能力表 */
+      syncCapsControls();
     }
     return r.data;
   } catch (e) {
+    themeInvError = String((e && e.message) || e);
     console.warn('[themes] 主题清单读取失败', e);
-    themeInv = localThemeInventory();
+    themeInv = themeInv || localThemeInventory();
     return null;
   }
 }
@@ -4150,6 +4236,7 @@ function themeThumbHTML(t) {
 
 function themeCardHTML(t, idx, total) {
   const cur = t.id === currentTheme;
+  const upd = themeUpdates.some((u) => u.id === t.id);   // v2.6.8f：自动检测到有新版
   const btns = [];
   btns.push('<button class="theme-mini" type="button" data-act="up" title="上移"' +
     (idx === 0 ? ' disabled' : '') + '>' + svgIcon('i-up') + '</button>');
@@ -4171,6 +4258,7 @@ function themeCardHTML(t, idx, total) {
     themeThumbHTML(t) +
     '<span class="theme-info">' +
       '<span class="theme-line1"><span class="theme-name">' + escapeHtml(t.name || t.id) + '</span>' +
+      (upd ? '<span class="theme-tag upd">可更新</span>' : '') +
       (cur ? '<span class="theme-tag current">使用中</span>' : '') + '</span>' +
       (t.desc ? '<span class="theme-desc">' + escapeHtml(t.desc) + '</span>' : '') +
       '<span class="theme-meta">' + escapeHtml(meta.join(' · ')) + '</span>' +
@@ -4252,6 +4340,8 @@ async function afterThemeMutation(r, okMsg) {
     const c = await API.themesCss();
     themePackCss = (c && c.css) || {};
     injectThemePackCss();
+    computeThemeCaps();       /* v2.6.8f：装/删包之后能力表要重测 */
+    syncCapsControls();
   }
   // 删掉的正好是当前在用的 → 主进程已经把它落回基线，这里跟着切
   if (r.theme && r.theme !== currentTheme) switchTheme(r.theme);
@@ -4282,6 +4372,26 @@ async function installThemeFromFile() {
   await afterThemeMutation(r, msg);
 }
 
+/* v2.6.8f：随包主题补装行 —— 只有"带了包却没装上"时才露出来（安卓上的救命入口） */
+function syncThemeRepairRow() {
+  const row = $('rowThemeRepair');
+  if (!row) return;
+  const pend = ((themeInv && themeInv.bundled) || []).filter((b) => b && !b.installed && b.file);
+  row.classList.toggle('hidden', pend.length === 0);
+  const btn = $('btnThemeRepair');
+  if (btn && pend.length) btn.textContent = '补装随包主题（' + pend.length + ' 套）';
+}
+if ($('btnThemeRepair')) {
+  $('btnThemeRepair').addEventListener('click', async () => {
+    const btn = $('btnThemeRepair');
+    if (btn) btn.disabled = true;
+    const n = await autoInstallBundledPacks();
+    if (btn) btn.disabled = false;
+    if (!n) toast(themeInstallFails.length ? '补装失败：' + themeInstallFails[0] : '没有需要补装的主题');
+    syncThemeRepairRow();
+  });
+}
+
 async function installBundledTheme(file) {
   if (typeof API.themesInstallBundled !== 'function') return;
   const r = await API.themesInstallBundled(file);
@@ -4294,16 +4404,22 @@ async function installBundledTheme(file) {
  * 而那层随包列表在某些机型上点不响（SAF/隐私选择器的同一批兼容问题）。
  * → 启动后静默把还没装的随包主题补上。装完它们自然移出"随包"清单，
  *   下次启动一件挂也没有（幂等，不留额外开销）。 */
+/* v2.6.8f：补装失败记录（调试台展示） */
+let themeInstallFails = [];
+
 async function autoInstallBundledPacks() {
   if (typeof API.themesInstallBundled !== 'function') return 0;
   const pend = ((themeInv && themeInv.bundled) || []).filter((b) => b && !b.installed && b.file);
   if (!pend.length) return 0;
   let n = 0;
+  const fails = [];
   for (const b of pend) {
     try {
       const r = await API.themesInstallBundled(b.file);
       if (r && r.success) n++;
+      else fails.push((b.name || b.file) + '（' + ((r && (r.error || r.broken)) || '未知原因') + '）');
     } catch (e) {
+      fails.push((b.name || b.file) + '（' + ((e && e.message) || e) + '）');
       console.warn('[themes] 随包主题补装失败', b.file, e);
     }
   }
@@ -4311,7 +4427,33 @@ async function autoInstallBundledPacks() {
     await loadThemeRegistry();   // 重新拉清单 + 包 CSS，新主题立刻出现在下拉里
     toast('已自动装上 ' + n + ' 套随包主题');
   }
+  /* v2.6.8f：装不上不许静默 —— 安卓上「主题管理」界面是藏起来的，
+   * 补装失败原来完全不可见，用户只能看到"主题全没了"。 */
+  if (fails.length) {
+    themeInstallFails = fails;
+    toast('有 ' + fails.length + ' 套随包主题没装上：' + fails[0] +
+      (fails.length > 1 ? ' 等（详情见调试台）' : ''));
+  }
   return n;
+}
+
+/** 启动期的主题清单加载 + 随包补装（带重试）
+ * 安卓原生 themesList 偶发失败时，原来直接退回「只有内置主题」，看起来就是
+ * 用户装的/预装的主题包全消失了。这里失败后隔 1.5s 再试一次，两次都拿不到
+ * 就把原因说出来（toast + 调试台），别让人对着一个空列表猜。
+ * alreadyLoaded=true 表示调用方刚刚 loadThemeRegistry() 过，不用再拉一遍。 */
+async function bootThemes(alreadyLoaded) {
+  if (!alreadyLoaded) await loadThemeRegistry();
+  await autoInstallBundledPacks();
+  const packsOf = () => ((themeInv && themeInv.themes) || []).filter((t) => t && !t.builtin).length;
+  if (packsOf() === 0) {
+    await new Promise((r) => setTimeout(r, 1500));
+    await loadThemeRegistry();
+    await autoInstallBundledPacks();
+    if (packsOf() === 0 && themeInvError) {
+      toast('主题清单读取失败：' + themeInvError + '（重启应用可再试）');
+    }
+  }
 }
 
 /* v2.6.9b：主题包应用内检查更新 —— 主进程按包里的 manifest.repo 拉
@@ -4327,9 +4469,43 @@ async function checkThemePackUpdate(id) {
   catch (e) { r = { success: false, error: String(e && e.message || e) }; }
   themeUpdBusy[id] = false;
   if (!r || !r.success) { toast((r && r.error) || '检查更新失败'); return; }
-  if (!r.updated) { toast('已是最新（v' + (r.version || '1.0.0') + '）'); return; }
+  if (!r.updated) {
+    themeUpdates = themeUpdates.filter((u) => u.id !== id);   // 手动查过确认没更新，摘掉提醒标
+    syncThemeUpdateBadge();
+    toast('已是最新（v' + (r.version || '1.0.0') + '）'); return;
+  }
+  themeUpdates = themeUpdates.filter((u) => u.id !== id);
   await afterThemeMutation(r, '「' + (THEME_LABEL[id] || id) + '」已更新到 v' + (r.version || ''));
 }
+
+/* ---------- 主题包自动检查更新 + 提醒（v2.6.8f） ----------
+ * 启动 8 秒后静默跑一次（轻量：主进程只比 release 资产时间戳，不下载包）。
+ * 有新版：toast 提醒 + 「主题管理」按钮带数量标 + 弹窗卡片挂「可更新」标签；
+ * 真正的更新仍走卡片上的「检查更新」按钮（下载 + 包内版本比对 + 安装）。 */
+let themeUpdates = [];
+function syncThemeUpdateBadge() {
+  const btn = $('btnThemeManage');
+  if (!btn) return;
+  const n = themeUpdates.length;
+  btn.textContent = n ? '安装 / 排序 / 导入（' + n + ' 套可更新）' : '安装 / 排序 / 导入';
+  btn.classList.toggle('has-update', n > 0);
+}
+async function autoCheckThemeUpdates() {
+  if (typeof API.themesCheckUpdates !== 'function') return;   // 预览模式 / 旧宿主
+  let r = null;
+  try { r = await API.themesCheckUpdates(); } catch (e) { return; }
+  if (!r || !r.success || !Array.isArray(r.updates)) return;
+  themeUpdates = r.updates;
+  syncThemeUpdateBadge();
+  if (themeUpdates.length) {
+    const names = themeUpdates.slice(0, 3).map((u) => u.name || u.id).join('、');
+    toast('检测到 ' + themeUpdates.length + ' 套主题有更新：' + names +
+      (themeUpdates.length > 3 ? ' 等' : '') + '，去「主题管理」更新');
+    if (!$('themeModal').classList.contains('hidden')) renderThemeModal();
+  }
+}
+setTimeout(autoCheckThemeUpdates, 8000);
+
 
 async function removeThemePack(id) {
   if (typeof API.themesRemove !== 'function') return;
@@ -6175,6 +6351,7 @@ if (typeof API.onTrayAction === 'function') {
   ensureFontConfig();
   document.body.style.setProperty('--glass-alpha', config.opacity ?? 0.55);
   document.documentElement.style.setProperty('--item-size', config.itemSize + 'px');
+  document.documentElement.style.setProperty('--item-scale', String(config.itemSize / 84));
   const setItemSize0 = $('setItemSize');
   if (setItemSize0) setItemSize0.value = config.itemSize;
   const itemSizeVal0 = $('itemSizeVal');
@@ -6192,7 +6369,8 @@ if (typeof API.onTrayAction === 'function') {
   await loadThemeRegistry();
   /* 随包主题没装的补装上（安卓重点，见 autoInstallBundledPacks 注释）。
    * 不 await：库存为空时本就是零成本，有活干时也不该卡住首屏。 */
-  autoInstallBundledPacks().catch((e) => console.warn('[themes]', e));
+  /* v2.6.8f：补装 + 失败重试都交给 bootThemes（清单刚才已经拉过，传 true 跳过首拉） */
+  bootThemes(true).catch((e) => console.warn('[themes] boot', e));
   /* 配置里记的主题已经不在本机（包被删了、或从别的机器同步过来的配置）→ 收回基线，
    * 顺手落盘，别让"配置说是 kitty、界面却是玻璃"这种状态一直挂着 */
   if (THEMES.indexOf(config.theme) < 0) config.theme = DEFAULT_THEME;

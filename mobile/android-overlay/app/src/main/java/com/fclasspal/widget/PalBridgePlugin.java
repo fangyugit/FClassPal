@@ -1112,6 +1112,33 @@ public class PalBridgePlugin extends Plugin {
         }
     }
 
+    /** 清单里的字符串先洗一遍再塞 JSObject（v2.6.8f）。
+     * 理由：JSObject.put 遇到非法 UTF-16（孤立代理项）/控制字符会抛 JSONException，
+     * 而它在 themeInventoryData 里是**整份清单**的构造点 —— 一个包的 manifest 里
+     * 混进半个代理项，就会让整份主题清单抛错、渲染层退回"只有内置主题"，
+     * 表现正是用户报的"三丽鸥那些主题全消失了"。洗过之后最坏只坏那一套。 */
+    private static String safeStr(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (Character.isHighSurrogate(c)) {
+                if (i + 1 < s.length() && Character.isLowSurrogate(s.charAt(i + 1))) {
+                    sb.append(c).append(s.charAt(++i));
+                } else {
+                    sb.append('?');
+                }
+            } else if (Character.isLowSurrogate(c)) {
+                sb.append('?');
+            } else if (c < 0x20 && c != '\n' && c != '\t') {
+                sb.append(' ');
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
     /** 扫安装目录 → 渲染层 themeInventory 同形的清单（顺序由 JS 层按用户排序整理） */
     private JSObject themeInventoryData() {
         JSObject data = new JSObject();
@@ -1131,7 +1158,7 @@ public class PalBridgePlugin extends Plugin {
                     File css = new File(dir, "theme.css");
                     if (!mf.isFile() || !css.isFile()) {
                         JSObject o = new JSObject();
-                        o.put("id", dir.getName());
+                        o.put("id", safeStr(dir.getName()));
                         o.put("broken", "缺少 manifest.json 或 theme.css");
                         broken.put(o);
                         continue;
@@ -1140,17 +1167,17 @@ public class PalBridgePlugin extends Plugin {
                     String id = j.optString("id", dir.getName()).trim();
                     if (!THEME_ID_RE.matcher(id).matches() || isBuiltinThemeId(id)) {
                         JSObject o = new JSObject();
-                        o.put("id", dir.getName());
+                        o.put("id", safeStr(dir.getName()));
                         o.put("broken", "主题 id 不合法");
                         broken.put(o);
                         continue;
                     }
                     JSObject card = new JSObject();
-                    card.put("id", id);
-                    card.put("name", j.optString("name", id));
-                    card.put("version", j.optString("version", "1.0.0"));
-                    card.put("author", j.optString("author", "未署名"));
-                    card.put("desc", j.optString("description", j.optString("desc", "")));
+                    card.put("id", safeStr(id));
+                    card.put("name", safeStr(j.optString("name", id)));
+                    card.put("version", safeStr(j.optString("version", "1.0.0")));
+                    card.put("author", safeStr(j.optString("author", "未署名")));
+                    card.put("desc", safeStr(j.optString("description", j.optString("desc", ""))));
                     String acc = j.optString("accent", "");
                     card.put("accent", acc.matches("^#[0-9a-fA-F]{6}$") ? acc : "");
                     card.put("fixedPalette", !"false".equals(j.optString("fixedPalette", "true")));
@@ -1163,8 +1190,8 @@ public class PalBridgePlugin extends Plugin {
                 } catch (Throwable t) {
                     try {
                         JSObject o = new JSObject();
-                        o.put("id", dir.getName());
-                        o.put("broken", String.valueOf(t.getMessage()));
+                        o.put("id", safeStr(dir.getName()));
+                        o.put("broken", safeStr(String.valueOf(t.getMessage())));
                         broken.put(o);
                     } catch (Throwable ignored) {
                     }
@@ -1206,12 +1233,12 @@ public class PalBridgePlugin extends Plugin {
                     is.close();
                     if (j != null) {
                         item.put("id", j.optString("id", ""));
-                        item.put("name", j.optString("name", item.getString("name")));
-                        item.put("desc", j.optString("description", j.optString("desc", "")));
+                        item.put("name", safeStr(j.optString("name", item.getString("name"))));
+                        item.put("desc", safeStr(j.optString("description", j.optString("desc", ""))));
                         String acc = j.optString("accent", "");
                         item.put("accent", acc.matches("^#[0-9a-fA-F]{6}$") ? acc : "");
-                        item.put("version", j.optString("version", ""));
-                        item.put("author", j.optString("author", ""));
+                        item.put("version", safeStr(j.optString("version", "")));
+                        item.put("author", safeStr(j.optString("author", "")));
                     }
                 } catch (Throwable ignored) {
                     item.put("broken", "包损坏");

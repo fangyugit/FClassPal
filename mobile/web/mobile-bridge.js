@@ -27,7 +27,7 @@
 
   var MOBILE_KEY = 'fclasspal-mobile-config';
   var FALLBACK_ACCENT = '#6750A4';   // 与桌面版 DEFAULT_CONFIG.accentColor 一致
-  var APP_VERSION = '2.6.8-beta2';
+  var APP_VERSION = '2.6.8';
 
   /* ---------------------------------------------------------------- 原生插件 */
   function plugin() {
@@ -940,8 +940,24 @@
      * Android/data/com.fclasspal.widget/files/themes/（免运行时权限，卸载即清）。
      * 顺序存在本机配置（themeOrder），themesList 按它排 —— 与桌面 config.themeOrder 等价。 */
     themesList: function () {
-      return call('themesList', {}).then(function (r) {
-        if (!r || !r.success || !r.data) return { success: false };
+      /* v2.6.8f：原生 themesList 偶发失手（拿不到清单＝渲染层退回"只有内置主题"，
+       * 用户看到的就是主题包全没了）。这里失败后重试一次再放弃，并把错误带回去。 */
+      var attempt = function (times) {
+        return call('themesList', {}).then(function (r) {
+          if (r && r.success && r.data) return r;
+          if (times > 1) return new Promise(function (res) {
+            setTimeout(function () { res(attempt(times - 1)); }, 400);
+          });
+          return r || { success: false, error: '宿主没有返回主题清单' };
+        }, function (e) {
+          if (times > 1) return new Promise(function (res) {
+            setTimeout(function () { res(attempt(times - 1)); }, 400);
+          });
+          return { success: false, error: String((e && e.message) || e) };
+        });
+      };
+      return attempt(2).then(function (r) {
+        if (!r || !r.success || !r.data) return { success: false, error: (r && r.error) || '主题清单读取失败' };
         var order = (cfg && cfg.themeOrder) || [];
         var known = {};
         (r.data.themes || []).forEach(function (t) { known[t.id] = t; });
@@ -958,7 +974,7 @@
           b.installed = !!have[String(b.id || '').toLowerCase()];
         });
         return r;
-      }, function () { return { success: false }; });
+      }, function (e) { return { success: false, error: String((e && e.message) || e) }; });
     },
     themesCss: function () {
       return call('themesCss', {}).then(function (r) {

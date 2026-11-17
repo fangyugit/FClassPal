@@ -298,11 +298,6 @@
         <input type="text" id="setTitle" maxlength="12" />
       </label>
 
-      <label class="row">
-        <span>圆角弧度</span>
-        <input type="range" id="setRadius" min="8" max="40" step="1" />
-        <span id="radiusVal" class="val">跟随主题</span>
-      </label>
       <label class="row toggle">
         <span>窗口置底</span>
         <input type="checkbox" id="setBottom" />
@@ -315,87 +310,11 @@
         <span>锁定位置</span>
         <input type="checkbox" id="setLock" />
       </label>
-      <!-- 图标布局（v2.6.0）：网格=自动流式排布；自由=每个图标可拖位置、
-           拉伸大小（编辑模式下按住拖动 / 右下角手柄缩放）。
-           一键整理=按当前窗口重新整齐排一遍；还原尺寸=位置不动恢复默认大小；
-           恢复默认=清掉全部自定义回到网格。 -->
-      <div class="row" id="rowLayoutMode">
-        <span>图标布局</span>
-        <div class="seg" id="layoutSeg" role="group" aria-label="图标布局">
-          <button type="button" class="seg-btn" data-layout="grid" aria-pressed="true">网格</button>
-          <button type="button" class="seg-btn" data-layout="free" aria-pressed="false">自由</button>
-        </div>
-      </div>
-      <div class="row" id="rowLayoutOps">
-        <span>一键操作</span>
-        <div class="btn-row">
-          <button id="btnLayoutTidy" class="text-btn" type="button">一键整理</button>
-          <button id="btnLayoutResetSize" class="text-btn" type="button">还原尺寸</button>
-          <button id="btnLayoutReset" class="text-btn" type="button">恢复默认</button>
-        </div>
-      </div>
-      <label class="row">
-        <span>图标大小</span>
-        <input type="range" id="setItemSize" min="56" max="140" step="2" />
-        <span id="itemSizeVal" class="val">84px</span>
-      </label>
-      <p class="row-hint">网格模式：编辑模式里拖图标右下角的手柄可单独调某个格子的跨度与高度</p>
+      <!-- v2.6.8f：图标布局 / 图标大小 / 图标外观 / 窗口大小这一整批「看着长什么样」
+           的项都搬进上面的「个性化」分区了，功能设置只留行为类开关。 -->
 
       <!-- v2.6.9：毛玻璃 / 实时桌面模糊 / 玻璃底材 也属于"模糊相关"，一并挪进个性化 -->
 
-            <!-- 图标外观（v2.4.2 起）：填充方式只影响图片图标；边框与形状对预设/字符图标也生效 -->
-      <div class="row">
-        <span>图标填充</span>
-        <div class="seg" id="iconFitSeg" role="group" aria-label="图标填充">
-          <button type="button" class="seg-btn" data-fit="cover" aria-pressed="true">裁剪</button>
-          <button type="button" class="seg-btn" data-fit="contain" aria-pressed="false">内部</button>
-        </div>
-      </div>
-      <!-- 统一图标风格（v2.4.4）：只在「内部」填充下露出（裁剪模式下藏起来，调了没反应） -->
-      <label class="row toggle hidden" id="iconMonoRow">
-        <span>统一图标风格</span>
-        <input type="checkbox" id="iconMono" aria-label="统一图标风格" />
-      </label>
-      <div class="row">
-        <span>图标形状</span>
-        <div class="seg" id="iconShapeSeg" role="group" aria-label="图标形状">
-          <button type="button" class="seg-btn" data-shape="auto" aria-pressed="true">跟随主题</button>
-          <button type="button" class="seg-btn" data-shape="circle" aria-pressed="false">圆形</button>
-          <button type="button" class="seg-btn" data-shape="rounded" aria-pressed="false">圆角</button>
-          <button type="button" class="seg-btn" data-shape="square" aria-pressed="false">方形</button>
-        </div>
-      </div>
-      <label class="row" id="iconRadiusRow">
-        <span>圆角大小</span>
-        <input type="range" id="iconRadius" min="4" max="50" step="1" value="22"
-               aria-label="图标圆角大小" />
-        <span id="iconRadiusVal" class="val">22%</span>
-      </label>
-      <div class="row">
-        <span>图标边框</span>
-        <div class="seg" id="iconBorderSeg" role="group" aria-label="图标边框">
-          <button type="button" class="seg-btn" data-border="glass" aria-pressed="true">玻璃</button>
-          <button type="button" class="seg-btn" data-border="auto" aria-pressed="false">自动取色</button>
-          <button type="button" class="seg-btn" data-border="theme" aria-pressed="false">跟随主题</button>
-          <button type="button" class="seg-btn" data-border="none" aria-pressed="false">透明</button>
-        </div>
-      </div>
-      <div class="row">
-        <span>边框颜色</span>
-        <div class="color-pick">
-          <input type="color" id="iconRingColor" value="#3a63f2" aria-label="自定义图标边框颜色" />
-          <span id="iconRingHex" class="val">按上面取色</span>
-          <button type="button" class="text-btn" id="btnIconRingClear">恢复默认</button>
-        </div>
-      </div>
-            <div class="row">
-        <span>窗口大小</span>
-        <div class="size-controls">
-          <button id="btnSizeDown">−</button>
-          <span id="sizeVal">480 × 420</span>
-          <button id="btnSizeUp">＋</button>
-        </div>
-      </div>
       <div class="row">
         <span>分组</span>
         <button id="btnManageGroups" class="text-btn">管理分组</button>
@@ -465,27 +384,113 @@
           <svg class="ic" aria-hidden="true"><use href="#i-link"/></svg>
           <span>连接其他设备</span>
         </div>
-        <div class="wear-code-row" id="btnLanScanRow">
-          <button id="btnLanScan" class="text-btn">连接其他设备</button>
-        </div>
-        <div class="wear-hint hidden" id="lanScanHint"></div>
-        <div class="wear-devices hidden" id="lanFound"></div>
-        <label class="row hidden" id="lanManualRow">
-          <span>IP 直连</span>
-          <input type="text" id="lanIp" placeholder="192.168.x.x" />
-          <button id="btnLanManual" class="text-btn" type="button">连接</button>
-        </label>
-        <label class="row hidden" id="lanCodeRow">
-          <span>配对码</span>
-          <input type="text" id="lanCode" inputmode="numeric" maxlength="6" placeholder="6 位数字" />
-          <button id="btnLanPair" class="text-btn" type="button">配对</button>
-        </label>
+        <div class="wear-code-row" id="btnLanScanRow">
+          <button id="btnLanScan" class="text-btn">连接其他设备</button>
+        </div>
+        <div class="wear-hint hidden" id="lanScanHint"></div>
+        <div class="wear-devices hidden" id="lanFound"></div>
+        <label class="row hidden" id="lanManualRow">
+          <span>IP 直连</span>
+          <input type="text" id="lanIp" placeholder="192.168.x.x" />
+          <button id="btnLanManual" class="text-btn" type="button">连接</button>
+        </label>
+        <label class="row hidden" id="lanCodeRow">
+          <span>配对码</span>
+          <input type="text" id="lanCode" inputmode="numeric" maxlength="6" placeholder="6 位数字" />
+          <button id="btnLanPair" class="text-btn" type="button">配对</button>
+        </label>
         <div class="wear-devices" id="lanPeers"></div>
       </div>
         </section>
 
         <section class="psec" id="secPersonal">
           <h4 class="psec-title">个性化</h4>
+      <!-- v2.6.8f：圆角 / 图标布局 / 图标大小 / 图标外观 / 窗口大小这一批
+           「看着长什么样」的项全部收进个性化（用户点名）。
+           功能设置分区只留行为类开关与数据管理。 -->
+      <label class="row">
+        <span>圆角弧度</span>
+        <input type="range" id="setRadius" min="8" max="40" step="1" />
+        <span id="radiusVal" class="val">跟随主题</span>
+      </label>
+      <div class="row">
+        <span>窗口大小</span>
+        <div class="size-controls">
+          <button id="btnSizeDown">−</button>
+          <span id="sizeVal">480 × 420</span>
+          <button id="btnSizeUp">＋</button>
+        </div>
+      </div>
+      <!-- 图标布局（v2.6.0）：网格=自动流式排布；自由=每个图标可拖位置、
+           拉伸大小（编辑模式下按住拖动 / 右下角手柄缩放）。
+           一键整理=按当前窗口重新整齐排一遍；还原尺寸=位置不动恢复默认大小；
+           恢复默认=清掉全部自定义回到网格。 -->
+      <div class="row" id="rowLayoutMode">
+        <span>图标布局</span>
+        <div class="seg" id="layoutSeg" role="group" aria-label="图标布局">
+          <button type="button" class="seg-btn" data-layout="grid" aria-pressed="true">网格</button>
+          <button type="button" class="seg-btn" data-layout="free" aria-pressed="false">自由</button>
+        </div>
+      </div>
+      <div class="row" id="rowLayoutOps">
+        <span>一键操作</span>
+        <div class="btn-row">
+          <button id="btnLayoutTidy" class="text-btn" type="button">一键整理</button>
+          <button id="btnLayoutResetSize" class="text-btn" type="button">还原尺寸</button>
+          <button id="btnLayoutReset" class="text-btn" type="button">恢复默认</button>
+        </div>
+      </div>
+      <label class="row">
+        <span>图标大小</span>
+        <input type="range" id="setItemSize" min="56" max="140" step="2" />
+        <span id="itemSizeVal" class="val">84px</span>
+      </label>
+      <p class="row-hint">网格模式：拖下面的「图标大小」整体缩放；编辑模式里拖图标右下角的手柄可单独调某个格子的跨度与高度</p>
+      <!-- 图标外观（v2.4.2 起）：填充方式只影响图片图标；边框与形状对预设/字符图标也生效 -->
+      <div class="row">
+        <span>图标填充</span>
+        <div class="seg" id="iconFitSeg" role="group" aria-label="图标填充">
+          <button type="button" class="seg-btn" data-fit="cover" aria-pressed="true">裁剪</button>
+          <button type="button" class="seg-btn" data-fit="contain" aria-pressed="false">内部</button>
+        </div>
+      </div>
+      <!-- 统一图标风格（v2.4.4）：只在「内部」填充下露出（裁剪模式下藏起来，调了没反应） -->
+      <label class="row toggle hidden" id="iconMonoRow">
+        <span>统一图标风格</span>
+        <input type="checkbox" id="iconMono" aria-label="统一图标风格" />
+      </label>
+      <div class="row">
+        <span>图标形状</span>
+        <div class="seg" id="iconShapeSeg" role="group" aria-label="图标形状">
+          <button type="button" class="seg-btn" data-shape="auto" aria-pressed="true">跟随主题</button>
+          <button type="button" class="seg-btn" data-shape="circle" aria-pressed="false">圆形</button>
+          <button type="button" class="seg-btn" data-shape="rounded" aria-pressed="false">圆角</button>
+          <button type="button" class="seg-btn" data-shape="square" aria-pressed="false">方形</button>
+        </div>
+      </div>
+      <label class="row" id="iconRadiusRow">
+        <span>圆角大小</span>
+        <input type="range" id="iconRadius" min="4" max="50" step="1" value="22"
+               aria-label="图标圆角大小" />
+        <span id="iconRadiusVal" class="val">22%</span>
+      </label>
+      <div class="row">
+        <span>图标边框</span>
+        <div class="seg" id="iconBorderSeg" role="group" aria-label="图标边框">
+          <button type="button" class="seg-btn" data-border="glass" aria-pressed="true">玻璃</button>
+          <button type="button" class="seg-btn" data-border="auto" aria-pressed="false">自动取色</button>
+          <button type="button" class="seg-btn" data-border="theme" aria-pressed="false">跟随主题</button>
+          <button type="button" class="seg-btn" data-border="none" aria-pressed="false">透明</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>边框颜色</span>
+        <div class="color-pick">
+          <input type="color" id="iconRingColor" value="#3a63f2" aria-label="自定义图标边框颜色" />
+          <span id="iconRingHex" class="val">按上面取色</span>
+          <button type="button" class="text-btn" id="btnIconRingClear">恢复默认</button>
+        </div>
+      </div>
       <!-- v2.6.9：透明度 / 模糊度 / 图片这些「看着长什么样」的项统一收进个性化
            （原来散在功能设置里，用户提过"整理设置"）。 -->
       <label class="row">
@@ -523,59 +528,59 @@
         <span>玻璃底材</span>
         <span id="realtimeInfo" class="val blur-info">未开启</span>
       </div>
-            <!-- 自定义背景图（v2.4.0）：选图 + 模糊 / 白色蒙版 / 裁剪 -->
-      <label class="row toggle">
-        <span>自定义背景</span>
-        <input type="checkbox" id="setBgOn" />
-      </label>
-      <div class="row">
-        <span>背景图片</span>
-        <!-- 注意 别用 .size-controls 装文字按钮：那个类是给窗口尺寸的 30×30 方形图标
-             按钮用的（.size-controls button 写死 width/height 30px），文字按钮一进去
-             就被压成 30px 宽，而按钮默认不裁剪，文字会溢出到按钮外面
-             （v2.4.1 用户报的「选择背景图和清除按键 字体在按键外面了」）。
-             文字按钮统一放 .btn-row。 -->
-        <div class="btn-row">
-          <button id="btnBgPick" class="text-btn">选择图片…</button>
-          <button id="btnBgClear" class="text-btn">清除</button>
-        </div>
-      </div>
-      <div class="row">
-        <span>当前图片</span>
-        <span id="bgFileInfo" class="val blur-info">未选择</span>
-      </div>
-      <label class="row">
-        <span>图片模糊</span>
-        <input type="range" id="setBgBlur" min="0" max="40" step="1" />
-        <span id="bgBlurVal" class="val">0px</span>
-      </label>
-      <label class="row">
-        <span>白色蒙版</span>
-        <input type="range" id="setBgMask" min="0" max="100" step="1" />
-        <span id="bgMaskVal" class="val">0%</span>
-      </label>
-      <label class="row">
-        <span>图片缩放</span>
-        <input type="range" id="setBgScale" min="100" max="300" step="1" />
-        <span id="bgScaleVal" class="val">100%</span>
-      </label>
-      <label class="row">
-        <span>水平位置</span>
-        <input type="range" id="setBgX" min="0" max="100" step="1" />
-        <span id="bgXVal" class="val">50%</span>
-      </label>
-      <label class="row">
-        <span>垂直位置</span>
-        <input type="range" id="setBgY" min="0" max="100" step="1" />
-        <span id="bgYVal" class="val">50%</span>
-      </label>
-      <div class="row">
-        <span>填充方式</span>
-        <select id="bgFitSelect" class="theme-select" aria-label="填充方式">
-          <option value="cover">裁剪铺满</option>
-          <option value="contain">完整显示</option>
-          <option value="tile">平铺</option>
-        </select>
+            <!-- 自定义背景图（v2.4.0）：选图 + 模糊 / 白色蒙版 / 裁剪 -->
+      <label class="row toggle">
+        <span>自定义背景</span>
+        <input type="checkbox" id="setBgOn" />
+      </label>
+      <div class="row">
+        <span>背景图片</span>
+        <!-- 注意 别用 .size-controls 装文字按钮：那个类是给窗口尺寸的 30×30 方形图标
+             按钮用的（.size-controls button 写死 width/height 30px），文字按钮一进去
+             就被压成 30px 宽，而按钮默认不裁剪，文字会溢出到按钮外面
+             （v2.4.1 用户报的「选择背景图和清除按键 字体在按键外面了」）。
+             文字按钮统一放 .btn-row。 -->
+        <div class="btn-row">
+          <button id="btnBgPick" class="text-btn">选择图片…</button>
+          <button id="btnBgClear" class="text-btn">清除</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>当前图片</span>
+        <span id="bgFileInfo" class="val blur-info">未选择</span>
+      </div>
+      <label class="row">
+        <span>图片模糊</span>
+        <input type="range" id="setBgBlur" min="0" max="40" step="1" />
+        <span id="bgBlurVal" class="val">0px</span>
+      </label>
+      <label class="row">
+        <span>白色蒙版</span>
+        <input type="range" id="setBgMask" min="0" max="100" step="1" />
+        <span id="bgMaskVal" class="val">0%</span>
+      </label>
+      <label class="row">
+        <span>图片缩放</span>
+        <input type="range" id="setBgScale" min="100" max="300" step="1" />
+        <span id="bgScaleVal" class="val">100%</span>
+      </label>
+      <label class="row">
+        <span>水平位置</span>
+        <input type="range" id="setBgX" min="0" max="100" step="1" />
+        <span id="bgXVal" class="val">50%</span>
+      </label>
+      <label class="row">
+        <span>垂直位置</span>
+        <input type="range" id="setBgY" min="0" max="100" step="1" />
+        <span id="bgYVal" class="val">50%</span>
+      </label>
+      <div class="row">
+        <span>填充方式</span>
+        <select id="bgFitSelect" class="theme-select" aria-label="填充方式">
+          <option value="cover">裁剪铺满</option>
+          <option value="contain">完整显示</option>
+          <option value="tile">平铺</option>
+        </select>
       </div>
       <!-- 主题风格（v2.5.4 换回老样式）——
            安卓真机上"只靠主题管理弹窗切换"这条路不稳，而且少了直观的快速切换：
@@ -602,6 +607,15 @@
         <span>主题管理</span>
         <div class="btn-row">
           <button id="btnThemeManage" class="text-btn" type="button">安装 / 排序 / 导入</button>
+        </div>
+      </div>
+      <!-- v2.6.8f：随包主题补装入口 —— 只在「APK/安装目录里带了包但没装上」时露出。
+           安卓端「主题管理」整行是藏起来的，没有这一行用户遇到"主题包不见了"
+           就只剩卸载重装一条路。 -->
+      <div class="row hidden" id="rowThemeRepair">
+        <span>随包主题</span>
+        <div class="btn-row">
+          <button id="btnThemeRepair" class="text-btn" type="button">补装随包主题</button>
         </div>
       </div>
       <!-- v2.6.9b：界面版本（安卓端）—— WearOS 版是纯 Java 原生界面（无 WebView），
@@ -728,6 +742,7 @@
           <div class="seg" id="simSeg" role="group" aria-label="平台效果预览">
             <button type="button" class="seg-btn" data-sim="auto" aria-pressed="true">本机</button>
             <button type="button" class="seg-btn" data-sim="android" aria-pressed="false">移动端</button>
+            <button type="button" class="seg-btn" data-sim="win" aria-pressed="false">win 端</button>
             <button type="button" class="seg-btn" data-sim="linux" aria-pressed="false">Linux</button>
             <button type="button" class="seg-btn" data-sim="darwin" aria-pressed="false">macOS</button>
           </div>

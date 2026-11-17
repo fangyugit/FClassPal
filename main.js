@@ -2674,8 +2674,44 @@ ipcMain.handle('themes-check-update', async (_e, id) => {
   }
 });
 
-ipcMain.handle('themes-open-folder', async () => {
+/** 主题包批量检查更新（v2.6.8f：启动后自动检测 + 提醒，只比时间戳不下载包）。
+ * 轻量设计：同一 repo 的 release 列表只拉一次（18 套包都出自官方仓库）；
+ * 「有没有新版」用远端资产的 updated_at 对比本地 manifest.json 的安装 mtime，
+ * 不用把每个 .fcpt 下载下来解 manifest —— 启动路径上不能背 18 次 MB 级下载。 */
+ipcMain.handle('themes-check-updates', async () => {
   try {
+    const packs = themes.scanInstalled(CONFIG_DIR).filter((t) => !t.broken && t.id);
+    const relCache = {};
+    const updates = [];
+    for (const t of packs) {
+      const repo = String(t.repo || '').trim() || 'fangyugit/FClassPal-theme';
+      if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) continue;
+      try {
+        if (!relCache[repo]) relCache[repo] = await githubApi('/repos/' + repo + '/releases?per_page=10');
+        const rel = relCache[repo];
+        if (!Array.isArray(rel)) continue;
+        const assetName = t.id + '.fcpt';
+        for (const r of rel) {                    // draft 不收，按发布时间新→旧找
+          if (!r || r.draft) continue;
+          const a = (r.assets || []).filter((x) => x && x.name === assetName)[0];
+          if (!a) continue;
+          const mfPath = path.join(themes.themesDir(CONFIG_DIR), t.id, 'manifest.json');
+          const localMs = fs.existsSync(mfPath) ? fs.statSync(mfPath).mtimeMs : 0;
+          const remoteTs = Date.parse(a.updated_at || '');
+          if (remoteTs > localMs) {
+            updates.push({ id: t.id, name: t.name, version: t.version || '', tag: String(r.tag_name || '') });
+          }
+          break;
+        }
+      } catch (e) { /* 单个仓库失败不影响其余包 */ }
+    }
+    return { success: true, updates };
+  } catch (e) {
+    return { success: false, error: friendlyNetError(e) };
+  }
+});
+
+ipcMain.handle('themes-open-folder', async () => {  try {
     const dir = themes.themesDir(CONFIG_DIR);
     fs.mkdirSync(dir, { recursive: true });
     const err = await shell.openPath(dir);

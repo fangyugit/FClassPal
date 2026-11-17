@@ -390,7 +390,8 @@ const checks = [
     /function syncThemeSelect\(\)/.test(app)],
   ['v2.5.4: 随包主题启动自动补装（安卓"附带的用不了"的兜底）',
     /function autoInstallBundledPacks\(\)/.test(app) &&
-    /autoInstallBundledPacks\(\)\.catch/.test(app) &&
+    /* v2.6.8f：启动入口统一交给 bootThemes（补装 + 失败重试 + 报错可见） */
+    (/autoInstallBundledPacks\(\)\.catch/.test(app) || /bootThemes\(true\)/.test(app)) &&
     /API\.themesInstallBundled\(b\.file\)/.test(app)],
   ['v2.5.4: 拖动/缩放走会话式降载（一次手势只摘戴一次滤镜，治触摸拖动闪动）',
     /function beginMoveSession\(/.test(app) && /function endMoveSession\(/.test(app) &&
@@ -1119,7 +1120,10 @@ const checks = [
     !/沿用上一版/.test(readme) &&
     /* v2.6.8-beta：这轮只出 Windows 包，Linux 行仍指上一版发布页，故跳过该行核对 */
     (srcPkg.version.indexOf('-') >= 0 ||
-      new RegExp('FClassPal-' + srcPkg.version.replace(/\./g, '\\.') + '-linux-loong64').test(readme)) &&
+      new RegExp('FClassPal-' + srcPkg.version.replace(/\./g, '\\.') + '-linux-loong64').test(readme) ||
+      /* v2.6.8：正式版只出 Windows + Android，README 里显式说明 Linux/mac/WearOS
+       * 仍指旧发布页（诚实标注优于给死链），此时放行这一条 */
+      /上表中的 Linux \/ macOS \/ WearOS 产物仍是/.test(readme)) &&
     /##\s*v2\.4\.5/.test(changelog)],
   ['v2.6.6: 下载链接的 tag 与文件名版本必须一致（tag 指错就是死链，例如把手表包写进新版页）',
     (() => {
@@ -1176,6 +1180,8 @@ const checks = [
   ['v2.4.5: Linux 产物已生成（x64 + arm64 + loong64 的 tar.gz，当前版本）',
     /* v2.6.8-beta：预发布轮次只打 Windows，带「-」的版本号跳过这条 */
     srcPkg.version.indexOf('-') >= 0 ||
+    /* v2.6.8：本轮只出 Windows + Android，README 有显式说明就放行 */
+    /上表中的 Linux \/ macOS \/ WearOS 产物仍是/.test(readme) ||
     (fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-x64.tar.gz') &&
     fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-arm64.tar.gz') &&
     fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-loong64.tar.gz'))],
@@ -1714,7 +1720,7 @@ const checks = [
     fs.readFileSync('mobile/tools/apply-android-overlay.js', 'utf8')
       .includes('(?:-[0-9A-Za-z.]+)?$/.exec(pkg.version')],
   ['v2.6.8-beta2: 版本号四处同源（根包 / mobile 包 / APP_VERSION / 预览 mock）',
-    srcPkg.version === '2.6.8-beta2' &&
+    !!srcPkg.version &&
     JSON.parse(fs.readFileSync('mobile/package.json', 'utf8')).version === srcPkg.version &&
     new RegExp("var APP_VERSION = '" + srcPkg.version + "';").test(fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8')) &&
     new RegExp("getAppVersion: \\(\\) => Promise\\.resolve\\('" + srcPkg.version + "'\\)").test(app)],
@@ -1771,6 +1777,51 @@ const checks = [
     fs.readFileSync('mobile/tools/assemble-web.js', 'utf8').includes("'FClassPal-theme', 'dist'") &&
     /id="rowWearUi"/.test(html) && /id="uiModeSeg"/.test(html) &&
     /bindUiModeSeg/.test(app)],
+  ['v2.6.8f: 透明度真因修复 —— --glass-alpha 默认值只能在 :root，.widget 绝不再声明',
+    /--glass-alpha: 0\.55;/.test(css) &&
+    !/^\s*--glass-alpha:/m.test(css.slice(css.indexOf('.widget {'), css.indexOf('.widget {') + 700)) &&
+    app.includes("document.body.style.setProperty('--glass-alpha'")],
+  ['v2.6.8f: 网格形态图标大小真的缩放 —— --item-scale 由 app.js 写、style.css 网格规则消费',
+    app.includes("setProperty('--item-scale'") &&
+    /#content:not\(\.free-layout\) \.item-icon \{[\s\S]{0,120}?calc\(48px \* var\(--item-scale, 1\)\)/.test(css) &&
+    /#content:not\(\.free-layout\) \.item-name \{[\s\S]{0,120}?calc\(0\.78rem \* var\(--item-scale, 1\)\)/.test(css)],
+  ['v2.6.8f: 主题能力探测 —— 不支持透明度/圆角的主题把对应滑条灰掉',
+    app.includes('function computeThemeCaps(') &&
+    app.includes("css.indexOf('var(--glass-alpha')") &&
+    app.includes('function themeSupports(') &&
+    /syncCapsControls\(\)/.test(app) &&
+    /computeThemeCaps\(\)/.test(app)],
+  ['v2.6.8f: 设置大重组 —— 圆角/窗口大小/图标布局/图标外观全在个性化分区',
+    /id="secPersonal"[\s\S]{0,6000}?id="setRadius"/.test(html) &&
+    /id="secPersonal"[\s\S]{0,6000}?id="setItemSize"/.test(html) &&
+    /id="secPersonal"[\s\S]{0,6000}?id="iconBorderSeg"/.test(html) &&
+    /id="secPersonal"[\s\S]{0,6000}?id="btnSizeDown"/.test(html) &&
+    /id="secFunction"[\s\S]{0,4000}?id="btnManageGroups"/.test(html)],
+  ['v2.6.8f: 调试模式「win 端」模拟 —— 移动端可预览桌面 UI',
+    /data-sim="win"/.test(html) &&
+    app.includes("applyThemePickVisibility(\n    v === 'android' ? true :")],
+  ['v2.6.8f: 主题包自动检查更新 —— 批量时间戳比对 + 提醒 + 数量标',
+    main.includes("ipcMain.handle('themes-check-updates'") &&
+    /themesCheckUpdates: \(\) => ipcRenderer\.invoke\('themes-check-updates'\)/.test(preloadSrc) &&
+    app.includes('async function autoCheckThemeUpdates(') &&
+    app.includes('syncThemeUpdateBadge()') &&
+    /setTimeout\(autoCheckThemeUpdates, 8000\)/.test(app)],
+  ['v2.6.8f: 安卓主题包"消失"兜底 —— 清单失败可见 + 重试 + 手动补装入口',
+    /* 原生：清单里任何一条脏字符串都不许把整份清单炸掉 */
+    (() => {
+      const j = fs.readFileSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/PalBridgePlugin.java', 'utf8');
+      return /private static String safeStr\(String s\)/.test(j) &&
+        /card\.put\("name", safeStr\(/.test(j) &&
+        /card\.put\("desc", safeStr\(/.test(j);
+    })() &&
+    /* JS：清单失败要留原因 + 二次重试 + 有手动补装入口 */
+    app.includes('themeInvError') &&
+    /async function bootThemes\(alreadyLoaded\)/.test(app) &&
+    /await new Promise\(\(r\) => setTimeout\(r, 1500\)\)/.test(app) &&
+    /id="rowThemeRepair"/.test(html) &&
+    app.includes('function syncThemeRepairRow(') &&
+    /* 安卓桥：原生 themesList 失败重试一次 */
+    /var attempt = function \(times\)/.test(fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8'))],
 ];
 let bad = 0;
 checks.forEach((c) => {
