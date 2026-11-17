@@ -62,6 +62,10 @@ contextBridge.exposeInMainWorld('widgetAPI', {
   themesRemove: (id) => ipcRenderer.invoke('themes-remove', id),
   themesReorder: (ids) => ipcRenderer.invoke('themes-reorder', ids),
   themesOpenFolder: () => ipcRenderer.invoke('themes-open-folder'),
+  /* v2.6.9：主题包应用内检查更新（包 manifest.repo → GitHub release 资产） */
+  themesCheckUpdate: (id) => ipcRenderer.invoke('themes-check-update', id),
+  /* v2.6.9：F12 开 DevTools（仅调试模式，主进程还会核 config.debugMode） */
+  toggleDevTools: () => ipcRenderer.invoke('toggle-devtools'),
   /* v2.5.0：检测更新 + 恢复出厂（关于界面） */
   // v2.6.2：可传 { apiBase } 指定自定义更新服务器（调试模式）
   checkUpdate: (opts) => ipcRenderer.invoke('check-update', opts),

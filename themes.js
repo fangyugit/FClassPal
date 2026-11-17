@@ -79,6 +79,14 @@ function normalizeManifest(raw, dir) {
     spec: parseInt(raw.spec, 10) || SPEC_VERSION,
     minApp: String(raw.minApp || '').trim().slice(0, 20),
     previewName: String(raw.preview || '').trim().slice(0, 60),
+    /* v2.6.9：模糊度适配与更新检测两个新字段
+     *   blur —— 包声明自己适配了模糊度标准（theme.css 里用
+     *     var(--blur-bg-mul,1) / var(--blur-item-mul,1) / var(--blur-mul,1)
+     *     乘算），设置里的模糊滑条对这套包才解锁；缺省 false（置灰）。
+     *   repo —— 「owner/repo」形式的 GitHub 仓库，主题管理里「检查更新」
+     *     按它拉最新 release 里的 <id>.fcpt；缺省空 = 不支持更新检测。 */
+    blur: raw.blur === true,
+    repo: String(raw.repo || '').trim().slice(0, 80),
     dir,
   };
 }

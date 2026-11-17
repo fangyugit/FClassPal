@@ -103,7 +103,22 @@ function main() {
     for (const f of all) {
       fs.copyFileSync(path.join(SRC_THEMES, f), path.join(outThemes, f));
     }
-    log('复制随包主题包 -> www/themes/：' + all.length + ' 个 .fcpt（内置全套；' +
+    /* v2.6.9b：主题仓库（FClassPal-theme/dist）里的包也一并预装 ——
+     * 「安卓版全部主题都预装不要点击导入」。同名包以主题仓库的新版为准
+     * （仓库随 release 更新更快），桌面 themes/ 里没有的（BlackKitty 等）
+     * 直接补进来。仓库不在的机器上静默跳过，只用本体那 8 套。 */
+    const REPO_DIST = path.resolve(ROOT, '..', '..', 'FClassPal-theme', 'dist');
+    let repoN = 0;
+    if (fs.existsSync(REPO_DIST)) {
+      const repoPacks = fs.readdirSync(REPO_DIST)
+        .filter((f) => f.toLowerCase().endsWith('.fcpt') && !f.startsWith('example-'))
+        .sort();
+      for (const f of repoPacks) {
+        fs.copyFileSync(path.join(REPO_DIST, f), path.join(outThemes, f));
+        repoN += 1;
+      }
+    }
+    log('复制随包主题包 -> www/themes/：' + repoN + ' 个 .fcpt（主题仓库全套，含本体 8 套的适配新版；' +
       '桌面端随包 ' + desktopBundled.length + ' 套）');
   } else {
     log('警告：build.files 里没有随包主题，APK 里不会有离线主题库存');

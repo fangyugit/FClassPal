@@ -50,7 +50,10 @@ const DEFAULT_CONFIG = {
   x: 100,
   y: 100,
   opacity: 0.55,   // 玻璃背景 alpha：1=实色磨砂，0=完全透明；前景内容始终不透明
-  blur: 1,         // v2.6.8：模糊度档位（0~2，1=各主题原档），驱动 body 的 --blur-mul
+  blur: 1,         // v2.6.9：总体模糊度（0~2，1=各主题原档），驱动 body 的 --blur-mul
+  itemBlur: 1,     // v2.6.9：快捷方式周围模糊度（.item 卡片，body 的 --blur-item-mul）
+  bgBlur: 1,       // v2.6.9b：主界面背景模糊度（.glass-warp，body 的 --blur-bg-mul）
+  updateChannel: 'stable',  // v2.6.9：更新通道 'stable' 只比正式版 / 'pre' 连 beta 一起比
   itemSize: 84,    // v2.6.8：网格布局的图标格子尺寸（px），驱动 :root 的 --item-size
   font: { family: '', weight: 0, size: 100, spacing: 0 },  // v2.6.8：全局字体（family='' = 跟随系统）
   alwaysOnTop: false,   // 已弃用置顶：小部件默认沉底
@@ -2583,6 +2586,94 @@ ipcMain.handle('themes-reorder', async (event, ids) => {
   }
 });
 
+/** 下载 GitHub 资产（跟 302 重定向），上限 32MB；失败抛错 */
+function httpsDownload(url, redirects) {
+  return new Promise((resolve, reject) => {
+    if ((redirects || 0) > 5) return reject(new Error('重定向太多'));
+    const req = https.get(url, { headers: { 'User-Agent': 'FClassPal' }, timeout: 60000 }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        const next = new URL(res.headers.location, url).href;
+        httpsDownload(next, (redirects || 0) + 1).then(resolve, reject);
+        return;
+      }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
+      const chunks = [];
+      let n = 0;
+      res.on('data', (c) => {
+        n += c.length;
+        if (n > 32 * 1024 * 1024) { req.destroy(); return reject(new Error('资产超过 32MB')); }
+        chunks.push(c);
+      });
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+      res.on('error', reject);
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('下载超时')); });
+    req.on('error', reject);
+  });
+}
+
+/** 版本比较：数字段比大小；同号时都带后缀逐段比（数字段按数值），裸版本 > 带后缀 */
+function cmpPackVer(a, b) {
+  const pa = String(a || '').split('.'), pb = String(b || '').split('.');
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i], y = pb[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    const xn = /^\d+$/.test(x), yn = /^\d+$/.test(y);
+    if (xn && yn) { const d = Number(x) - Number(y); if (d) return d; continue; }
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+/** 主题包检查更新（v2.6.9）：manifest.repo 的 GitHub 最新 release 里找
+ * <id>.fcpt，下载后用包内 manifest 的 version 跟已装的比，真有新版才装。
+ * repo 只认 owner/repo 形态，防 SSRF；比对源用包内版本，跟 release tag 无关。 */
+ipcMain.handle('themes-check-update', async (_e, id) => {
+  const tid = String(id || '');
+  try {
+    const installed = themes.scanInstalled(CONFIG_DIR).filter((t) => t.id === tid && !t.broken)[0];
+    if (!installed) return { success: false, error: '这个主题包没有安装' };
+    /* 旧装的包 manifest 里没有 repo 字段（v2.6.8-beta2 之前装的）——
+     * 兜底到官方主题仓库，否则这批包永远没有「检查更新」可点。 */
+    const repo = String(installed.repo || '').trim() || 'fangyugit/FClassPal-theme';
+    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
+      return { success: false, error: '这个包没带更新地址（manifest.repo 为空）' };
+    }
+    const rel = await githubApi('/repos/' + repo + '/releases?per_page=10');
+    if (!Array.isArray(rel) || !rel.length) return { success: false, error: '仓库里没有 release' };
+    const assetName = tid + '.fcpt';
+    let asset = null, relUsed = null;
+    for (const r of rel) {                        // draft 不收，按发布时间新→旧找
+      if (!r || r.draft) continue;
+      asset = (r.assets || []).filter((a) => a && a.name === assetName)[0];
+      if (asset) { relUsed = r; break; }
+    }
+    if (!asset || !asset.browser_download_url) {
+      return { success: false, error: '最新 release 里没有 ' + assetName };
+    }
+    const buf = await httpsDownload(asset.browser_download_url);
+    const zip = readZip(buf);
+    const byName = {};
+    zip.forEach((en) => { byName[en.name] = en.data; });
+    let remote = {};
+    try { remote = JSON.parse(byName['manifest.json'].toString('utf8')); } catch (e) { }
+    const rv = String(remote.version || '').trim() || '1.0.0';
+    const cmp = cmpPackVer(rv, installed.version || '1.0.0');
+    if (cmp <= 0) {
+      return { success: true, updated: false, version: installed.version || '1.0.0', remoteVersion: rv };
+    }
+    const t = themes.installFromBuffer(CONFIG_DIR, buf);
+    return {
+      success: true, updated: true, version: t.version || rv, remoteVersion: rv,
+      release: String((relUsed && relUsed.tag_name) || ''), data: themeInventory()
+    };
+  } catch (e) {
+    return { success: false, error: friendlyNetError(e) };
+  }
+});
+
 ipcMain.handle('themes-open-folder', async () => {
   try {
     const dir = themes.themesDir(CONFIG_DIR);
@@ -2783,31 +2874,65 @@ ipcMain.handle('check-update', async (_e, opts) => {
       list = [await call(repoPath + '/latest')];
     }
     if (!Array.isArray(list)) list = [list];
+    /* v2.6.9：通道 —— stable 只比正式版；pre 连 -beta 这类预发布一起比。
+     * 版本解析带 prerelease 段（2.6.9-beta），比较规则照 semver：
+     * 先比数字段，同号时「有预发布后缀」的**小于**裸版本（2.6.9-beta < 2.6.9），
+     * 两个都带后缀就逐段比（数字段按数值，字母段按字典序）。 */
+    const channel = opts && opts.channel === 'pre' ? 'pre' : 'stable';
     const parse = (tag) => {
-      const core = String(tag || '').replace(/^v/i, '').trim();
-      if (!/^\d+(\.\d+){1,3}$/.test(core)) return null;   // 带后缀的（4.9.9-Pre）不算正式版本
-      return { core, num: core.split('.').map((x) => parseInt(x, 10) || 0) };
+      const raw = String(tag || '').replace(/^v/i, '').trim();
+      const m = /^(\d+(?:\.\d+){1,3})(?:-([0-9A-Za-z.-]+))?$/.exec(raw);
+      if (!m) return null;                       // 4.9.9-Pre 之类认不出的一律不算
+      const core = m[1];
+      /* v2.6.9：4.9.9-Pre 是用户当年手改名字的历史 release，不是真版本。
+       * 预发布解析放开后 pre 通道又会把它当成“最新版”（4.9.9 > 2.6.x），
+       * 这里直接拉黑整个 4.9.9。 */
+      if (core === '4.9.9') return null;
+      const pre = m[2] || '';
+      if (pre && channel !== 'pre') return null; // 稳定通道里预发布不参与比较
+      return { core, pre, num: core.split('.').map((x) => parseInt(x, 10) || 0) };
     };
-    const stable = list
-      .filter((r) => r && !r.draft && !r.prerelease)
+    /* a 比 b 新 → 正数；同版本 → 0 */
+    const cmpVer = (a, b) => {
+      for (let i = 0; i < 4; i++) {
+        const d = (a.num[i] || 0) - (b.num[i] || 0);
+        if (d) return d;
+      }
+      if (a.pre === b.pre) return 0;
+      if (!a.pre) return 1;      // 裸版本比同号预发布新
+      if (!b.pre) return -1;
+      const as = a.pre.split('.'), bs = b.pre.split('.');
+      for (let i = 0; i < Math.max(as.length, bs.length); i++) {
+        const x = as[i], y = bs[i];
+        if (x === undefined) return -1;
+        if (y === undefined) return 1;
+        const xn = /^\d+$/.test(x), yn = /^\d+$/.test(y);
+        if (xn && yn) { const d = Number(x) - Number(y); if (d) return d; continue; }
+        if (xn !== yn) return xn ? -1 : 1;
+        if (x !== y) return x < y ? -1 : 1;
+      }
+      return 0;
+    };
+    const cand = list
+      .filter((r) => r && !r.draft)
+      .filter((r) => channel === 'pre' || !r.prerelease)
       .map((r) => ({ r, v: parse(r.tag_name) }))
       .filter((x) => x.v);
-    if (!stable.length) return { success: false, error: '发布页里没有可比较的正式版本' };
-    stable.sort((a, b) => {
-      const A = a.v.num, B = b.v.num;
-      for (let i = 0; i < 4; i++) { const d = (B[i] || 0) - (A[i] || 0); if (d) return d; }
-      return 0;
-    });
-    const best = stable[0];
-    const cur = parse(current) || { core: current, num: [0, 0, 0] };
-    let update = false;
-    for (let i = 0; i < 4; i++) {
-      const d = (best.v.num[i] || 0) - (cur.num[i] || 0);
-      if (d) { update = d > 0; break; }
+    if (!cand.length) {
+      return {
+        success: false,
+        error: channel === 'pre' ? '发布页里没有可比较的版本' : '发布页里没有可比较的正式版本'
+      };
     }
+    cand.sort((a, b) => cmpVer(b.v, a.v));
+    const best = cand[0];
+    const cur = parse(current) || { core: current, pre: '', num: [0, 0, 0] };
+    const update = cmpVer(best.v, cur) > 0;
     /* v2.6.2：把更新日志与落地页一起带回去 —— 渲染层要用它做更新弹窗 */
     return {
-      success: true, update, latest: best.v.core, current,
+      success: true, update, latest: best.v.core, current, channel,
+      latestTag: String(best.r.tag_name || ''),
+      prerelease: !!best.r.prerelease,
       body: String(best.r.body || ''),
       url: String(best.r.html_url || ''),
       publishedAt: String(best.r.published_at || '')
@@ -2815,6 +2940,17 @@ ipcMain.handle('check-update', async (_e, opts) => {
   } catch (e) {
     return { success: false, error: friendlyNetError(e) };
   }
+});
+
+/* ---------- F12 开发者工具（v2.6.9）----------
+ * 只在「关于 → 长按版本号」解锁的调试模式里生效（渲染层已挡一层，
+ * 主进程再核一次 config.debugMode，两条都得开才放行）。 */
+ipcMain.handle('toggle-devtools', async () => {
+  try {
+    if (!loadConfig().debugMode) return { success: false, error: '调试模式未开启' };
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.toggleDevTools();
+    return { success: true };
+  } catch (e) { return { success: false, error: String(e && e.message || e) }; }
 });
 
 /* ---------- 调试台：打开配置目录（v2.6.2） ----------

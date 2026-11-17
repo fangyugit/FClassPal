@@ -152,7 +152,7 @@ const API = window.widgetAPI || (function () {
     appearance: 'light',
     background: { enabled: false, path: '', blur: 0, mask: 0, scale: 100, offsetX: 50, offsetY: 50, fit: 'cover' },
     /* v2.6.8：模糊度 / 图标大小 / 字体，与 main.js 的 DEFAULT_CONFIG 对齐 */
-    blur: 1, itemSize: 84,
+    blur: 1, itemBlur: 1, itemSize: 84,
     font: { family: '', weight: 0, size: 100, spacing: 0 },
     /* 图标外观（v2.4.2 / v2.4.3 / v2.4.4），与 main.js 的 DEFAULT_CONFIG 对齐 */
     iconFit: 'cover', iconBorder: 'glass',
@@ -187,7 +187,7 @@ const API = window.widgetAPI || (function () {
     getEnv: () => Promise.resolve({ transparent: true, platform: 'browser', release: '0' }),
     // 关于界面：预览模式没有主进程，版本号给个占位；链接用新窗口模拟
     /* 预览模式的版本号：与 package.json 保持一致（_check.js 有同源断言，别让它漂） */
-    getAppVersion: () => Promise.resolve('2.6.8-beta'),
+    getAppVersion: () => Promise.resolve('2.6.8-beta2'),
     openExternal: (url) => { window.open(url, '_blank'); return Promise.resolve(true); },
     // 预览模式取不到真实壁纸：返回 null，让 #envLayer 用内置渐变基底，
     // MD3 则退回 CSS 里的 baseline 配色
@@ -341,6 +341,9 @@ let FLAT_THEMES = BUILTIN_THEMES.filter((t) => GLASS_FAMILY.indexOf(t) < 0);
 let THEME_LABEL = Object.assign({}, BUILTIN_LABEL);
 let THEME_ACCENT = Object.assign({}, BUILTIN_ACCENT);
 let FIXED_PALETTE_THEMES = BUILTIN_FIXED.slice();
+/* v2.6.9b：主题包是否适配了模糊度标准（manifest.blur === true）——
+ * blurAdjustable() 按它给第三方包解锁模糊滑条 */
+let THEME_BLUR = {};
 let THEME_ACCENT_LIST = Object.keys(THEME_ACCENT).map((k) => THEME_ACCENT[k].toUpperCase());
 /* 已安装主题包的 CSS（id → 文本）；注入时**一包一个** `<style data-theme-pack="<id>">`，
  * 见 injectThemePackCss 上方的说明（拼成一份会被单点语法错误连坐）。 */
@@ -396,6 +399,11 @@ function applyTheme(theme) {
    * body 上、与主题无关，换主题不再需要重贴标签或重算模糊。这里只兜一次底：
    * 老配置没有 blur 字段时补默认档（写进 config 但不必急着 saveConfig）。 */
   if (typeof (config && config.blur) !== 'number') { if (config) config.blur = 1; applyBlur(1); }
+  if (typeof (config && config.itemBlur) !== 'number') { if (config) config.itemBlur = 1; applyItemBlur(1); }
+  /* v2.6.9：换主题要重贴主界面滑条的标签（玻璃族=部件模糊度 / 其余=透明度），
+   * 并把不支持模糊的主题那两根滑条置灰。 */
+  syncHomeBar();
+  syncBlurControls();
   syncThemeSelect();          /* 老样式下拉：跟着当前主题显示名字与色点 */
 }
 
@@ -3128,31 +3136,107 @@ function applyOpacity(v) {
   $('setOpacity').value = v;
   syncRangeFill($('setOpacity')); // 写 .value 不派发 input，填充段得自己刷
   $('opacityVal').textContent = Math.round(v * 100) + '%';
+  /* v2.6.9：非玻璃主题下主界面那根就是透明度，改透明度要回刷它 */
+  if (typeof homeBarMode === 'function' && homeBarMode() === 'opacity') {
+    opacityRange.value = v;
+    syncRangeFill(opacityRange);
+  }
 }
-/* 主界面悬停条 = 模糊度（v2.6.8）：全应用统一「透明度 + 模糊度」两根滑条，
- * 设置面板里两根都有，主界面这根管模糊度（右键菜单上的说法也是模糊度）。 */
-opacityRange.addEventListener('input', (e) => applyBlur(parseFloat(e.target.value)));
+/* ---------- 主界面悬停条（v2.6.9b）----------
+ * 支持调模糊的主题：管「主界面背景模糊度」（用户点名主界面这根调背景）
+ * 其他主题（没适配模糊度的第三方包）：这根条退回「透明度」，
+ * 设置里三根模糊滑条置灰。用户原话：「主界面上调的是主界面背景模糊度」。 */
+function blurAdjustable() {
+  if (GLASS_FAMILY.indexOf(currentTheme) >= 0) return true;
+  /* v2.6.9b：非玻璃内置主题的 --t-blur 已乘 --blur-bg-mul，同样支持调 */
+  if (currentTheme === 'md3' || currentTheme === 'fluent' ||
+      currentTheme === 'miuix' || currentTheme === 'harmony') return true;
+  /* 主题包：manifest.blur === true 才解锁（包自己声明适配了模糊度标准） */
+  return THEME_BLUR[currentTheme] === true;
+}
+function homeBarMode() { return blurAdjustable() ? 'bgBlur' : 'opacity'; }
+function syncHomeBar() {
+  const bg = homeBarMode() === 'bgBlur';
+  const lab = $('opacityLabel');
+  if (lab) lab.textContent = bg ? '主界面背景模糊度' : '透明度';
+  opacityRange.min = '0';
+  opacityRange.max = bg ? '2' : '1';
+  opacityRange.step = '0.01';
+  opacityRange.value = bg
+    ? (typeof config.bgBlur === 'number' ? config.bgBlur : 1)
+    : (typeof config.opacity === 'number' ? config.opacity : 0.55);
+  syncRangeFill(opacityRange);
+}
+opacityRange.addEventListener('input', (e) => {
+  const v = parseFloat(e.target.value);
+  if (homeBarMode() === 'bgBlur') applyBgBlur(v);
+  else applyOpacity(v);
+});
+/* 不支持模糊的主题：三根滑条 disabled + 整行降透明度（CSS .row.is-disabled），
+ * 提示文案也换掉 —— 别让用户拖一根没有任何反应的滑条。 */
+function syncBlurControls() {
+  const on = blurAdjustable();
+  ['rowBlurTotal', 'rowBlurItem', 'rowBlurBg'].forEach((id) => {
+    const row = $(id);
+    if (!row) return;
+    row.classList.toggle('is-disabled', !on);
+    row.querySelectorAll('input').forEach((i) => { i.disabled = !on; });
+  });
+  const hint = $('blurHint');
+  if (hint) {
+    hint.textContent = on
+      ? '组件模糊度管面板/菜单/弹窗；快捷方式周围管图标卡片；主界面背景模糊度管主界面这块大玻璃（100% = 原档）'
+      : '当前主题没有适配模糊度，换内置主题或装 v2 的主题包才能调';
+  }
+}
 
-/* ---------- 模糊度（v2.6.8，全局滑条） ----------
- * config.blur ∈ [0, 2]，默认 1 = 各主题的原档。驱动 body 的 --blur-mul，
- * style.css 里所有 backdrop-filter 的模糊半径都乘它（lg2 的 --lg-blur、
- * 菜单/面板的 30px 档也一样）。主界面悬停条与设置面板的「模糊度」都走这里；
- * v2.6.6 那套「lg2 的透明度滑条改调模糊」到此退役 —— 现在每个主题都有
- * 独立的模糊滑条，透明度滑条在所有主题里都回归"管白雾"。 */
+/* ---------- 模糊度：三根轴（v2.6.9b） ----------
+ * ① 组件模糊度 config.blur（0~2，默认 1）→ body 的 --blur-mul：
+ *    管设置面板 / 右键菜单 / 弹窗 / 提示条 / 滑条这些"组件与外壳"。
+ * ② 快捷方式周围 config.itemBlur（0~2，默认 1）→ body 的 --blur-item-mul：
+ *    只管 .item 图标卡片的 backdrop（玻璃族与 Fluent 有真实模糊）。
+ * ③ 主界面背景模糊度 config.bgBlur（0~2，默认 1）→ body 的 --blur-bg-mul：
+ *    只管主界面这块大玻璃（.glass-warp 的 --lg-blur / 各主题的 --t-blur）。
+ * 主界面悬停条调的就是第③根（用户点名）。 */
 function applyBlur(v) {
   v = Math.min(2, Math.max(0, isFinite(v) ? v : 1));
   config.blur = v;
   document.body.style.setProperty('--blur-mul', String(v));
   API.saveConfig(config);
-  const pct = Math.round(v * 100) + '%';
   const bi = $('setBlur');
   if (bi) { bi.value = v; syncRangeFill(bi); }
   const bv = $('blurVal');
-  if (bv) bv.textContent = pct;
-  opacityRange.value = v;
-  syncRangeFill(opacityRange);   // 写 .value 不派发 input，填充段得自己刷
+  if (bv) bv.textContent = Math.round(v * 100) + '%';
+}
+function applyItemBlur(v) {
+  v = Math.min(2, Math.max(0, isFinite(v) ? v : 1));
+  config.itemBlur = v;
+  document.body.style.setProperty('--blur-item-mul', String(v));
+  API.saveConfig(config);
+  const bi = $('setItemBlur');
+  if (bi) { bi.value = v; syncRangeFill(bi); }
+  const bv = $('setItemBlurVal');
+  if (bv) bv.textContent = Math.round(v * 100) + '%';
+}
+/* ③ 主界面背景模糊度：--blur-bg-mul，只喂 .glass-warp（--lg-blur / --t-blur） */
+function applyBgBlur(v) {
+  v = Math.min(2, Math.max(0, isFinite(v) ? v : 1));
+  config.bgBlur = v;
+  document.body.style.setProperty('--blur-bg-mul', String(v));
+  API.saveConfig(config);
+  const bi = $('setBgBlur');
+  if (bi) { bi.value = v; syncRangeFill(bi); }
+  const bv = $('setBgBlurVal');
+  if (bv) bv.textContent = Math.round(v * 100) + '%';
+  /* 主界面那根调的就是这一档，跟着一起走 */
+  if (homeBarMode() === 'bgBlur') {
+    opacityRange.value = v;
+    syncRangeFill(opacityRange);
+  }
 }
 if ($('setBlur')) $('setBlur').addEventListener('input', (e) => applyBlur(parseFloat(e.target.value)));
+if ($('setItemBlur')) $('setItemBlur').addEventListener('input', (e) => applyItemBlur(parseFloat(e.target.value)));
+if ($('setBgBlur')) $('setBgBlur').addEventListener('input', (e) => applyBgBlur(parseFloat(e.target.value)));
 
 /* ---------- 全局字体（v2.6.8） ----------
  * config.font = { family, weight, size, spacing }：
@@ -3340,6 +3424,10 @@ function openSettings() {
   $('setOpacity').value = config.opacity;
   syncRangeFill($('setOpacity'));   // 直接写 .value 不派发 input，珠子/填充段要手动刷
   $('opacityVal').textContent = Math.round(config.opacity * 100) + '%';
+  /* v2.6.9：两根模糊度滑条 + 主界面那条的标签/量程跟着配置和主题走 */
+  syncBlurControls();
+  syncChannelSeg();
+  syncHomeBar();
   /* 圆角滑块：跟随主题时把滑块摆到当前主题的实际值上（读计算样式） */
   const curRadius = config.cornerRadius ||
     parseInt(getComputedStyle(widget).getPropertyValue('--radius'), 10) || 28;
@@ -3633,6 +3721,14 @@ if (versionEl) {
   versionEl.addEventListener('pointerleave', cancelPress);
   versionEl.addEventListener('pointercancel', cancelPress);
 }
+
+/* v2.6.9b：F12 开 DevTools —— 只在调试模式（长按版本号 1.2s 解锁）里生效，
+ * 主进程还会核一遍 config.debugMode，两条都开才放行。 */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'F12' || !config.debugMode) return;
+  e.preventDefault();
+  if (typeof API.toggleDevTools === 'function') API.toggleDevTools();
+});
 
 function setDebugMode(on) {
   config.debugMode = !!on;
@@ -3965,6 +4061,9 @@ function applyThemeRegistry(cards) {
   FLAT_THEMES = list.filter((t) => GLASS_FAMILY.indexOf(t) < 0);
   THEME_LABEL = label;
   THEME_ACCENT = accent;
+  /* v2.6.9b：包的模糊适配标记（内置皮肤不在这里，blurAdjustable 直接认 id） */
+  THEME_BLUR = {};
+  (cards || []).forEach((c) => { if (c && c.id) THEME_BLUR[c.id] = c.blur === true; });
   FIXED_PALETTE_THEMES = fixed;
   THEME_ACCENT_LIST = Object.keys(THEME_ACCENT).map((k) => THEME_ACCENT[k].toUpperCase());
   renderThemeOptions();   // 注册表一变就重画：装/删/排序之后下拉跟着变
@@ -4059,6 +4158,10 @@ function themeCardHTML(t, idx, total) {
   if (!t.builtin) {
     btns.push('<button class="theme-mini danger" type="button" data-act="del" title="删除这个主题包">' +
       svgIcon('i-trash') + '</button>');
+    /* v2.6.9b：主题包都给「检查更新」——旧包 manifest 没带 repo 时，
+     * 主进程兜底到官方主题仓库（fangyugit/FClassPal-theme）。 */
+    btns.push('<button class="theme-mini" type="button" data-act="upd" title="检查更新（GitHub）">' +
+      svgIcon('i-refresh') + '</button>');
   }
   const meta = [];
   meta.push(t.builtin ? '内置' : 'v' + (t.version || '1.0.0'));
@@ -4211,6 +4314,23 @@ async function autoInstallBundledPacks() {
   return n;
 }
 
+/* v2.6.9b：主题包应用内检查更新 —— 主进程按包里的 manifest.repo 拉
+ * GitHub 最新 release 的 <id>.fcpt，包内版本比已装的新才装（防假更新） */
+let themeUpdBusy = {};
+async function checkThemePackUpdate(id) {
+  if (typeof API.themesCheckUpdate !== 'function') { toast('当前环境不支持检查更新'); return; }
+  if (themeUpdBusy[id]) return;
+  themeUpdBusy[id] = true;
+  toast('正在检查「' + (THEME_LABEL[id] || id) + '」的更新…');
+  let r = null;
+  try { r = await API.themesCheckUpdate(id); }
+  catch (e) { r = { success: false, error: String(e && e.message || e) }; }
+  themeUpdBusy[id] = false;
+  if (!r || !r.success) { toast((r && r.error) || '检查更新失败'); return; }
+  if (!r.updated) { toast('已是最新（v' + (r.version || '1.0.0') + '）'); return; }
+  await afterThemeMutation(r, '「' + (THEME_LABEL[id] || id) + '」已更新到 v' + (r.version || ''));
+}
+
 async function removeThemePack(id) {
   if (typeof API.themesRemove !== 'function') return;
   const t = (themeInv.themes || []).filter((x) => x.id === id)[0];
@@ -4295,6 +4415,7 @@ let themeClickSuppress = false;
     if (btn) {
       const act = btn.dataset.act;
       if (act === 'del') removeThemePack(card.dataset.id);
+      else if (act === 'upd') checkThemePackUpdate(card.dataset.id);
       else if (act === 'up' || act === 'down') moveTheme(card.dataset.id, act === 'up' ? -1 : 1);
       return;
     }
@@ -4322,6 +4443,25 @@ let themeClickSuppress = false;
 })();
 
 if ($('btnThemeManage')) $('btnThemeManage').addEventListener('click', openThemeModal);
+/* v2.6.9b：安卓端下拉旁边的「导入」（主题管理行在安卓上藏掉了） */
+if ($('btnThemeQuickImport')) $('btnThemeQuickImport').addEventListener('click', installThemeFromFile);
+
+/* v2.6.9b：界面版本（安卓）—— WearOS 版是纯 Java 原生界面，点一下直接开。
+ * 回来就靠 wear 界面的返回键（触屏版 Activity 还在底下）。 */
+(function bindUiModeSeg() {
+  const seg = $('uiModeSeg');
+  if (!seg) return;
+  seg.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('.seg-btn');
+    if (!b) return;
+    if (b.dataset.ui !== 'wear') { toast('当前就是触屏版界面'); return; }
+    if (!REAL_ANDROID) { toast('WearOS 界面只在安卓版里提供'); return; }
+    if (typeof API.openWearUi !== 'function') { toast('当前环境不支持 WearOS 界面'); return; }
+    API.openWearUi().then((r) => {
+      if (!(r && r.opened)) toast('没能打开 WearOS 界面：' + ((r && r.error) || '未知原因'));
+    }).catch(() => toast('没能打开 WearOS 界面'));
+  });
+})();
 if ($('btnThemeModalClose')) $('btnThemeModalClose').addEventListener('click', closeThemeModal);
 if ($('btnThemeInstall')) $('btnThemeInstall').addEventListener('click', installThemeFromFile);
 if ($('btnThemeFolder')) {
@@ -4607,7 +4747,11 @@ async function runCheckUpdate(silent) {
   const old = b ? b.textContent : '';
   if (b) { b.disabled = true; b.textContent = '检测中…'; }
   try {
-    const r = await API.checkUpdate(config.updateApi ? { apiBase: config.updateApi } : undefined);
+    /* v2.6.9：带上通道 —— stable 只比正式 release，pre 连 beta 一起比 */
+    const ch = updateChannel();
+    const opts = { channel: ch };
+    if (config.updateApi) opts.apiBase = config.updateApi;
+    const r = await API.checkUpdate(opts);
     if (!r || !r.success) {
       if (!silent) toast('检测失败：' + ((r && r.error) || '网络不可达，稍后再试'));
     } else if (r.update) {
@@ -4616,7 +4760,8 @@ async function runCheckUpdate(silent) {
       const ignored = config.ignoredUpdate && String(config.ignoredUpdate) === String(r.latest);
       if (!(silent && ignored)) showUpdateDialog(r);
     } else if (!silent) {
-      toast('已是最新版本（v' + r.current + '）');
+      toast('已是最新版本（v' + r.current + '，' +
+        (ch === 'pre' ? '预发布通道' : '稳定通道') + '）');
     }
   } catch (e) {
     if (!silent) toast('检测失败：' + (e && e.message || e));
@@ -4624,6 +4769,34 @@ async function runCheckUpdate(silent) {
   if (b) { b.disabled = false; b.textContent = old; }
 }
 $('btnCheckUpdate').addEventListener('click', () => { runCheckUpdate(false); });
+
+/* --- 更新通道（v2.6.9）：稳定版 / 预发布 ---
+ * 稳定版只跟正式 release 比；预发布把 -beta 这类也算候选。
+ * 主进程 check-update 按 channel 过滤，并做带预发布号的版本比较
+ * （同号时 release > prerelease，2.6.9-beta > 2.6.8）。 */
+function updateChannel() { return config.updateChannel === 'pre' ? 'pre' : 'stable'; }
+function syncChannelSeg() {
+  const seg = $('channelSeg');
+  if (!seg) return;
+  const ch = updateChannel();
+  seg.querySelectorAll('.seg-btn').forEach((b) => {
+    b.setAttribute('aria-pressed', b.dataset.ch === ch ? 'true' : 'false');
+  });
+}
+if ($('channelSeg')) {
+  $('channelSeg').querySelectorAll('.seg-btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      const ch = b.dataset.ch === 'pre' ? 'pre' : 'stable';
+      if (updateChannel() === ch) return;
+      config.updateChannel = ch;
+      persist();
+      syncChannelSeg();
+      toast(ch === 'pre'
+        ? '更新通道：预发布（能看到 beta 版）'
+        : '更新通道：稳定版（只推正式版）');
+    });
+  });
+}
 
 /* --- 连点版本号 20 次 → 恢复出厂（v2.5.0）---
  * 流程：连点 20 次（2.5 秒内不续点就清零）→ 第一道风险弹窗 → 确认后
@@ -5465,12 +5638,10 @@ function syncWearControls() {
   /* 安卓/预览模式没有这套 IPC：整块藏起来，别让用户点了没反应 */
   box.classList.toggle('hidden', !wearSupported());
   if (!wearSupported()) return;
-  /* v2.6.8：没开开关时把客户端那几行也藏起来，别露出一排点了没反应的控件 */
-  const lanOn = $('setWearEnabled') && $('setWearEnabled').checked;
-  ['btnLanScanRow', 'lanPeers'].forEach((id) => {
-    const el = $(id);
-    if (el) el.classList.toggle('hidden', !lanOn);
-  });
+  /* v2.6.9：「本机去连别人」那几行**不再跟着本机开关走** ——
+   * 本机开不开服务，与"我要连别人"是两件事。以前跟着开关一起藏，用户点开设置
+   * 只看得到一个开关，就以为"电脑端连其他端根本没做"（他的原话）。
+   * 现在它们在 HTML 里已经搬出 #wearPanel，常驻显示。 */
   API.wearStatus().then((info) => {
     wearInfo = info;
     $('setWearEnabled').checked = !!info.enabled;
@@ -5688,6 +5859,25 @@ function bindWearUI() {
   syncLanPeers();   // v2.6.8：电脑 → 其他设备的已配对清单
 }
 bindWearUI();
+
+/* ---------- 按钮指针高光（v2.6.9）----------
+ * 苹果那种「光跟着指针走」：白光是落在光标/手指位置的一团径向柔光，
+ * 指针动它就跟着挪，离开淡出。CSS 侧读 --mx / --my（按钮内像素坐标）。
+ * 只在玻璃族上生效（别的主题没有这套玻璃语言，写了也看不见），
+ * 所以非玻璃主题直接跳过，省掉每帧的 getBoundingClientRect。
+ * v2.6.8 那条"按下一片 18px inset 白光 + 斜切扫光"按用户要求删了。 */
+const GLOW_SEL = '.primary-btn,.text-btn,.ghost-btn,.pick-btn,.seg-btn,.rail-btn,.ctx-item,.theme-mini';
+function followGlow(e) {
+  if (!blurAdjustable()) return;
+  const t = e.target && e.target.closest ? e.target.closest(GLOW_SEL) : null;
+  if (!t) return;
+  const r = t.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  t.style.setProperty('--mx', Math.round(e.clientX - r.left) + 'px');
+  t.style.setProperty('--my', Math.round(e.clientY - r.top) + 'px');
+}
+document.addEventListener('pointermove', followGlow, { passive: true });
+document.addEventListener('pointerdown', followGlow, { passive: true });
 
 /* ---------- 右键 / 长按 弹出菜单 ---------- */
 let ctxOpen = false;
@@ -5979,6 +6169,8 @@ if (typeof API.onTrayAction === 'function') {
   titleInput.value = config.title || 'FClassPal';
   /* v2.6.8：老配置补新字段（模糊度 / 图标大小 / 字体），首次就按默认档刷上 */
   if (typeof config.blur !== 'number') config.blur = 1;
+  if (typeof config.itemBlur !== 'number') config.itemBlur = 1;
+  if (typeof config.updateChannel !== 'string') config.updateChannel = 'stable';
   if (typeof config.itemSize !== 'number') config.itemSize = 84;
   ensureFontConfig();
   document.body.style.setProperty('--glass-alpha', config.opacity ?? 0.55);
@@ -5988,6 +6180,10 @@ if (typeof API.onTrayAction === 'function') {
   const itemSizeVal0 = $('itemSizeVal');
   if (itemSizeVal0) itemSizeVal0.textContent = config.itemSize + 'px';
   applyBlur(config.blur);
+  applyItemBlur(config.itemBlur);
+  if (typeof config.bgBlur !== 'number') config.bgBlur = 1;
+  applyBgBlur(config.bgBlur);
+  syncHomeBar();
   applyFont();
   syncFontControls();
   /* 主题注册表 + 主题包 CSS 必须先到位：下面 applyTheme 要按 config.theme 上皮肤，

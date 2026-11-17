@@ -615,15 +615,16 @@ const checks = [
     /--t-r-card:\s*22px/.test(themeTokens('melody')) &&
     /--t-r-card:\s*22px/.test(themeTokens('sanrio'))],
   ['多主题: 模糊强度各就各位（本体 4 套 + 角色包老五套）',
-    /blur\(14px\) saturate\(118%\)/.test(themeTokens('md3')) &&
-    /blur\(30px\) saturate\(125%\)/.test(themeTokens('fluent')) &&
-    /blur\(22px\) saturate\(150%\)/.test(themeTokens('miuix')) &&
-    /blur\(24px\) saturate\(140%\)/.test(themeTokens('harmony')) &&
-    /blur\(18px\) saturate\(140%\)/.test(themeTokens('kitty')) &&
-    /blur\(26px\) saturate\(130%\)/.test(themeTokens('dog')) &&
-    /blur\(20px\) saturate\(130%\)/.test(themeTokens('kuromi')) &&
-    /blur\(18px\) saturate\(135%\)/.test(themeTokens('melody')) &&
-    /blur\(22px\) saturate\(135%\)/.test(themeTokens('sanrio'))],
+    /* v2.6.9b：内置四套的 --t-blur 乘 --blur-bg-mul（主界面背景档） */
+    /blur\(calc\(14px \* var\(--blur-bg-mul, 1\)\)\) saturate\(118%\)/.test(themeTokens('md3')) &&
+    /blur\(calc\(30px \* var\(--blur-bg-mul, 1\)\)\) saturate\(125%\)/.test(themeTokens('fluent')) &&
+    /blur\(calc\(22px \* var\(--blur-bg-mul, 1\)\)\) saturate\(150%\)/.test(themeTokens('miuix')) &&
+    /blur\(calc\(24px \* var\(--blur-bg-mul, 1\)\)\) saturate\(140%\)/.test(themeTokens('harmony')) &&
+    /blur\(calc\(18px \* var\(--blur-bg-mul, 1\)\)\) saturate\(140%\)/.test(themeTokens('kitty')) &&
+    /blur\(calc\(26px \* var\(--blur-bg-mul, 1\)\)\) saturate\(130%\)/.test(themeTokens('dog')) &&
+    /blur\(calc\(20px \* var\(--blur-bg-mul, 1\)\)\) saturate\(130%\)/.test(themeTokens('kuromi')) &&
+    /blur\(calc\(18px \* var\(--blur-bg-mul, 1\)\)\) saturate\(135%\)/.test(themeTokens('melody')) &&
+    /blur\(calc\(22px \* var\(--blur-bg-mul, 1\)\)\) saturate\(135%\)/.test(themeTokens('sanrio'))],
   ['多主题 v2.5.0: 17 套主题的配色身份互不相同 + 形状/模糊不塌成一套（不共底）',
     (() => {
       const all = ['md3', 'fluent', 'miuix', 'harmony'].concat(PACK_IDS);
@@ -739,7 +740,8 @@ const checks = [
     css.includes('--md3-primary:') && css.includes('--md3-shape-xl: 28px') &&
     css.includes('--md3-shape-l: 16px')],
   ['css: MD3 主表面是平的 tonal 色（alpha 跟随透明度滑块）',
-    /rgb\(var\(--md3-surface-rgb\) \/ calc\(0\.74/.test(cssNC)],
+    /* v2.6.9b：透明度耦合放宽（0.74+0.26a 肉眼看不见，改成 0.34+0.66a） */
+    /rgb\(var\(--md3-surface-rgb\) \/ calc\(0\.34/.test(cssNC)],
   ['css: --t-veil 与 background 声明在同一条规则内（否则整条声明作废）',
     // v2.5.0：md3 在本体；角色主题的 veil 规则在各自包里（那里面的 `{` 前没空格）
     /--t-veil:[\s\S]*?background:\s*var\(--t-veil\)/.test(ruleBlockFrom('body.theme-md3 .glass-veil {')) &&
@@ -838,7 +840,8 @@ const checks = [
     html.includes('id="lgDispR"') && html.includes('id="lgDispG"') &&
     html.includes('id="lgDispB"')],
   ['v2.3.1: overLight 视觉（--lg-blur 14px + 薄墨），仅玻璃主题',
-    /body\.theme-glass\.over-light\s*\{\s*\n\s*--lg-blur: calc\(14px \* var\(--blur-mul, 1\)\);/.test(css) &&
+    /* v2.6.9b：--lg-blur 乘「主界面背景模糊度」（--blur-bg-mul） */
+    /body\.theme-glass\.over-light\s*\{\s*\n(?:\s*\/\*[^\n]*\*\/\s*\n)?\s*--lg-blur: calc\(14px \* var\(--blur-bg-mul, 1\)\);/.test(css) &&
     /rgba\(10, 14, 30, 0\.22\)/.test(css)],
   ['v2.3.1: 液态玻璃珠（贴图 alpha=形状遮罩 + 药丸距离场 + 主贴图禁用兜底）',
     /const r = d \/ R;/.test(app) &&
@@ -1108,7 +1111,11 @@ const checks = [
    * 下载表时（原来那几行还写着"FClassPal-2.4.5-linux-*.deb 沿用上一版"）它必然变红。
    * 真正值得守的是"下载表指向当前版本"，所以改成查这个 —— 断言不删，换到正确的位置查。 */
   ['v2.4.5: README 下载表指向当前版本（别再留"沿用上一版"的陈旧行）',
-    readme.includes('releases/tag/v' + srcPkg.version) &&
+    /* v2.6.9：本轮不发布（只出 Windows 包），下载表仍指上一个真发布页 ——
+     * 预发布号时只要求表里有一批能点的 release tag，别去改成不存在的 tag（那是死链）。 */
+    (srcPkg.version.indexOf('-') >= 0
+      ? /releases\/tag\/v\d+\.\d+\.\d+/.test(readme)
+      : readme.includes('releases/tag/v' + srcPkg.version)) &&
     !/沿用上一版/.test(readme) &&
     /* v2.6.8-beta：这轮只出 Windows 包，Linux 行仍指上一版发布页，故跳过该行核对 */
     (srcPkg.version.indexOf('-') >= 0 ||
@@ -1462,7 +1469,7 @@ const checks = [
          断言单独管，玻璃表面这条只管"底/边/影/backdrop" */
       const seg = css.slice(i, css.indexOf('}', i) + 1);
       return i >= 0 &&
-        /backdrop-filter: blur\(calc\(12px \* var\(--blur-mul, 1\)\)\) saturate\(190%\)/.test(seg) &&
+        /backdrop-filter: blur\(calc\(12px \* var\(--blur-item-mul, 1\)\)\) saturate\(190%\)/.test(seg) &&
         /border: 0;/.test(seg) &&
         /body\.theme-glass\.lg2 \.item::after \{[\s\S]{0,700}?padding: 1px;/.test(css) &&
         /mask-composite: exclude/.test(css) &&
@@ -1552,14 +1559,56 @@ const checks = [
     /set\('--accent-rgb', tr\);/.test(app) &&
     /* 写死的品牌蓝不许再出现在按钮配色里（主色是用户可调的） */
     !/rgba\(58, 99, 242,/.test(cssNC)],
-  ['v2.6.8: 全局「模糊度」滑条（--blur-mul 乘所有 backdrop 模糊）',
+  ['v2.6.9b: 模糊度拆三根 —— 组件（--blur-mul）/ 快捷方式周围（--blur-item-mul）/ 主界面背景（--blur-bg-mul）分开',
     /id="setBlur"/.test(html) && /id="blurVal"/.test(html) &&
+    /id="setItemBlur"/.test(html) && /id="setItemBlurVal"/.test(html) &&
+    /id="setBgBlur"/.test(html) && /id="setBgBlurVal"/.test(html) &&
+    /id="rowBlurTotal"/.test(html) && /id="rowBlurItem"/.test(html) && /id="rowBlurBg"/.test(html) &&
     app.includes('function applyBlur(') &&
+    app.includes('function applyItemBlur(') &&
+    app.includes('function applyBgBlur(') &&
     app.includes("setProperty('--blur-mul'") &&
-    /opacityRange\.addEventListener\('input', \(e\) => applyBlur\(/.test(app) &&
-    (cssNC.match(/var\(--blur-mul, 1\)/g) || []).length >= 20 &&
-    /--lg-blur: calc\(8px \* var\(--blur-mul, 1\)\);/.test(css) &&
-    /body\.theme-glass\.lg2\.over-light \{ --lg-blur: calc\(14px \* var\(--blur-mul, 1\)\); \}/.test(css)],
+    app.includes("setProperty('--blur-item-mul'") &&
+    app.includes("setProperty('--blur-bg-mul'") &&
+    /* 背景档：--lg-blur 与四套 --t-blur 在定义点就乘它 */
+    (cssNC.match(/var\(--blur-bg-mul, 1\)/g) || []).length >= 7 &&
+    /--lg-blur: calc\(8px \* var\(--blur-bg-mul, 1\)\);/.test(css) &&
+    /body\.theme-glass\.lg2\.over-light \{ --lg-blur: calc\(14px \* var\(--blur-bg-mul, 1\)\); \}/.test(css) &&
+    /* 快捷方式档：.item 的 backdrop（fluent + lg2 各一处，各带 webkit 变体） */
+    (cssNC.match(/blur\(calc\(12px \* var\(--blur-item-mul, 1\)\)/g) || []).length >= 4 &&
+    /* v2.6.9 的 #widget 整体换档必须真的拆掉（三档各走各的） */
+    !/#widget \{\s*\n\s*--blur-mul: var\(--blur-item-mul/.test(css) &&
+    /* 组件档照样乘全局的 backdrop 模糊 */
+    (cssNC.match(/var\(--blur-mul, 1\)/g) || []).length >= 12],
+  ['v2.6.9: 更新通道（稳定版 / 预发布）—— 主进程按通道过滤 + 带预发布号比较',
+    /id="channelSeg"/.test(html) && /data-ch="pre"/.test(html) &&
+    app.includes('function updateChannel(') &&
+    app.includes('function syncChannelSeg(') &&
+    /const opts = \{ channel: ch \};/.test(app) &&
+    /* 主进程：预发布通道才收 prerelease，且 release > 同号 prerelease */
+    /const channel = opts && opts\.channel === 'pre' \? 'pre' : 'stable';/.test(main) &&
+    /\.filter\(\(r\) => channel === 'pre' \|\| !r\.prerelease\)/.test(main) &&
+    /if \(!a\.pre\) return 1;/.test(main) &&
+    main.includes("updateChannel: 'stable'")],
+  ['v2.6.9b: 不支持调模糊的主题 —— 三根滑条置灰，主界面那根变透明度',
+    app.includes('function blurAdjustable(') &&
+    /if \(GLASS_FAMILY\.indexOf\(currentTheme\) >= 0\) return true;/.test(app) &&
+    /* 内置非玻璃四套已适配（--t-blur 乘背景档） */
+    /currentTheme === 'md3' \|\| currentTheme === 'fluent' \|\|/.test(app) &&
+    /* 第三方包靠 manifest.blur === true 解锁 */
+    /return THEME_BLUR\[currentTheme\] === true;/.test(app) &&
+    app.includes('function syncHomeBar(') &&
+    /lab\.textContent = bg \? '主界面背景模糊度' : '透明度';/.test(app) &&
+    app.includes('function syncBlurControls(') &&
+    /classList\.toggle\('is-disabled', !on\)/.test(app) &&
+    /\.row\.is-disabled \{/.test(css) &&
+    /* 主界面那根条：支持模糊的主题拖背景档，别的拖透明度 */
+    /if \(homeBarMode\(\) === 'bgBlur'\) applyBgBlur\(v\);/.test(app) &&
+    /else applyOpacity\(v\);/.test(app) &&
+    /'rowBlurTotal', 'rowBlurItem', 'rowBlurBg'/.test(app) &&
+    /* 换主题时重贴标签 */
+    /syncHomeBar\(\);\s*\n\s*syncBlurControls\(\);/.test(app) &&
+    /<span class="opacity-label" id="opacityLabel">/.test(html)],
   ['v2.6.8: 透明度变量挂 body（面板/菜单是 #widget 的兄弟节点，挂 widget 上它们读不到）',
     app.includes("document.body.style.setProperty('--glass-alpha'") &&
     !/widget\.style\.setProperty\('--glass-alpha'/.test(app)],
@@ -1573,12 +1622,24 @@ const checks = [
       return !/e\.stopPropagation\(\)/.test(seg) && /holdingBar = true;/.test(seg);
     })() &&
     /body\.theme-glass\.lg2 \.sl-wrap input\[type="range"\]\.slider-hot ~ \.sl-bead,[\s\S]{0,300}?transform: scaleX\(var\(--sl-sx, 1\)\) scaleY\(var\(--sl-sy, 1\)\)/.test(css)],
-  ['v2.6.8: lg2 按钮 Q 弹 + 按下受光 + 悬停扫光',
+  ['v2.6.9: lg2 按钮 Q 弹 + 指针高光（v2.6.8 的白光与扫光已删）',
     /transform 520ms linear\(0, 0\.42 12%[\s\S]{0,160}?background 0\.14s, box-shadow 0\.14s, color 0\.14s;/.test(cssNC) &&
     /body\.theme-glass\.lg2 \.theme-mini:active \{[\s\S]{0,90}?transform: scale\(0\.94\);/.test(cssNC) &&
-    /inset 0 0 18px rgba\(255, 255, 255, 0\.55\)/.test(cssNC) &&
+    /* 用户明确嫌丑的那两样，必须真的没了 */
+    !/inset 0 0 18px rgba\(255, 255, 255/.test(cssNC) &&
+    !/skewX\(-18deg\)/.test(cssNC) &&
+    /* 换成跟着指针走的径向柔光：CSS 读 --mx/--my，JS 写它 */
     /body\.theme-glass\.lg2 \.theme-mini::after \{/.test(cssNC) &&
-    /transform: translateX\(460%\) skewX\(-18deg\);/.test(cssNC) &&
+    /radial-gradient\(96px circle at var\(--mx, 50%\) var\(--my, -40%\)/.test(cssNC) &&
+    /* 高光必须真的落在这颗按钮上：给按钮定位上下文 + 裁剪 + 独立层叠上下文，
+     * 光用 z-index:-1 压在文字之下（缺了这几条，绝对定位的 ::after 会挂到 .panel 上
+     * 变成一大片乱糊的白光 —— 老扫光就是这么难看的） */
+    /body\.theme-glass\.lg2 \.theme-mini \{[\s\S]{0,700}?position: relative;[\s\S]{0,200}?overflow: hidden;[\s\S]{0,200}?isolation: isolate;/.test(cssNC) &&
+    /pointer-events: none;\s*\n\s*z-index: -1;/.test(cssNC) &&
+    /const GLOW_SEL = '\.primary-btn,.text-btn/.test(app) &&
+    app.includes('function followGlow(') &&
+    /t\.style\.setProperty\('--mx'/.test(app) &&
+    /document\.addEventListener\('pointermove', followGlow/.test(app) &&
     /* 减少动态效果照样整体关得掉 */
     /@media \(prefers-reduced-motion: reduce\)[\s\S]*?body\.theme-glass\.lg2 \.theme-mini:active,[\s\S]{0,140}?transform: none;/.test(cssNC)],
   ['v2.6.8: lg2 右键菜单与设置面板换成半透玻璃磨砂（深色单独一套）',
@@ -1615,6 +1676,19 @@ const checks = [
     /* 整体布局尺寸：图标大小滑条 → :root 的 --item-size */
     /id="setItemSize"/.test(html) &&
     app.includes("setProperty('--item-size'")],
+  ['v2.6.9: 「连接其他设备」常驻显示（不再跟着本机开关藏，用户以为没做）',
+    /* 客户端那几行必须搬出 #wearPanel，否则开关没开就整块隐藏 */
+    (() => {
+      const i = html.indexOf('id="wearPanel"');
+      const j = html.indexOf('id="btnLanScanRow"');
+      const k = html.indexOf('id="lanPeers"');
+      if (i < 0 || j < 0 || k < 0) return false;
+      /* wearPanel 的闭合标签必须排在客户端块之前 */
+      const close = html.indexOf('</div>', html.indexOf('id="wearDevices"'));
+      return j > close && k > close;
+    })() &&
+    !/lanOn/.test(app) &&
+    /本机开不开服务，与"我要连别人"是两件事/.test(app)],
   ['v2.6.8: 「局域网设备」双向 —— 电脑也能主动连其他端（发现/配对/发动作）',
     /* 字样统一：不再只叫手表 */
     !/WearOS 手表/.test(html) && /<span>局域网设备<\/span>/.test(html) &&
@@ -1639,15 +1713,64 @@ const checks = [
        用 includes 比对字面量，别再套一层正则（转义一偏就假红） */
     fs.readFileSync('mobile/tools/apply-android-overlay.js', 'utf8')
       .includes('(?:-[0-9A-Za-z.]+)?$/.exec(pkg.version')],
-  ['v2.6.8-beta: 版本号四处同源（根包 / mobile 包 / APP_VERSION / 预览 mock）',
-    srcPkg.version === '2.6.8-beta' &&
+  ['v2.6.8-beta2: 版本号四处同源（根包 / mobile 包 / APP_VERSION / 预览 mock）',
+    srcPkg.version === '2.6.8-beta2' &&
     JSON.parse(fs.readFileSync('mobile/package.json', 'utf8')).version === srcPkg.version &&
     new RegExp("var APP_VERSION = '" + srcPkg.version + "';").test(fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8')) &&
     new RegExp("getAppVersion: \\(\\) => Promise\\.resolve\\('" + srcPkg.version + "'\\)").test(app)],
-  ['v2.6.8: 主界面那根滑条固定是「模糊度」，设置面板里两根都叫得准',
-    /<span class="opacity-label">模糊度<\/span>/.test(html) &&
+  ['v2.6.9: 设置整理 —— 透明度/模糊度/图片都在「个性化」里，标签各叫得准',
+    /<span class="opacity-label" id="opacityLabel">/.test(html) &&
     /<span>透明度<\/span>\s*\n?\s*<input type="range" id="setOpacity"/.test(html) &&
-    /<span>模糊度<\/span>\s*\n?\s*<input type="range" id="setBlur"/.test(html)]
+    /<span>组件模糊度<\/span>\s*\n?\s*<input type="range" id="setBlur"/.test(html) &&
+    /<span>快捷方式周围<\/span>\s*\n?\s*<input type="range" id="setItemBlur"/.test(html) &&
+    /<span>主界面背景模糊度<\/span>\s*\n?\s*<input type="range" id="setBgBlur"/.test(html) &&
+    /* 这几段必须落在 #secPersonal 里，别再散在功能设置 */
+    (() => {
+      const i = html.indexOf('id="secPersonal"');
+      const j = html.indexOf('id="secAbout"');
+      if (i < 0 || j < 0) return false;
+      const seg = html.slice(i, j);
+      return ['id="setOpacity"', 'id="setBlur"', 'id="setItemBlur"', 'id="setBgBlur"',
+        'id="btnBgPick"', 'id="bgFitSelect"'].every((x) => seg.indexOf(x) >= 0);
+    })()],
+  /* ---------- v2.6.8-beta2 新增 ---------- */
+  ['v2.6.9b: F12 开 DevTools —— 调试模式（长按版本号）开了才响应，主进程再核一遍',
+    /e\.key !== 'F12' \|\| !config\.debugMode/.test(app) &&
+    /preventDefault\(\);\s*\n\s*if \(typeof API\.toggleDevTools === 'function'\) API\.toggleDevTools\(\);/.test(app) &&
+    preloadSrc.includes("toggleDevTools: () => ipcRenderer.invoke('toggle-devtools')") &&
+    /if \(!loadConfig\(\)\.debugMode\) return/.test(main)],
+  ['v2.6.9b: pre 通道屏蔽 4.9.9（用户改过名的历史 release，不是真版本）',
+    main.includes("if (core === '4.9.9') return null;")],
+  ['v2.6.9b: 主题包模糊度标准字段（manifest.blur / manifest.repo 落进 themes.js）',
+    /blur: raw\.blur === true,/.test(fs.readFileSync('themes.js', 'utf8')) &&
+    fs.readFileSync('themes.js', 'utf8').includes('repo: String(raw.repo')],
+  ['v2.6.9b: 主题包应用内检查更新（repo → GitHub release 资产，包内版本比对）',
+    app.includes('async function checkThemePackUpdate(') &&
+    /data-act="upd"/.test(app) &&
+    /id="i-refresh"/.test(html) &&
+    main.includes("ipcMain.handle('themes-check-update'") &&
+    main.includes('cmpPackVer') &&
+    /* 下载上限与重定向都要有，防呆 */
+    main.includes('32 * 1024 * 1024') &&
+    /'重定向太多'/.test(main)],
+  ['v2.6.9b: 安卓主题行 —— 下拉旁边「导入」，「主题管理」行藏掉',
+    /id="btnThemeQuickImport"/.test(html) &&
+    /body\.is-android #btnThemeQuickImport \{ display: inline-flex; \}/.test(cssNC) &&
+    /body\.is-android #rowThemeManage \{ display: none; \}/.test(cssNC) &&
+    app.includes("if ($('btnThemeQuickImport')) $('btnThemeQuickImport').addEventListener('click', installThemeFromFile);")],
+  ['v2.6.9b: 安卓首启默认 MD3',
+    fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8').includes("theme: 'md3',")],
+  ['v2.6.9b: 安卓融合 WearOS 界面（无 WebView 自动落 + 设置手动开）',
+    fs.existsSync('mobile/android-overlay/app/src/main/java/com/fclasspal/wear/MainActivity.java') &&
+    fs.existsSync('mobile/android-overlay/app/src/main/java/com/fclasspal/wear/Api.java') &&
+    /hasWebView\(\)/.test(fs.readFileSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/MainActivity.java', 'utf8')) &&
+    /com\.fclasspal\.wear\.MainActivity/.test(fs.readFileSync('mobile/android-overlay/app/src/main/AndroidManifest.xml', 'utf8')) &&
+    /openWearUi/.test(fs.readFileSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/PalBridgePlugin.java', 'utf8')) &&
+    /openWearUi/.test(fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8'))],
+  ['v2.6.9b: 安卓预装主题仓库全套 + 界面版本切换行',
+    fs.readFileSync('mobile/tools/assemble-web.js', 'utf8').includes("'FClassPal-theme', 'dist'") &&
+    /id="rowWearUi"/.test(html) && /id="uiModeSeg"/.test(html) &&
+    /bindUiModeSeg/.test(app)],
 ];
 let bad = 0;
 checks.forEach((c) => {

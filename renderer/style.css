@@ -961,7 +961,8 @@ body.theme-glass .sl-wrap input[type="range"]:active ~ .sl-bead {
  * 判定在 app.js applyOverLight()：底材平均亮度 > 0.62 才挂 .over-light。
  * 作用域同样锁 body.theme-glass —— 其他主题的玻璃是另一套语言，不参与。 */
 body.theme-glass.over-light {
-  --lg-blur: calc(14px * var(--blur-mul, 1));
+  /* v2.6.9b：主界面背景模糊度（--blur-bg-mul）—— .glass-warp 是主界面背景 */
+  --lg-blur: calc(14px * var(--blur-bg-mul, 1));
 }
 body.theme-glass.over-light .glass-veil {
   /* 薄墨压在最上层（上游是 20% 黑 + overlay 混合），把亮底"落"下来一点，
@@ -2091,7 +2092,7 @@ body.theme-md3 {
   --radius: 28px;
   --t-r-win: 28px; --t-r-card: 16px; --t-r-ctl: 12px; --t-r-small: 8px;
   --t-btn-r: 999px;
-  --t-blur: blur(14px) saturate(118%);
+  --t-blur: blur(calc(14px * var(--blur-bg-mul, 1))) saturate(118%);
   --t-veil-border: var(--md3-outline-variant);
   --t-veil-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55);
   --t-surface: rgb(var(--md3-surface-container-rgb) / 0.9);
@@ -2129,7 +2130,10 @@ body.theme-md3 .glass-veil {
    *   --glass-alpha 是 app.js 写在 #widget 上的，body 那层取不到它；
    *   var() 替换失败会让整条 background 变成 invalid-at-computed-value-time，
    *   表现就是面纱整个消失、只剩一圈描边。*/
-  --t-veil: rgb(var(--md3-surface-rgb) / calc(0.74 + 0.26 * var(--glass-alpha)));
+  /* v2.6.9b：透明度耦合放宽 —— 原来 0.74+0.26a 的区间肉眼看不见，
+   * 用户反馈"其他主题调透明度没用"。改成 0.34+0.66a：100% 时跟原来
+   * 一样实，0% 时明显透出壁纸，可读性仍有兜底。 */
+  --t-veil: rgb(var(--md3-surface-rgb) / calc(0.34 + 0.66 * var(--glass-alpha)));
   border: 1px solid var(--t-veil-border);
   background: var(--t-veil);
   box-shadow: var(--t-veil-shadow);
@@ -2282,7 +2286,7 @@ body.theme-fluent {
   --radius: 8px;
   --t-r-win: 8px; --t-r-card: 8px; --t-r-ctl: 4px; --t-r-small: 4px;
   --t-btn-r: 4px;
-  --t-blur: blur(30px) saturate(125%);
+  --t-blur: blur(calc(30px * var(--blur-bg-mul, 1))) saturate(125%);
   --t-veil-border: rgb(var(--md3-on-surface-rgb) / 0.09);
   --t-veil-shadow: 0 2px 4px rgb(0 0 0 / 0.04), 0 8px 20px rgb(0 0 0 / 0.07);
   --t-surface: rgb(var(--md3-surface-container-rgb) / 0.72);
@@ -2319,7 +2323,8 @@ body.theme-fluent .glass-veil {
    *   --glass-alpha 是 app.js 写在 #widget 上的，body 那层取不到它；
    *   var() 替换失败会让整条 background 变成 invalid-at-computed-value-time，
    *   表现就是面纱整个消失、只剩一圈描边。*/
-  --t-veil: rgb(var(--md3-surface-rgb) / calc(0.58 + 0.34 * var(--glass-alpha)));
+  /* v2.6.9b：透明度耦合放宽（理由见 md3 那条） */
+  --t-veil: rgb(var(--md3-surface-rgb) / calc(0.28 + 0.72 * var(--glass-alpha)));
   border: 1px solid var(--t-veil-border);
   background: var(--t-veil);
   box-shadow: var(--t-veil-shadow);
@@ -2348,12 +2353,13 @@ body.theme-fluent .group-title::before {
   background: var(--t-accent); opacity: 0.85;
 }
 /* 卡片：亚克力薄片 + Reveal 高光（--rv-x/--rv-y 由 JS 按鼠标位置写） */
+/* v2.6.9b：快捷方式周围模糊度 —— .item 卡片的 backdrop 乘 --blur-item-mul */
 body.theme-fluent .item {
   border-radius: var(--t-r-card);
   border: 1px solid var(--t-line);
   background: var(--t-surface);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
-  backdrop-filter: blur(calc(12px * var(--blur-mul, 1))); -webkit-backdrop-filter: blur(calc(12px * var(--blur-mul, 1)));
+  backdrop-filter: blur(calc(12px * var(--blur-item-mul, 1))); -webkit-backdrop-filter: blur(calc(12px * var(--blur-item-mul, 1)));
   transition: background var(--t-dur) var(--t-ease), transform var(--t-dur) var(--t-ease),
               box-shadow var(--t-dur) var(--t-ease), border-color var(--t-dur) var(--t-ease);
 }
@@ -2530,7 +2536,7 @@ body.theme-miuix {
   --radius: 24px;
   --t-r-win: 24px; --t-r-card: 16px; --t-r-ctl: 16px; --t-r-small: 12px;
   --t-btn-r: 16px;
-  --t-blur: blur(22px) saturate(150%);
+  --t-blur: blur(calc(22px * var(--blur-bg-mul, 1))) saturate(150%);
   --t-veil-border: rgb(255 255 255 / 0.6);
   --t-veil-shadow: inset 0 1px 0 rgb(255 255 255 / 0.8), 0 18px 40px -20px rgb(var(--t-accent-rgb) / 0.35);
   --t-surface: rgb(247 247 247 / 0.82);
@@ -2567,9 +2573,10 @@ body.theme-miuix .glass-veil {
    *   --glass-alpha 是 app.js 写在 #widget 上的，body 那层取不到它；
    *   var() 替换失败会让整条 background 变成 invalid-at-computed-value-time，
    *   表现就是面纱整个消失、只剩一圈描边。*/
+  /* v2.6.9b：透明度耦合放宽（理由见 md3 那条） */
   --t-veil: linear-gradient(168deg,
-              rgb(255 255 255 / calc(0.90 + 0.10 * var(--glass-alpha))) 0%,
-              rgb(var(--md3-surface-rgb) / calc(0.86 + 0.14 * var(--glass-alpha))) 100%);
+              rgb(255 255 255 / calc(0.45 + 0.55 * var(--glass-alpha))) 0%,
+              rgb(var(--md3-surface-rgb) / calc(0.42 + 0.58 * var(--glass-alpha))) 100%);
   border: 1px solid var(--t-veil-border);
   background: var(--t-veil);
   box-shadow: var(--t-veil-shadow);
@@ -2782,7 +2789,7 @@ body.theme-harmony {
   --radius: 24px;
   --t-r-win: 24px; --t-r-card: 20px; --t-r-ctl: 16px; --t-r-small: 12px;
   --t-btn-r: 999px;
-  --t-blur: blur(24px) saturate(140%);
+  --t-blur: blur(calc(24px * var(--blur-bg-mul, 1))) saturate(140%);
   --t-veil-border: rgb(0 0 0 / 0.07);
   --t-veil-shadow: 0 2px 10px rgb(0 0 0 / 0.05), 0 14px 34px -18px rgb(0 0 0 / 0.16);
   --t-surface: rgb(255 255 255 / 0.94);
@@ -2819,7 +2826,8 @@ body.theme-harmony .glass-veil {
    *   --glass-alpha 是 app.js 写在 #widget 上的，body 那层取不到它；
    *   var() 替换失败会让整条 background 变成 invalid-at-computed-value-time，
    *   表现就是面纱整个消失、只剩一圈描边。*/
-  --t-veil: rgb(var(--md3-surface-rgb) / calc(0.80 + 0.20 * var(--glass-alpha)));
+  /* v2.6.9b：透明度耦合放宽（理由见 md3 那条） */
+  --t-veil: rgb(var(--md3-surface-rgb) / calc(0.36 + 0.64 * var(--glass-alpha)));
   border: 1px solid var(--t-veil-border);
   background: var(--t-veil);
   box-shadow: var(--t-veil-shadow);
@@ -4063,20 +4071,21 @@ html body.dark .wear-dev-row { border-top-color: rgb(255 255 255 / 0.12); }
 body.theme-glass.lg2 {
   /* 透镜要看清背后的结构，模糊就得轻；旧主题 6px，这里稍高一点点，
    * 但饱和度和亮度都往上提，观感是"通透"而不是"糊"。
-   * v2.6.8：「模糊度」升级成了全局滑条，这里按档位乘 var(--blur-mul, 1)
-   * （config.blur，0~2，默认 1 = 原档），不再走 lg2 专属的 --lg-blur-user。 */
-  --lg-blur: calc(8px * var(--blur-mul, 1));
+   * v2.6.9b：模糊度拆成三根 —— 主界面背景（.glass-warp，乘
+   * --blur-bg-mul）、快捷方式周围（.item 卡片，乘 --blur-item-mul）、
+   * 组件（面板/菜单/滑条，全局 --blur-mul）。这里是大玻璃 → 背景档。 */
+  --lg-blur: calc(8px * var(--blur-bg-mul, 1));
   --glass-hi: rgba(255, 255, 255, 0.95);
   --glass-edge: rgba(255, 255, 255, 0.34);
   /* ※ v2.6.8：白雾重新跟「透明度」滑条走（每个主题语义一致了）。
    *   --glass-alpha 现在由 applyOpacity 写在 **body** 上 —— v2.6.6 之所以只能
    *   固定 0.55，是因为旧实现把变量挂在 #widget 行内，面板/菜单这些 widget 的
    *   兄弟节点读不到；挂到 body 后全树继承，透明度滑条在哪套主题都是同一个意思。
-   *   「模糊强度」则交给全局「模糊度」滑条（--blur-mul，见上）。 */
+   *   「模糊强度」交给「部件模糊度」滑条（--blur-item-mul，见上）。 */
   --lg-alpha: var(--glass-alpha, 0.55);
 }
 /* 亮底自适应：给一个模糊下限（壁纸很亮时字会飘），但不封顶用户的选择 */
-body.theme-glass.lg2.over-light { --lg-blur: calc(14px * var(--blur-mul, 1)); }
+body.theme-glass.lg2.over-light { --lg-blur: calc(14px * var(--blur-bg-mul, 1)); }
 
 /* ① 折射层：blur/saturate 与 filter 分开写（同旧主题的铁律——
  *    url() 写进 backdrop-filter 会让**整条声明**作废）。 */
@@ -4177,6 +4186,14 @@ body.theme-glass.lg2 .seg-btn,
 body.theme-glass.lg2 .rail-btn,
 body.theme-glass.lg2 .ctx-item,
 body.theme-glass.lg2 .theme-mini {
+  /* v2.6.9：指针高光要"落在这颗按钮上"，就得先给按钮一个定位上下文
+   * （::after 用 inset:0）并裁掉溢出的光；isolation 建独立层叠上下文，
+   * 高光用 z-index:-1 落在背景之上、文字之下，字一点都不会被糊。
+   * 之前这两个属性根本不存在 —— 老扫光的绝对定位其实挂到 .panel 上去了，
+   * 这就是它看起来"一大片白光乱糊"的另一半原因。 */
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
   background-image: linear-gradient(180deg,
     rgba(255, 255, 255, 0.26) 0%,
     rgba(255, 255, 255, 0.10) 100%);
@@ -4219,7 +4236,8 @@ body.theme-glass.lg2 .theme-mini:active {
   transform: scale(0.94);
   transition-duration: 0.12s;
 }
-/* 按下的一圈受光（v2.6.8）：把内高光从细环提成一片柔光，"按下去有光" */
+/* 按下的受光（v2.6.9）：只保留镜面细环 + 那一下 scale，
+ * 不再往内铺一片 18px 白光 —— 用户原话「白光太丑」。 */
 body.theme-glass.lg2 .text-btn:active,
 body.theme-glass.lg2 .primary-btn:active,
 body.theme-glass.lg2 .ghost-btn:active,
@@ -4230,12 +4248,12 @@ body.theme-glass.lg2 .ctx-item:active,
 body.theme-glass.lg2 .theme-mini:active {
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.9),
-    inset 0 0 18px rgba(255, 255, 255, 0.55),
     0 1px 1px -1px rgba(10, 24, 60, 0.16);
 }
-/* 悬停扫光（v2.6.8）：一条斜切高光从左掠到右。玻璃块本就 overflow:hidden +
- * isolation，光不会溢出；子元素 z-index:1，光从底下走。
- * 平时 transform 归位是 0s（滑回去的过程不可见），hover 时 620ms 掠过去。 */
+/* 指针高光（v2.6.9）：苹果那种「光跟着指针走」——一团柔白径向高光落在
+ * 光标/手指的位置，指针一动它就跟着挪；离开就淡出。不扫、不整片发白。
+ * --mx/--my 由 app.js 的 followGlow() 写在按钮行内（像素坐标）。
+ * z-index:-1 让光落在按钮背景之上、文字之下（见上面那条 isolation）。 */
 body.theme-glass.lg2 .text-btn::after,
 body.theme-glass.lg2 .primary-btn::after,
 body.theme-glass.lg2 .ghost-btn::after,
@@ -4246,17 +4264,16 @@ body.theme-glass.lg2 .ctx-item::after,
 body.theme-glass.lg2 .theme-mini::after {
   content: "";
   position: absolute;
-  top: -20%;
-  bottom: -20%;
-  left: 0;
-  width: 34%;
-  background: linear-gradient(100deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.45) 50%,
-    rgba(255, 255, 255, 0) 100%);
-  transform: translateX(-160%) skewX(-18deg);
-  transition: transform 0s;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(96px circle at var(--mx, 50%) var(--my, -40%),
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.16) 42%,
+    rgba(255, 255, 255, 0) 72%);
+  opacity: 0;
+  transition: opacity 240ms ease;
   pointer-events: none;
+  z-index: -1;
 }
 body.theme-glass.lg2 .text-btn:hover::after,
 body.theme-glass.lg2 .primary-btn:hover::after,
@@ -4265,9 +4282,16 @@ body.theme-glass.lg2 .pick-btn:hover::after,
 body.theme-glass.lg2 .seg-btn:hover::after,
 body.theme-glass.lg2 .rail-btn:hover::after,
 body.theme-glass.lg2 .ctx-item:hover::after,
-body.theme-glass.lg2 .theme-mini:hover::after {
-  transform: translateX(460%) skewX(-18deg);
-  transition: transform 620ms ease;
+body.theme-glass.lg2 .theme-mini:hover::after,
+body.theme-glass.lg2 .text-btn:active::after,
+body.theme-glass.lg2 .primary-btn:active::after,
+body.theme-glass.lg2 .ghost-btn:active::after,
+body.theme-glass.lg2 .pick-btn:active::after,
+body.theme-glass.lg2 .seg-btn:active::after,
+body.theme-glass.lg2 .rail-btn:active::after,
+body.theme-glass.lg2 .ctx-item:active::after,
+body.theme-glass.lg2 .theme-mini:active::after {
+  opacity: 1;
 }
 /* 系统"减少动态效果"：整体关掉，别跟用户的可访问性设置较劲 */
 @media (prefers-reduced-motion: reduce) {
@@ -4365,8 +4389,8 @@ body.theme-glass.lg2 .item {
     0 3px 8px -5px rgba(6, 14, 38, 0.24);
   /* 卡片自己也要吃背后那点颜色，否则一格格白瓷片压在玻璃面板上很出戏。
    * 半径比面板小一档：卡片面积小，糊太狠会变成"磨砂塑料"。 */
-  backdrop-filter: blur(calc(12px * var(--blur-mul, 1))) saturate(190%) brightness(1.05);
-  -webkit-backdrop-filter: blur(calc(12px * var(--blur-mul, 1))) saturate(190%) brightness(1.05);
+  backdrop-filter: blur(calc(12px * var(--blur-item-mul, 1))) saturate(190%) brightness(1.05);
+  -webkit-backdrop-filter: blur(calc(12px * var(--blur-item-mul, 1))) saturate(190%) brightness(1.05);
 }
 body.theme-glass.lg2 .item::after {
   content: '';
@@ -4545,3 +4569,41 @@ html body.dark.theme-glass.lg2 .panel {
     rgb(24 28 40 / 0.53) 100%);
   border-color: rgb(255 255 255 / 0.14);
 }
+
+/* ============================================================
+ * v2.6.9：模糊度的第二根轴 + 设置整理的几个小件
+ * ============================================================ */
+/* 「部件模糊度」= 主界面这块玻璃。做法是在 #widget 上把 --blur-mul 换成本地档：
+ * widget 子树里所有 backdrop-filter 都吃部件档（图标的 12px、卡片、滑条条本身），
+ * 面板/菜单/弹窗是 widget 的兄弟节点，继续吃 body 上的总体档。
+ * --lg-blur（.glass-warp 的折射底模糊）在定义点就已经乘了 --blur-item-mul，
+ * 这里再改 --blur-mul 不会二次相乘。 */
+/* v2.6.9b：#widget 的整体换档（--blur-mul: var(--blur-item-mul)）已拆掉。
+ * 现在三档各走各的：.glass-warp/--t-blur 乘 --blur-bg-mul（主界面背景），
+ * .item 的 backdrop 乘 --blur-item-mul（快捷方式周围），
+ * 其余组件（滑条/面板/菜单/弹窗）继续走全局 --blur-mul。 */
+/* 主题不支持调模糊时，模糊度那几行整体置灰（滑条 disabled，样式再补一层） */
+.row.is-disabled {
+  opacity: 0.42;
+}
+.row.is-disabled input[type="range"] {
+  pointer-events: none;
+}
+/* 局域网设备里的二级小标题（本机服务 / 连接其他设备） */
+.wear-head-sub {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(127, 132, 148, 0.26);
+  font-size: 0.86rem;
+  opacity: 0.86;
+}
+
+/* ====== v2.6.9b：安卓端主题行 ======
+ * 安卓：下拉旁边给一颗「导入」（.fcpt 文件走 SAF 选择器），
+ * 「主题管理」整行藏掉（排序/删除那些在触屏上又乱又用不上）。 */
+#btnThemeQuickImport { display: none; }
+body.is-android #btnThemeQuickImport { display: inline-flex; }
+body.is-android #rowThemeManage { display: none; }
+/* 界面版本行：只在安卓显示（桌面没有"降级界面"这回事） */
+#rowWearUi { display: none; }
+body.is-android #rowWearUi { display: flex; }

@@ -1485,6 +1485,29 @@ public class PalBridgePlugin extends Plugin {
         call.resolve();
     }
 
+    /** v2.6.9b：打开 WearOS 版界面（纯 Java，无 WebView）。返回键退回触屏版。 */
+    @PluginMethod
+    public void openWearUi(PluginCall call) {
+        try {
+            android.content.Intent it = new android.content.Intent(getActivity() != null
+                    ? getActivity() : getContext(), com.fclasspal.wear.MainActivity.class);
+            if (getActivity() != null) {
+                getActivity().startActivity(it);
+            } else {
+                getContext().startActivity(it);
+            }
+        } catch (Throwable t) {
+            JSObject o = new JSObject();
+            o.put("opened", false);
+            o.put("error", String.valueOf(t.getMessage()));
+            call.resolve(o);
+            return;
+        }
+        JSObject o = new JSObject();
+        o.put("opened", true);
+        call.resolve(o);
+    }
+
     /* =======================================================================
      * 局域网联动（v2.6.6）——两个方向，一套协议
      *

@@ -38,6 +38,7 @@
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4.6A1.6 1.6 0 0 1 9.6 3h4.8A1.6 1.6 0 0 1 16 4.6V6"/><path d="M18.4 6l-.9 13.2a1.9 1.9 0 0 1-1.9 1.8H8.4a1.9 1.9 0 0 1-1.9-1.8L5.6 6"/><path d="M10.4 10.6v6.6M13.6 10.6v6.6"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7.4 10.4L12 15l4.6-4.6"/><path d="M4.5 20h15"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 6.3"/><path d="M20 4v7h-7"/></symbol>
 
     <!-- ====== 希沃桌面工具（v2.6.0）：白色线性图标，风格对齐希沃侧边栏 ====== -->
     <symbol id="i-seewo-annotate" viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M14.5 4.5l5 5L10 19l-4.7 1.2L6.5 15.5z"/><path d="M12.5 6.5l5 5"/></symbol>
@@ -245,7 +246,7 @@
     <!-- v2.6.8：主界面这根改管「模糊度」（全应用统一透明度+模糊两根滑条，
          设置面板里两根都有，这里放的是模糊度） -->
     <div id="opacityBar" class="opacity-bar">
-      <span class="opacity-label">模糊度</span>
+      <span class="opacity-label" id="opacityLabel">部件模糊度</span>
       <input type="range" id="opacityRange" min="0" max="2" step="0.01" value="1" />
     </div>
 
@@ -296,17 +297,7 @@
         <span>窗口标题</span>
         <input type="text" id="setTitle" maxlength="12" />
       </label>
-      <label class="row">
-        <span>透明度</span>
-        <input type="range" id="setOpacity" min="0" max="1" step="0.01" />
-        <span id="opacityVal" class="val">92%</span>
-      </label>
-      <label class="row">
-        <span>模糊度</span>
-        <input type="range" id="setBlur" min="0" max="2" step="0.01" />
-        <span id="blurVal" class="val">100%</span>
-      </label>
-      <p class="row-hint">透明度管玻璃的白雾浓淡，模糊度管背后内容的磨砂程度（100% = 各主题原档）</p>
+
       <label class="row">
         <span>圆角弧度</span>
         <input type="range" id="setRadius" min="8" max="40" step="1" />
@@ -350,72 +341,8 @@
       </label>
       <p class="row-hint">网格模式：编辑模式里拖图标右下角的手柄可单独调某个格子的跨度与高度</p>
 
-      <div class="row">
-        <span>毛玻璃</span>
-        <span id="blurInfo" class="val blur-info">检测中…</span>
-      </div>
-      <label class="row toggle">
-        <span>实时桌面模糊</span>
-        <input type="checkbox" id="setRealtime" />
-      </label>
-      <div class="row">
-        <span>玻璃底材</span>
-        <span id="realtimeInfo" class="val blur-info">未开启</span>
-      </div>
-            <!-- 自定义背景图（v2.4.0）：选图 + 模糊 / 白色蒙版 / 裁剪 -->
-      <label class="row toggle">
-        <span>自定义背景</span>
-        <input type="checkbox" id="setBgOn" />
-      </label>
-      <div class="row">
-        <span>背景图片</span>
-        <!-- 注意 别用 .size-controls 装文字按钮：那个类是给窗口尺寸的 30×30 方形图标
-             按钮用的（.size-controls button 写死 width/height 30px），文字按钮一进去
-             就被压成 30px 宽，而按钮默认不裁剪，文字会溢出到按钮外面
-             （v2.4.1 用户报的「选择背景图和清除按键 字体在按键外面了」）。
-             文字按钮统一放 .btn-row。 -->
-        <div class="btn-row">
-          <button id="btnBgPick" class="text-btn">选择图片…</button>
-          <button id="btnBgClear" class="text-btn">清除</button>
-        </div>
-      </div>
-      <div class="row">
-        <span>当前图片</span>
-        <span id="bgFileInfo" class="val blur-info">未选择</span>
-      </div>
-      <label class="row">
-        <span>图片模糊</span>
-        <input type="range" id="setBgBlur" min="0" max="40" step="1" />
-        <span id="bgBlurVal" class="val">0px</span>
-      </label>
-      <label class="row">
-        <span>白色蒙版</span>
-        <input type="range" id="setBgMask" min="0" max="100" step="1" />
-        <span id="bgMaskVal" class="val">0%</span>
-      </label>
-      <label class="row">
-        <span>图片缩放</span>
-        <input type="range" id="setBgScale" min="100" max="300" step="1" />
-        <span id="bgScaleVal" class="val">100%</span>
-      </label>
-      <label class="row">
-        <span>水平位置</span>
-        <input type="range" id="setBgX" min="0" max="100" step="1" />
-        <span id="bgXVal" class="val">50%</span>
-      </label>
-      <label class="row">
-        <span>垂直位置</span>
-        <input type="range" id="setBgY" min="0" max="100" step="1" />
-        <span id="bgYVal" class="val">50%</span>
-      </label>
-      <div class="row">
-        <span>填充方式</span>
-        <select id="bgFitSelect" class="theme-select" aria-label="填充方式">
-          <option value="cover">裁剪铺满</option>
-          <option value="contain">完整显示</option>
-          <option value="tile">平铺</option>
-        </select>
-      </div>
+      <!-- v2.6.9：毛玻璃 / 实时桌面模糊 / 玻璃底材 也属于"模糊相关"，一并挪进个性化 -->
+
             <!-- 图标外观（v2.4.2 起）：填充方式只影响图片图标；边框与形状对预设/字符图标也生效 -->
       <div class="row">
         <span>图标填充</span>
@@ -529,28 +456,127 @@
           <div class="wear-hint" id="wearHost">其他设备「配对电脑」里输这个 IP 与 6 位码</div>
           <div class="wear-hint">手表独立启动器的主题 / 配置（.json）放手表存储的 Android/data/com.fclasspal.wear/files/themes/ 目录</div>
           <div class="wear-devices" id="wearDevices"></div>
-          <div class="wear-code-row" id="btnLanScanRow">
-            <button id="btnLanScan" class="text-btn">连接其他设备</button>
-          </div>
-          <div class="wear-hint hidden" id="lanScanHint"></div>
-          <div class="wear-devices hidden" id="lanFound"></div>
-          <label class="row hidden" id="lanManualRow">
-            <span>IP 直连</span>
-            <input type="text" id="lanIp" placeholder="192.168.x.x" />
-            <button id="btnLanManual" class="text-btn" type="button">连接</button>
-          </label>
-          <label class="row hidden" id="lanCodeRow">
-            <span>配对码</span>
-            <input type="text" id="lanCode" inputmode="numeric" maxlength="6" placeholder="6 位数字" />
-            <button id="btnLanPair" class="text-btn" type="button">配对</button>
-          </label>
-          <div class="wear-devices" id="lanPeers"></div>
         </div>
+        <!-- v2.6.9：「本机去连别人」跟「本机开不开服务」是两件事，
+             所以这一块搬出 #wearPanel、常驻显示。
+             以前它跟着「局域网连接」开关一起藏，用户点开设置只看得到一个开关，
+             就以为"电脑端连其他端根本没做"。 -->
+        <div class="wear-head wear-head-sub">
+          <svg class="ic" aria-hidden="true"><use href="#i-link"/></svg>
+          <span>连接其他设备</span>
+        </div>
+        <div class="wear-code-row" id="btnLanScanRow">
+          <button id="btnLanScan" class="text-btn">连接其他设备</button>
+        </div>
+        <div class="wear-hint hidden" id="lanScanHint"></div>
+        <div class="wear-devices hidden" id="lanFound"></div>
+        <label class="row hidden" id="lanManualRow">
+          <span>IP 直连</span>
+          <input type="text" id="lanIp" placeholder="192.168.x.x" />
+          <button id="btnLanManual" class="text-btn" type="button">连接</button>
+        </label>
+        <label class="row hidden" id="lanCodeRow">
+          <span>配对码</span>
+          <input type="text" id="lanCode" inputmode="numeric" maxlength="6" placeholder="6 位数字" />
+          <button id="btnLanPair" class="text-btn" type="button">配对</button>
+        </label>
+        <div class="wear-devices" id="lanPeers"></div>
       </div>
         </section>
 
         <section class="psec" id="secPersonal">
           <h4 class="psec-title">个性化</h4>
+      <!-- v2.6.9：透明度 / 模糊度 / 图片这些「看着长什么样」的项统一收进个性化
+           （原来散在功能设置里，用户提过"整理设置"）。 -->
+      <label class="row">
+        <span>透明度</span>
+        <input type="range" id="setOpacity" min="0" max="1" step="0.01" />
+        <span id="opacityVal" class="val">92%</span>
+      </label>
+      <!-- 模糊度拆两根（v2.6.9）：总体 = 面板/菜单/弹窗；部件 = 主界面那块玻璃。
+           非玻璃主题两行会整体置灰（app.js syncBlurControls 加 .is-disabled）。 -->
+      <label class="row" id="rowBlurTotal">
+        <span>组件模糊度</span>
+        <input type="range" id="setBlur" min="0" max="2" step="0.01" />
+        <span id="blurVal" class="val">100%</span>
+      </label>
+      <label class="row" id="rowBlurItem">
+        <span>快捷方式周围</span>
+        <input type="range" id="setItemBlur" min="0" max="2" step="0.01" />
+        <span id="setItemBlurVal" class="val">100%</span>
+      </label>
+      <label class="row" id="rowBlurBg">
+        <span>主界面背景模糊度</span>
+        <input type="range" id="setBgBlur" min="0" max="2" step="0.01" />
+        <span id="setBgBlurVal" class="val">100%</span>
+      </label>
+      <p class="row-hint" id="blurHint">组件模糊度管面板/菜单/弹窗；快捷方式周围管图标卡片；主界面背景模糊度管主界面这块大玻璃（100% = 原档）</p>
+      <div class="row">
+        <span>毛玻璃</span>
+        <span id="blurInfo" class="val blur-info">检测中…</span>
+      </div>
+      <label class="row toggle">
+        <span>实时桌面模糊</span>
+        <input type="checkbox" id="setRealtime" />
+      </label>
+      <div class="row">
+        <span>玻璃底材</span>
+        <span id="realtimeInfo" class="val blur-info">未开启</span>
+      </div>
+            <!-- 自定义背景图（v2.4.0）：选图 + 模糊 / 白色蒙版 / 裁剪 -->
+      <label class="row toggle">
+        <span>自定义背景</span>
+        <input type="checkbox" id="setBgOn" />
+      </label>
+      <div class="row">
+        <span>背景图片</span>
+        <!-- 注意 别用 .size-controls 装文字按钮：那个类是给窗口尺寸的 30×30 方形图标
+             按钮用的（.size-controls button 写死 width/height 30px），文字按钮一进去
+             就被压成 30px 宽，而按钮默认不裁剪，文字会溢出到按钮外面
+             （v2.4.1 用户报的「选择背景图和清除按键 字体在按键外面了」）。
+             文字按钮统一放 .btn-row。 -->
+        <div class="btn-row">
+          <button id="btnBgPick" class="text-btn">选择图片…</button>
+          <button id="btnBgClear" class="text-btn">清除</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>当前图片</span>
+        <span id="bgFileInfo" class="val blur-info">未选择</span>
+      </div>
+      <label class="row">
+        <span>图片模糊</span>
+        <input type="range" id="setBgBlur" min="0" max="40" step="1" />
+        <span id="bgBlurVal" class="val">0px</span>
+      </label>
+      <label class="row">
+        <span>白色蒙版</span>
+        <input type="range" id="setBgMask" min="0" max="100" step="1" />
+        <span id="bgMaskVal" class="val">0%</span>
+      </label>
+      <label class="row">
+        <span>图片缩放</span>
+        <input type="range" id="setBgScale" min="100" max="300" step="1" />
+        <span id="bgScaleVal" class="val">100%</span>
+      </label>
+      <label class="row">
+        <span>水平位置</span>
+        <input type="range" id="setBgX" min="0" max="100" step="1" />
+        <span id="bgXVal" class="val">50%</span>
+      </label>
+      <label class="row">
+        <span>垂直位置</span>
+        <input type="range" id="setBgY" min="0" max="100" step="1" />
+        <span id="bgYVal" class="val">50%</span>
+      </label>
+      <div class="row">
+        <span>填充方式</span>
+        <select id="bgFitSelect" class="theme-select" aria-label="填充方式">
+          <option value="cover">裁剪铺满</option>
+          <option value="contain">完整显示</option>
+          <option value="tile">平铺</option>
+        </select>
+      </div>
       <!-- 主题风格（v2.5.4 换回老样式）——
            安卓真机上"只靠主题管理弹窗切换"这条路不稳，而且少了直观的快速切换：
            设置面板这里直接给一个自绘下拉，点开是 44px 行高的列表，手指按得住，
@@ -567,6 +593,8 @@
           </button>
           <div class="tselect-pop hidden" id="themeSelectPop" role="listbox" aria-label="主题风格"></div>
         </div>
+        <!-- v2.6.9b：安卓端下拉旁边直接给导入（「主题管理」行在安卓上藏掉） -->
+        <button id="btnThemeQuickImport" class="text-btn" type="button" title="导入 .fcpt 主题包">导入</button>
       </div>
       <!-- 主题管理（v2.5.0）：本体只带五套内置皮肤，其余主题是 .fcpt 主题包。
            这里只管安装/导入/排序/删除，页面底部的弹窗承担全部管理操作。 -->
@@ -574,6 +602,15 @@
         <span>主题管理</span>
         <div class="btn-row">
           <button id="btnThemeManage" class="text-btn" type="button">安装 / 排序 / 导入</button>
+        </div>
+      </div>
+      <!-- v2.6.9b：界面版本（安卓端）—— WearOS 版是纯 Java 原生界面（无 WebView），
+           没有 WebView 的设备由壳自动落到这套；有 WebView 时这里手动打开。 -->
+      <div class="row" id="rowWearUi">
+        <span>界面版本</span>
+        <div class="seg" id="uiModeSeg" role="group" aria-label="界面版本">
+          <button type="button" class="seg-btn" data-ui="touch" aria-pressed="true">触屏版</button>
+          <button type="button" class="seg-btn" data-ui="wear" aria-pressed="false">WearOS 版</button>
         </div>
       </div>
       <div class="row">
@@ -667,6 +704,16 @@
         <div class="btn-row about-actions">
           <button id="btnCheckUpdate" class="text-btn" type="button">检测更新</button>
           <button id="aboutGithub" class="text-btn about-link" type="button">GitHub 仓库</button>
+        </div>
+      </div>
+
+      <!-- 更新通道（v2.6.9）：稳定版只比正式 release；预发布连 -beta 一起比。
+           主进程按 channel 过滤 + 带预发布号的版本号比较（release > 同号 prerelease）。 -->
+      <div class="row">
+        <span>更新通道</span>
+        <div class="seg" id="channelSeg" role="group" aria-label="更新通道">
+          <button type="button" class="seg-btn" data-ch="stable" aria-pressed="true">稳定版</button>
+          <button type="button" class="seg-btn" data-ch="pre" aria-pressed="false">预发布</button>
         </div>
       </div>
 

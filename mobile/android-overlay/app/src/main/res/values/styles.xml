@@ -32,4 +32,14 @@
         <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
+
+    <!-- v2.6.9b：WearOS 版界面（纯 framework 主题，不依赖 AppCompat；
+         深底无 ActionBar，观感由 com.fclasspal.wear.MainActivity 代码里的配色给） -->
+    <style name="WearTheme" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">#FF0D1014</item>
+        <item name="android:colorAccent">#FFA8C7FA</item>
+        <item name="android:statusBarColor">#FF0D1014</item>
+        <item name="android:navigationBarColor">#FF0D1014</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
 </resources>

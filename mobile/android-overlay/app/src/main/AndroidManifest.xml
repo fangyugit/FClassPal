@@ -51,6 +51,16 @@
 
         </activity>
 
+        <!-- v2.6.9b：WearOS 版界面（纯 Java 无 WebView，源码自 wearos/ 移植）。
+             WebView 缺失时壳入口自动落到这里；设置里也可手动打开。
+             不是 LAUNCHER —— 独立手表 APK 依旧单独发布（本条不影响它）。 -->
+        <activity
+            android:name="com.fclasspal.wear.MainActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:theme="@style/WearTheme" />
+
         <!-- 悬浮窗实时模糊的采集前台服务（Android 14+ 硬性要求，见类注释） -->
         <service
             android:name=".ScreenCaptureService"
