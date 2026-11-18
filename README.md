@@ -111,17 +111,18 @@ node _mksrccheck.js && node _check_src.js    # 由 _check.js 生成源码版，�
 | 平台 | 产物 | 处理器架构 |
 |---|---|---|
 | Windows | [FClassPal-2.6.8.exe](https://github.com/fangyugit/FclassPal/releases/download/v2.6.8/FClassPal-2.6.8.exe)（2.6.8 正式版单文件） | x64 |
-| Linux | `FClassPal-2.6.6-linux-x64.tar.gz`| x64 |
-| Linux | `FClassPal-2.6.6-linux-arm64.tar.gz` | arm64 |
-| Linux | [FClassPal-2.6.6-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.6.6/FClassPal-2.6.6-linux-loong64.tar.gz)（适配龙芯架构） | LoongArch64 |
+| Linux | [FClassPal-2.6.8-linux-x64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.6.8/FClassPal-2.6.8-linux-x64.tar.gz) | x64 |
+| Linux | [FClassPal-2.6.8-linux-arm64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.6.8/FClassPal-2.6.8-linux-arm64.tar.gz) | arm64 |
+| Linux | [FClassPal-2.6.8-linux-loong64.tar.gz](https://github.com/fangyugit/FclassPal/releases/download/v2.6.8/FClassPal-2.6.8-linux-loong64.tar.gz)（适配龙芯架构） | LoongArch64 |
 | macOS | `FClassPal-2.6.6-mac-x64.dmg` / `.zip`（CI 构建自动附加） | Intel x64 |
 | macOS | `FClassPal-2.6.6-mac-arm64.dmg` / `.zip`（CI 构建自动附加） | Apple 芯片（M 系列） |
-| Android | [FClassPal-2.6.8-android.apk](https://github.com/fangyugit/FclassPal/releases/download/v2.6.8/FClassPal-2.6.8-android.apk)（2.6.8 正式版，内置全部 18 套主题，融合 WearOS 界面） | arm64 / armv7 / x86_64 |
+| Android | [FClassPal-2.6.8-android.apk](https://github.com/fangyugit/FclassPal/releases/download/v2.6.8/FClassPal-2.6.8-android.apk)（2.6.8 正式版，18 套主题内置，融合 WearOS 界面） | arm64 / armv7 / x86_64 |
 | Android | `FClassPal-2.6.6-android-debug.apk`（调试签名，CI 构建自动附加） | arm64 / armv7 / x86_64 |
 | WearOS | [FClassPal-2.6.5A-wearos.apk](https://github.com/fangyugit/FclassPal/releases/download/v2.6.5/FClassPal-2.6.5A-wearos.apk)（手表端原生应用，需与电脑或手机同一 Wi-Fi；带应用图标与最近使用） | Wear OS 2 及以上，方屏 / 圆屏 |
 
-**2.6.8 正式版打了 Windows + Android**，见 [v2.6.8 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.8)；
-上表中的 Linux / macOS / WearOS 产物仍是 [v2.6.6](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.6) /
+**2.6.8 正式版打了 Windows + Linux + Android**（Linux 三架构：x64 / arm64 / loong64，2026-11-18 补齐），
+见 [v2.6.8 发布页](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.8)；
+上表里的 macOS / WearOS 产物仍是 [v2.6.6](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.6) /
 [v2.6.5](https://github.com/fangyugit/FclassPal/releases/tag/v2.6.5) 那一批（更早的见 [全部版本](https://github.com/fangyugit/FclassPal/releases)）
 
 - 龙芯包解压后执行 `FClassPal-linux-loong64/electron` 即可（这一份的可执行文件仍叫

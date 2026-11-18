@@ -18,6 +18,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 
 const ROOT = path.resolve(__dirname, '..');
 const SRC_RENDERER = path.resolve(ROOT, '..', 'renderer');
@@ -42,6 +43,48 @@ function copyTree(from, to, filter) {
     else if (entry.isFile()) { fs.copyFileSync(s, d); n += 1; }
   }
   return n;
+}
+
+/* ---------------- 极简 zip 读取（只认 stored / deflate 两种） ----------------
+ * 随包主题 .fcpt 就是普通 zip，本仓库用 python zipfile / _packthemes 生成，
+ * 压缩方式只会是 0（stored）或 8（deflate）。这里不引第三方库：装配脚本
+ * 要保持零依赖，CI 上 npm i 失败也不能把出包卡死。 */
+function zipEntries(buf) {
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= 0; i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('不是合法 zip（找不到中央目录结尾）');
+  const count = buf.readUInt16LE(eocd + 10);
+  let p = buf.readUInt32LE(eocd + 16);
+  const out = new Map();
+  for (let k = 0; k < count; k++) {
+    if (buf.readUInt32LE(p) !== 0x02014b50) throw new Error('中央目录损坏');
+    const method = buf.readUInt16LE(p + 10);
+    const csize = buf.readUInt32LE(p + 20);
+    const fnLen = buf.readUInt16LE(p + 28);
+    const exLen = buf.readUInt16LE(p + 30);
+    const cmLen = buf.readUInt16LE(p + 32);
+    const lho = buf.readUInt32LE(p + 42);
+    const name = buf.slice(p + 46, p + 46 + fnLen).toString('utf8').replace(/\\/g, '/');
+    const lnLen = buf.readUInt16LE(lho + 26);
+    const leLen = buf.readUInt16LE(lho + 28);
+    const start = lho + 30 + lnLen + leLen;
+    const raw = buf.slice(start, start + csize);
+    if (!name.endsWith('/')) {
+      out.set(name, method === 0 ? raw : zlib.inflateRawSync(raw));
+    }
+    p += 46 + fnLen + exLen + cmLen;
+  }
+  return out;
+}
+
+/* 主题包 CSS 里的 url("assets/x") → 文档相对路径。
+ * 注入的 <style> 在文档里，相对 URL 是按文档基准解析的，所以必须补上前缀，
+ * 否则贴图全 404（这套包的特点就是贴图多、纯色少）。 */
+function rewriteCssUrls(css, id) {
+  return css.replace(/url\(\s*(['"]?)assets\/([^'")]+)\1\s*\)/g, (m, q, rel) =>
+    'url("themepacks/' + id + '/assets/' + rel + '")');
 }
 
 /* 清空产出目录。
@@ -93,20 +136,20 @@ function main() {
     .map((f) => String(f))
     .filter((f) => f.startsWith('themes/') && f.toLowerCase().endsWith('.fcpt'));
   const SRC_THEMES = path.resolve(ROOT, '..', 'themes');
+  /* v2.6.8-fix3：这一版起 .fcpt **不再拷进 APK**，只当作解包源（见 ②.6）。
+   * 理由：同一批素材没必要在包里存两份（fcpt 一份 + 解出来的静态文件一份），
+   * 会白胖 6MB；而"随包离线包"这个入口在全部主题都内置之后已经没有意义了。 */
+  const packSources = new Map();          // 文件名 -> 绝对路径
   if (fs.existsSync(SRC_THEMES)) {
     const all = fs.readdirSync(SRC_THEMES)
       .filter((f) => f.toLowerCase().endsWith('.fcpt'))
       .sort();
-    if (!all.length) die('themes/ 下一个 .fcpt 都没有，APK 里不会有离线主题库存');
-    const outThemes = path.join(OUT, 'themes');
-    fs.mkdirSync(outThemes, { recursive: true });
-    for (const f of all) {
-      fs.copyFileSync(path.join(SRC_THEMES, f), path.join(outThemes, f));
-    }
-    /* v2.6.9b：主题仓库（FClassPal-theme/dist）里的包也一并预装 ——
+    if (!all.length) die('themes/ 下一个 .fcpt 都没有，APK 里不会有内置主题');
+    for (const f of all) packSources.set(f, path.join(SRC_THEMES, f));
+    /* v2.6.9b：主题仓库（FClassPal-theme/dist）里的包也一并内置 ——
      * 「安卓版全部主题都预装不要点击导入」。同名包以主题仓库的新版为准
      * （仓库随 release 更新更快），桌面 themes/ 里没有的（BlackKitty 等）
-     * 直接补进来。仓库不在的机器上静默跳过，只用本体那 8 套。 */
+     * 直接补进来。仓库不在的机器上静默跳过，只用本体那 13 套。 */
     const REPO_DIST = path.resolve(ROOT, '..', '..', 'FClassPal-theme', 'dist');
     let repoN = 0;
     if (fs.existsSync(REPO_DIST)) {
@@ -114,14 +157,90 @@ function main() {
         .filter((f) => f.toLowerCase().endsWith('.fcpt') && !f.startsWith('example-'))
         .sort();
       for (const f of repoPacks) {
-        fs.copyFileSync(path.join(REPO_DIST, f), path.join(outThemes, f));
+        packSources.set(f, path.join(REPO_DIST, f));
         repoN += 1;
       }
     }
-    log('复制随包主题包 -> www/themes/：' + repoN + ' 个 .fcpt（主题仓库全套，含本体 8 套的适配新版；' +
+    log('内置主题源：合计 ' + packSources.size + ' 套（本体 themes/ + 主题仓库 dist，同名以仓库版为准；' +
       '桌面端随包 ' + desktopBundled.length + ' 套）');
   } else {
-    log('警告：build.files 里没有随包主题，APK 里不会有离线主题库存');
+    log('警告：找不到 themes/ 目录，APK 里不会有内置主题');
+  }
+
+  // ②.6 随包主题【真内置】（v2.6.8-fix3）
+  //   用户原话：「我让你直接完全自带内置而不是要补装」。
+  //   原来这套包得先"装"（原生 themeInstallBundled 解 zip、写到应用目录）才算存在，
+  //   而这一步在真机上一失败，主题列表就只剩内置五套，用户还没法自救。
+  //   现在改成装配期就把每个 .fcpt 解成同源静态文件：
+  //     www/themepacks/<id>/{theme.css, assets/*, preview.png, manifest.json}
+  //     www/themepacks/index.json      ← 渲染层 fetch 一次即得全部清单
+  //   渲染层按需 fetch 主题 CSS（只取当前用的那一套），不经过任何原生安装流程，
+  //   也不需要点击。自定义包（用户自己导入的 .fcpt）仍旧走原生那条路，互不干扰。
+  const PACKS_OUT = path.join(OUT, 'themepacks');
+  if (packSources.size) {
+    fs.mkdirSync(PACKS_OUT, { recursive: true });
+    const packs = [];
+    let skipped = 0;
+    for (const f of Array.from(packSources.keys()).sort()) {
+      let ent;
+      try {
+        ent = zipEntries(fs.readFileSync(packSources.get(f)));
+      } catch (e) {
+        log('警告：主题包读不出来，跳过 ' + f + '（' + e.message + '）');
+        skipped += 1;
+        continue;
+      }
+      const mfRaw = ent.get('manifest.json');
+      const cssRaw = ent.get('theme.css');
+      if (!mfRaw || !cssRaw) { log('警告：' + f + ' 缺 manifest.json / theme.css，跳过'); skipped += 1; continue; }
+      let mf;
+      try { mf = JSON.parse(mfRaw.toString('utf8')); } catch (e) {
+        log('警告：' + f + ' 的 manifest.json 不是合法 JSON，跳过'); skipped += 1; continue;
+      }
+      const id = String(mf.id || '').trim();
+      /* 与原生 themes.js / PalBridgePlugin 同一条 id 规则：一串不合格的主题名
+       * 会让目录名带路径味道（../、空格、中文），WebView 里 fetch 就崩。 */
+      if (!/^[a-zA-Z][a-zA-Z0-9-]{1,23}$/.test(id)) {
+        log('警告：' + f + ' 的 id「' + id + '」不合法，跳过'); skipped += 1; continue;
+      }
+      const dir = path.join(PACKS_OUT, id);
+      fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
+      for (const [name, bytes] of ent) {
+        if (name.startsWith('/') || name.split('/').includes('..') || name.indexOf(':') === 1) continue;
+        const dst = path.join(dir, name);
+        if (!path.resolve(dst).startsWith(path.resolve(dir) + path.sep)) continue;
+        fs.mkdirSync(path.dirname(dst), { recursive: true });
+        if (name === 'theme.css') {
+          fs.writeFileSync(dst, rewriteCssUrls(bytes.toString('utf8'), id), 'utf8');
+        } else {
+          fs.writeFileSync(dst, bytes);
+        }
+      }
+      const hasPreview = ent.has(String(mf.preview || 'preview.png'));
+      packs.push({
+        id: id,
+        name: String(mf.name || id),
+        version: String(mf.version || '1.0.0'),
+        author: String(mf.author || ''),
+        desc: String(mf.description || mf.desc || ''),
+        accent: /^#[0-9a-fA-F]{6}$/.test(String(mf.accent || '')) ? mf.accent : '',
+        fixedPalette: String(mf.fixedPalette) !== 'false',
+        blur: mf.blur === true,
+        repo: String(mf.repo || ''),
+        css: 'themepacks/' + id + '/theme.css',
+        preview: hasPreview ? 'themepacks/' + id + '/' + String(mf.preview || 'preview.png') : '',
+        file: f,
+        gen: SRC_PKG.version
+      });
+    }
+    packs.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+    fs.writeFileSync(path.join(PACKS_OUT, 'index.json'),
+      JSON.stringify({ spec: 1, gen: SRC_PKG.version, packs: packs }, null, 1), 'utf8');
+    if (!packs.length) die('随包主题解包后一套都不剩，内置主题会是空的');
+    log('内置主题（同源静态）：' + packs.length + ' 套 -> www/themepacks/' +
+      (skipped ? '（跳过 ' + skipped + ' 个坏包）' : ''));
+  } else {
+    log('警告：没有 www/themes/，跳过去内置主题解包');
   }
 
   // ③ index.html 注入

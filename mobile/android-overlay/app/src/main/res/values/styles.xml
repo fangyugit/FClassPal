@@ -7,10 +7,19 @@
      ==========================================================================-->
 <resources>
 
-    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+    <!-- v2.6.8-fix3：应用级主题也改成 NoActionBar。
+         Activity 自己挂的是 NoActionBarLaunch（启动屏主题），但只要有**任何**
+         路径回落到 application 主题（例如某个 ROM 上启动屏主题解析失败、
+         或者将来有人新增 Activity 忘了写 theme），DarkActionBar 就会给出一条
+         带应用名的原生标题条 —— 用户报的就是"页面顶部出现原生标题条"。
+         这里直接断掉回落的可能：application 层就没有 ActionBar 可给。 -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/window_bg</item>
     </style>
 
     <!-- 实际使用的主题：无标题栏 + 状态栏/导航栏沉浸（内容画到系统栏底下，

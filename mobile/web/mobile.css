@@ -29,17 +29,16 @@ html.mobile #widget {
   cursor: default;
 }
 
-/* 状态栏 / 手势条：用安全区留白，别让标题和列表被系统栏压住 */
-html.mobile .titlebar {
-  padding-top: calc(10px + env(safe-area-inset-top));
-  padding-left: calc(16px + env(safe-area-inset-left));
-  padding-right: calc(16px + env(safe-area-inset-right));
-  cursor: default;          /* 手机上没有"拖动窗口"这回事（拖动等于系统手势） */
-  touch-action: manipulation;
+/* 状态栏 / 手势条：用安全区留白，别让内容被系统栏压住。
+ * v2.6.8-fix3：标题条在安卓上整体撤掉（用户：「页面顶部出现原生标题条要去掉」）。
+ * 手机上没有窗口可拖、标题也没必要改，那条东西纯占地方；撤掉之后安全区留白
+ * 改由 .content / 各个弹层自己承担，第一行不会被状态栏压住。 */
+html.mobile:not(.float) #titlebar {
+  display: none !important;
 }
 
 html.mobile .content {
-  padding: 12px calc(14px + env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+  padding: calc(14px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;   /* 列表滑到底不要带动页面回弹 */
 }

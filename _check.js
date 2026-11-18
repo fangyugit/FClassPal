@@ -1120,10 +1120,9 @@ const checks = [
     !/沿用上一版/.test(readme) &&
     /* v2.6.8-beta：这轮只出 Windows 包，Linux 行仍指上一版发布页，故跳过该行核对 */
     (srcPkg.version.indexOf('-') >= 0 ||
-      new RegExp('FClassPal-' + srcPkg.version.replace(/\./g, '\\.') + '-linux-loong64').test(readme) ||
-      /* v2.6.8：正式版只出 Windows + Android，README 里显式说明 Linux/mac/WearOS
-       * 仍指旧发布页（诚实标注优于给死链），此时放行这一条 */
-      /上表中的 Linux \/ macOS \/ WearOS 产物仍是/.test(readme)) &&
+      /* v2.6.8（2026-11-18 补丁）：Linux 三架构产物齐了，下载表必须指到本版，
+       * 原来那条"README 显式说明仍指旧发布页就放行"的兜底随之撤掉。 */
+      new RegExp('FClassPal-' + srcPkg.version.replace(/\./g, '\\.') + '-linux-loong64').test(readme)) &&
     /##\s*v2\.4\.5/.test(changelog)],
   ['v2.6.6: 下载链接的 tag 与文件名版本必须一致（tag 指错就是死链，例如把手表包写进新版页）',
     (() => {
@@ -1178,10 +1177,10 @@ const checks = [
   /* v2.6.0 起改为钉当前版本：Windows 上本来只能打 tar.gz（deb 缺 fpm），
    * 老断言钉 2.4.5 的 deb 文件名，dist 一清就永远假红 */
   ['v2.4.5: Linux 产物已生成（x64 + arm64 + loong64 的 tar.gz，当前版本）',
-    /* v2.6.8-beta：预发布轮次只打 Windows，带「-」的版本号跳过这条 */
+    /* v2.6.8-beta：预发布轮次只打 Windows，带「-」的版本号跳过这条。
+     * v2.6.8（2026-11-18 补丁）：Linux 三架构补齐，"README 有说明就放行"的
+     * 兜底撤掉 —— 正式版就必须真有这三份文件。 */
     srcPkg.version.indexOf('-') >= 0 ||
-    /* v2.6.8：本轮只出 Windows + Android，README 有显式说明就放行 */
-    /上表中的 Linux \/ macOS \/ WearOS 产物仍是/.test(readme) ||
     (fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-x64.tar.gz') &&
     fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-arm64.tar.gz') &&
     fs.existsSync('dist/FClassPal-' + srcPkg.version + '-linux-loong64.tar.gz'))],
@@ -1822,6 +1821,52 @@ const checks = [
     app.includes('function syncThemeRepairRow(') &&
     /* 安卓桥：原生 themesList 失败重试一次 */
     /var attempt = function \(times\)/.test(fs.readFileSync('mobile/web/mobile-bridge.js', 'utf8'))],
+  /* ---------------------------------------------------------------------------
+   * v2.6.8-fix3（用户批量反馈三条）
+   *   ① 安卓页面顶部出现原生标题条 → 撤掉 HTML 标题条 + 断掉 ActionBar 回落
+   *   ② 主题无法导入 → 改走 WebView 自己的文件选择器
+   *   ③ 「直接完全自带内置而不是要补装」→ 装配期解包成同源静态主题
+   * ------------------------------------------------------------------------- */
+  ['v2.6.8-fix3: 安卓顶部标题条去掉（HTML 标题条 + ActionBar 双保险）',
+    (() => {
+      const mc = fs.readFileSync('mobile/web/mobile.css', 'utf8');
+      const st = fs.readFileSync('mobile/android-overlay/app/src/main/res/values/styles.xml', 'utf8');
+      const ma = fs.readFileSync('mobile/android-overlay/app/src/main/java/com/fclasspal/widget/MainActivity.java', 'utf8');
+      return mc.includes('html.mobile:not(.float) #titlebar') &&
+        mc.includes('display: none !important;') &&
+        /* application 主题不能再是 DarkActionBar：任何回落都不许长出标题条 */
+        st.includes('<style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">') &&
+        !st.includes('Theme.AppCompat.Light.DarkActionBar') &&
+        /* 启动屏主题要真的被换掉（Capacitor 不带 splash 插件时没人调它） */
+        ma.includes('installSplashScreen') &&
+        ma.includes('getSupportActionBar') &&
+        ma.includes('hideActionBar');
+    })()],
+  ['v2.6.8-fix3: 主题包"真内置" —— 装配期解成 www/themepacks 同源静态文件',
+    (() => {
+      const aw = fs.readFileSync('mobile/tools/assemble-web.js', 'utf8');
+      return aw.includes('function zipEntries(') &&
+        aw.includes('function rewriteCssUrls(') &&
+        aw.includes('themepacks/index.json') &&
+        aw.includes('packSources') &&
+        /* 内置之后不再把 .fcpt 也拷一份进 APK（白胖 5MB+） */
+        !aw.includes('复制随包主题包 -> www/themes/');
+    })() &&
+    app.includes('async function loadBuiltinWebPacks(') &&
+    app.includes('function ensureWebPackCss(') &&
+    app.includes("fetch('themepacks/index.json'") &&
+    /* 切过去之前先取样式，否则白一帧 */
+    app.includes('function switchThemeNow(') &&
+    app.includes('ensureWebPackCss(t).then(() => switchThemeNow(t)') &&
+    /* 内置包不许出现在"可删除"里 */
+    app.includes('removable: false, webPack: true')],
+  ['v2.6.8-fix3: 安卓导入主题改走 WebView 文件选择器（SAF 只留兜底）',
+    bridge.includes('themesInstallFiles: function ()') &&
+    bridge.includes('function readFileBase64(') &&
+    bridge.includes('readAsDataURL') &&
+    app.includes("typeof API.themesInstallFiles === 'function'") &&
+    app.includes('r.unsupported') &&
+    app.includes("typeof API.themesInstall === 'function' ||")],
 ];
 let bad = 0;
 checks.forEach((c) => {

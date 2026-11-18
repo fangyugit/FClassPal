@@ -27,7 +27,35 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         registerPlugin(PalBridgePlugin.class);
+        installSplashTheme();
         super.onCreate(savedInstanceState);
+        hideActionBar();
+    }
+
+    /**
+     * v2.6.8-fix3：把启动屏主题换回 NoActionBar。
+     *
+     * Activity 挂的是 AppTheme.NoActionBarLaunch（父主题 Theme.SplashScreen），
+     * 只有 androidx 的 installSplashScreen() 被调用过，postSplashScreenTheme
+     * 才会把主题换成 NoActionBar。Capacitor 本体不带 splash 插件时没人调它，
+     * 主题就停在启动屏那份；个别 ROM 上那份会带出 ActionBar —— 用户看到的
+     * 就是「页面顶部出现原生标题条」。必须早于 super.onCreate 调用（官方要求）。
+     * 反射调用：没有 splash 库的老壳子也不至于因此崩。
+     */
+    private void installSplashTheme() {
+        try {
+            Class<?> cls = Class.forName("androidx.core.splashscreen.SplashScreen");
+            cls.getMethod("installSplashScreen", android.app.Activity.class).invoke(null, this);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 兜底：万一主题仍有 ActionBar（改主题、换 ROM），代码里也把它按掉。 */
+    private void hideActionBar() {
+        try {
+            if (getSupportActionBar() != null) getSupportActionBar().hide();
+        } catch (Throwable ignored) {
+        }
     }
 
     /** 真机探测：new 一个 WebView 再销毁。缺 provider 的 ROM 会在这里抛异常。 */

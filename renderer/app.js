@@ -3965,6 +3965,17 @@ $('setLock').addEventListener('change', (e) => {
  * 但颜色/形状是硬跳的；用 Web Animations 给 widget 一个很短的透明度回补，
  * 观感上是"融"过去的。 */
 function switchTheme(t) {
+  /* v2.6.8-fix3：内置主题的样式是按需 fetch 的 —— 切过去之前必须先把它取回来，
+   * 否则会白一帧（这类包里没有纯色兜底，缺表就是全空）。取包失败就直接切，
+   * 至少内置变量还在，界面不会挂。 */
+  const card = ((themeInv && themeInv.themes) || []).filter((x) => x && x.id === t)[0];
+  if (card && card.webPack && themePackCss[t] == null) {
+    ensureWebPackCss(t).then(() => switchThemeNow(t), () => switchThemeNow(t));
+    return;
+  }
+  switchThemeNow(t);
+}
+function switchThemeNow(t) {
   const prev = currentTheme;
   currentTheme = t;
   config.theme = currentTheme;
@@ -4191,7 +4202,17 @@ function localThemeInventory() {
  * v2.6.8f：失败原因要留住 —— 安卓原生 themesList 一失手，退回「只有内置主题」
  * 的表现就是"三丽鸥那些主题全消失了"，而这条路上原来一声不吭，无从排查。 */
 let themeInvError = '';
+/* v2.6.8-fix3：清单改成"两条腿"——
+ *   ① 原生清单（桌面主进程 / 安卓桥接：用户导入的包都在这里）；
+ *   ② 同源内置清单（APK 里 www/themepacks/index.json，装配期从随包 .fcpt 解出来）。
+ * 用户原话是「直接完全自带内置而不是要补装」，② 就是这句话的实现：
+ * 它不经过任何"安装"动作，只要 APK 里有文件就在，原生那条腿真瘸了也不影响。 */
 async function loadThemeRegistry() {
+  const data = await loadThemeRegistryNative();
+  try { await loadBuiltinWebPacks(); } catch (e) { console.warn('[themes] 内置主题清单失败', e); }
+  return data;
+}
+async function loadThemeRegistryNative() {
   if (typeof API.themesList !== 'function') {
     themeInv = themeInv || localThemeInventory();
     return null;
@@ -4221,6 +4242,87 @@ async function loadThemeRegistry() {
     themeInv = themeInv || localThemeInventory();
     return null;
   }
+}
+
+/* ---------- 同源内置主题（v2.6.8-fix3）----------
+ * 装配期（mobile/tools/assemble-web.js 的 ②.6 步）把每个随包 .fcpt 解成
+ * www/themepacks/<id>/{theme.css, assets/*, preview.png}，并写一份 index.json。
+ * 渲染层做的事只有两件：fetch 一次 index.json 拼进注册表；切到某套主题时再
+ * fetch 它那一份 theme.css。整套流程没有任何"安装"环节 —— 文件在包里就在。
+ * 桌面版 / 浏览器预览模式下没有这份 index.json，fetch 404 就静默跳过。 */
+let builtinWebPacks = [];
+async function loadBuiltinWebPacks() {
+  if (typeof fetch !== 'function') return 0;
+  let idx = null;
+  try {
+    const r = await fetch('themepacks/index.json', { cache: 'force-cache' });
+    if (!r.ok) return 0;
+    idx = await r.json();
+  } catch (e) {
+    return 0;      // 没有内置清单：桌面版 / 预览模式的正常情况
+  }
+  const packs = (idx && idx.packs) || [];
+  if (!packs.length) return 0;
+  builtinWebPacks = packs;
+  if (!themeInv) themeInv = localThemeInventory();
+  const have = {};
+  (themeInv.themes || []).forEach((t) => { if (t && t.id) have[t.id] = true; });
+  let added = 0;
+  packs.forEach((p) => {
+    if (!p || !p.id || have[p.id]) return;
+    /* removable:false —— 内置的东西删不掉（也没有删除按钮），免得用户误删后
+     * 发现"补不回来"（原来的补装入口正是这条死路的补丁，现在不需要了）。 */
+    themeInv.themes.push({
+      id: p.id, name: p.name, version: p.version, author: p.author, desc: p.desc,
+      accent: p.accent || '', fixedPalette: p.fixedPalette !== false, blur: p.blur === true,
+      builtin: false, installed: true, removable: false, webPack: true,
+      cssUrl: p.css, previewUrl: p.preview || ''
+    });
+    have[p.id] = true;
+    added += 1;
+  });
+  /* 顺序规则与原生清单一致：用户排过的按 themeOrder，没排过的接在后面 */
+  const order = (config && config.themeOrder) || [];
+  if (order.length) {
+    const byId = {};
+    themeInv.themes.forEach((t) => { byId[t.id] = t; });
+    const sorted = [];
+    order.forEach((id) => { if (byId[id]) { sorted.push(byId[id]); delete byId[id]; } });
+    Object.keys(byId).forEach((id) => sorted.push(byId[id]));
+    themeInv.themes = sorted;
+  }
+  applyThemeRegistry(themeInv.themes);
+  if (typeof syncThemeRepairRow === 'function') syncThemeRepairRow();
+  /* 当前用的正好是内置包：先把它的样式取回来，首帧才不会是个空壳 */
+  await ensureWebPackCss(currentTheme);
+  return added;
+}
+
+/** 内置包的样式按需取 —— 只取当前这一套。
+ * 不一次全取的理由：十八套包全是贴图，一次性塞进 WebView 就是十几 MB 的
+ * 常驻 CSS + 图片解码缓存，手机上换来的是切主题时的一卡。 */
+const webPackCssPending = {};
+function ensureWebPackCss(id) {
+  const card = ((themeInv && themeInv.themes) || []).filter((t) => t && t.id === id)[0];
+  if (!card || !card.webPack) return Promise.resolve(false);
+  if (themePackCss[id] != null) return Promise.resolve(true);
+  if (webPackCssPending[id]) return webPackCssPending[id];
+  webPackCssPending[id] = (async () => {
+    try {
+      const r = await fetch(card.cssUrl || ('themepacks/' + id + '/theme.css'));
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      themePackCss[id] = await r.text();
+      injectThemePackCss();
+      computeThemeCaps();
+      syncCapsControls();
+      return true;
+    } catch (e) {
+      console.warn('[themes] 内置主题样式读取失败', id, e);
+      delete webPackCssPending[id];      // 允许下次再试
+      return false;
+    }
+  })();
+  return webPackCssPending[id];
 }
 
 /* ---------- 弹窗渲染（v2.5.2 重做：预览图 / 描述 / 版本 / 作者直接上卡片） ---------- */
@@ -4309,7 +4411,8 @@ function renderThemeModal() {
     }
   }
   // 宿主没有主进程（安卓壳）时，导入/文件夹按钮直接禁掉，别让用户点了没反应
-  const canInstall = typeof API.themesInstall === 'function';
+  const canInstall = typeof API.themesInstall === 'function' ||
+    typeof API.themesInstallFiles === 'function';
   ['btnThemeInstall', 'btnThemeFolder'].forEach((id) => {
     const b = $(id);
     if (b) b.disabled = !canInstall;
@@ -4350,8 +4453,22 @@ async function afterThemeMutation(r, okMsg) {
 }
 
 async function installThemeFromFile() {
-  if (typeof API.themesInstall !== 'function') return;
-  const r = await API.themesInstall();
+  /* v2.6.8-fix3：安卓端导入优先走 WebView 自己的文件选择器（<input type=file>）。
+   * 原来只有 SAF（原生 pickPack）一条路，真机上报"点了没反应"就是它：有的 ROM
+   * 选完回来不给 URI / 只放进 clipData、隐私选择器连文件名都不给。input 这条路
+   * 由 Chromium 自己的 chooser 撑，选中的 File 在页面里直接读成 base64 交给
+   * 原生 themeInstall 落盘 —— 同一条落盘逻辑，少一层系统交互的变数。
+   * 拿不到 input 能力（老宿主）就退回原来的 SAF 路径。 */
+  let r = null;
+  if (typeof API.themesInstallFiles === 'function') {
+    try { r = await API.themesInstallFiles(); }
+    catch (e) { r = { success: false, error: String((e && e.message) || e) }; }
+    if (r && r.unsupported) r = null;      // 这个宿主没有 input 能力 → 走 SAF
+  }
+  if (!r) {
+    if (typeof API.themesInstall !== 'function') return;
+    r = await API.themesInstall();
+  }
   if (!r || r.canceled) return;
   /* v2.6.6：安卓支持一次选多个包，于是结果变成了"一个批次"。
    * 成功几套、失败几套（带原生给的原因）、有没有因为太多被跳过，都要说清楚 ——

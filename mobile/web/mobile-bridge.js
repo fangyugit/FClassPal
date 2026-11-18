@@ -50,6 +50,25 @@
     }, function () { return fallback; });
   }
 
+  /** File/Blob → base64（去掉 data URL 的前缀）。
+   * 用 FileReader 而不是 File.arrayBuffer()：老 WebView（Android 7~9 那批）
+   * 的 File 不一定有 arrayBuffer，FileReader 从 API 3 就在，稳。 */
+  function readFileBase64(file) {
+    return new Promise(function (resolve) {
+      if (!file) { resolve(''); return; }
+      try {
+        var fr = new FileReader();
+        fr.onload = function () {
+          var s = String(fr.result || '');
+          var i = s.indexOf(',');
+          resolve(i >= 0 ? s.slice(i + 1) : s);
+        };
+        fr.onerror = function () { resolve(''); };
+        fr.readAsDataURL(file);
+      } catch (e) { resolve(''); }
+    });
+  }
+
   function info() { return soft('getInfo', {}, {}); }
 
   /* ------------------------------------------------------- 调色板（HSL 近似）
@@ -1057,6 +1076,85 @@
     themesInstallBundled: function (file) {
       return call('themeInstallBundled', { file: file })
         .catch(function () { return { success: false, error: '原生不支持' }; });
+    },
+    /* v2.6.8-fix3：导入改走 WebView 自己的文件选择器。
+     * 真机上"导入点了没反应"的根就是 SAF 那条路（选完不给 URI / 拿不到文件名）。
+     * <input type=file> 的 chooser 是 Chromium 自己弹的，选中的 File 能直接在
+     * 页面里读 —— 读成 base64 之后照样交给原生 themeInstall 落盘，落盘逻辑不变。
+     * 返回结构与 themesInstall 保持一致（success/installedAll/failed/data）。 */
+    themesInstallFiles: function () {
+      return new Promise(function (resolve) {
+        if (typeof document === 'undefined' || !document.createElement) {
+          resolve({ success: false, canceled: true, unsupported: true });
+          return;
+        }
+        var inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.fcpt,.fcpc,.zip,application/zip,application/octet-stream';
+        inp.multiple = true;
+        inp.setAttribute('aria-hidden', 'true');
+        /* 不能 display:none —— 有些 WebView 对隐藏 input 不弹 chooser。
+         * 挪到屏幕外、零尺寸，用户看不见，chooser 照样弹。 */
+        inp.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
+        document.body.appendChild(inp);
+        var done = false;
+        var finish = function (r) {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          try { document.body.removeChild(inp); } catch (e) { }
+          resolve(r);
+        };
+        var timer = setTimeout(function () {
+          /* 5 分钟没有任何事件：当作用户放弃（也顺手解锁 UI） */
+          finish({ success: false, canceled: true });
+        }, 300000);
+        inp.addEventListener('change', function () {
+          var files = Array.prototype.slice.call(inp.files || []);
+          if (!files.length) { finish({ success: false, canceled: true }); return; }
+          var okList = [];
+          var bad = [];
+          var lastData = null;
+          var chain = Promise.resolve();
+          files.forEach(function (f, i) {
+            var label = (f && f.name) || ('第 ' + (i + 1) + ' 个文件');
+            chain = chain.then(function () {
+              return readFileBase64(f).then(function (b64) {
+                if (!b64) { bad.push({ name: label, error: '空文件' }); return null; }
+                return call('themeInstall', { base64: b64 }).then(function (res) {
+                  if (res && res.success) {
+                    okList.push({
+                      id: (res.installed && res.installed.id) || '',
+                      name: (res.installed && res.installed.name) || label
+                    });
+                    if (res.data) lastData = res.data;
+                  } else {
+                    bad.push({ name: label, error: (res && res.error) || '装不上（包可能已损坏）' });
+                  }
+                }, function (e) {
+                  bad.push({ name: label, error: String((e && e.message) || e) });
+                });
+              });
+            });
+          });
+          chain.then(function () {
+            finish({
+              success: okList.length > 0,
+              installed: okList[0] || null,
+              installedAll: okList,
+              count: okList.length,
+              failed: bad,
+              data: lastData,
+              error: okList.length ? '' : ((bad[0] && bad[0].error) || '一套都没装上')
+            });
+          });
+        });
+        try {
+          inp.click();
+        } catch (e) {
+          finish({ success: false, canceled: true, unsupported: true });
+        }
+      });
     },
     themesRemove: function (id) {
       return call('themesRemove', { id: id }).then(function (r) {
